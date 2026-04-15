@@ -1,0 +1,894 @@
+import type { Guest, Hotel, Reservation, Room, Staff, GRCardData, Folio } from "@/lib/types"
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"
+const TOKEN_STORAGE_KEY = "hotel_manager_tokens"
+
+type JsonRecord = Record<string, unknown>
+
+function getStoredAccessToken(): string | null {
+  if (typeof window === "undefined") return null
+  const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY)
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as {
+      accessToken?: string
+      token?: string
+      jwt?: string
+    }
+    return parsed.accessToken || parsed.token || parsed.jwt || null
+  } catch {
+    return null
+  }
+}
+
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getStoredAccessToken()
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers || {}),
+    },
+    cache: "no-store",
+  })
+
+  if (!response.ok) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      sessionStorage.removeItem("hotel_manager_auth")
+      sessionStorage.removeItem(TOKEN_STORAGE_KEY)
+      window.location.href = "/"
+    }
+    const text = await response.text()
+    throw new Error(text || `Request failed: ${response.status}`)
+  }
+
+  return (await response.json()) as T
+}
+
+function toRoomStatus(status?: string): Room["status"] {
+  const normalized = String(status || "available").toLowerCase();
+  if (normalized === "blocked") return "maintenance";
+  if (["available", "occupied", "reserved", "cleaning", "maintenance"].includes(normalized)) {
+    return normalized as Room["status"];
+  }
+  return "available";
+}
+
+function toRoomType(value?: string): string {
+  return value || "standard"
+}
+
+function mapRoom(raw: JsonRecord): Room {
+  const roomType = (raw.roomType || raw.type || raw.roomTypeId) as JsonRecord | string | undefined
+  let roomTypeName = "standard"
+  let roomTypeId = ""
+
+  if (typeof roomType === "object" && roomType !== null) {
+    roomTypeName = String(roomType.name || roomType.code || "standard")
+    roomTypeId = String(roomType._id || roomType.id || "")
+  } else if (typeof roomType === "string") {
+    roomTypeName = roomType
+    roomTypeId = roomType // If it's just a string, it might be the ID or the Name
+  }
+
+  return {
+    id: String(raw._id || raw.id || ""),
+    number: String(raw.roomNumber || raw.number || ""),
+    floor: Number(raw.floor || 0),
+    type: toRoomType(roomTypeName),
+    roomTypeId: roomTypeId,
+    status: toRoomStatus(String(raw.status || "available")),
+    price: Number(raw.rate || raw.price || 0),
+    amenities: Array.isArray(raw.amenities) ? (raw.amenities as string[]) : [],
+    guestName: raw.guestName ? String(raw.guestName) : undefined,
+    checkIn: raw.checkIn ? String(raw.checkIn) : undefined,
+    checkOut: raw.checkOut ? String(raw.checkOut) : undefined,
+  }
+}
+
+function mapReservation(raw: JsonRecord): Reservation {
+  const checkIn = String(raw.checkInDate || raw.checkIn || "")
+  const checkOut = String(raw.checkOutDate || raw.checkOut || "")
+
+  return {
+    id: String(raw._id || raw.id || raw.reservationId || ""),
+    reservationId: String(raw.reservationId || raw.bookingNo || raw.id || raw._id || ""),
+    guestName: String(raw.guestName || ""),
+    guestEmail: String(raw.email || raw.guestEmail || ""),
+    guestPhone: String(raw.phone || raw.guestPhone || ""),
+    roomId: String(raw.room || raw.roomId || ""),
+    roomNumber: String(raw.roomNumber || raw.room || ""),
+    checkIn: checkIn ? new Date(checkIn).toISOString().slice(0, 10) : "",
+    checkOut: checkOut ? new Date(checkOut).toISOString().slice(0, 10) : "",
+    status: (String(raw.status || "confirmed") as Reservation["status"]),
+    totalAmount: Number(raw.totalAmount || 0),
+    paidAmount: Number(raw.paidAmount || raw.advanceAmount || 0),
+    createdAt: raw.createdAt ? new Date(String(raw.createdAt)).toISOString().slice(0, 10) : "",
+  }
+}
+
+function mapHotel(raw: JsonRecord): Hotel {
+  const status = String(raw.status || (raw.isActive ? "active" : "inactive"))
+  return {
+    id: String(raw._id || raw.id || ""),
+    name: String(raw.name || ""),
+    address: String(raw.address || ""),
+    city: String(raw.city || ""),
+    country: String(raw.country || ""),
+    phone: String(raw.phone || ""),
+    email: String(raw.email || ""),
+    modules: Array.isArray(raw.modules) ? (raw.modules as Hotel["modules"]) : [],
+    status: status === "active" || status === "inactive" || status === "pending" ? status : "inactive",
+    createdAt: raw.createdAt ? new Date(String(raw.createdAt)).toISOString().slice(0, 10) : "",
+    roomCount: Number(raw.totalRooms || raw.roomCount || 0),
+  }
+}
+
+function mapStaff(raw: JsonRecord): Staff {
+  const roleValue = String(raw.role || "staff")
+  return {
+    id: String(raw._id || raw.id || ""),
+    name: String(raw.username || raw.name || ""),
+    email: String(raw.email || ""),
+    role: roleValue === "hoteladmin" ? "admin" : "staff",
+    hotelId: String(raw.hotelId || ""),
+    modules: Array.isArray(raw.modules) ? (raw.modules as Staff["modules"]) : [],
+    status: raw.isActive === false ? "inactive" : "active",
+    createdAt: raw.createdAt ? new Date(String(raw.createdAt)).toISOString().slice(0, 10) : "",
+    lastLogin: raw.lastLogin ? String(raw.lastLogin) : undefined,
+  }
+}
+
+function mapGuest(raw: JsonRecord): Guest {
+  return {
+    id: String(raw._id || raw.id || ""),
+    name: String(raw.name || raw.fullName || ""),
+    email: String(raw.email || ""),
+    phone: String(raw.phone || ""),
+    idType: String(raw.idType || ""),
+    idNumber: String(raw.idNumber || ""),
+    address: String(raw.address || ""),
+    nationality: String(raw.country || raw.nationality || ""),
+    visits: Number(raw.visits || 0),
+    totalSpent: Number(raw.totalSpent || 0),
+  }
+}
+
+export async function getAdminDashboard() {
+  return apiRequest<{ success: boolean; data: JsonRecord }>("/admin/dashboard")
+}
+
+export async function getSuperAdminDashboard() {
+  return apiRequest<{ stats: JsonRecord; recentHotels: JsonRecord[] }>("/super-admin/dashboard/stats")
+}
+
+export async function getSuperAdminHotels(search?: string): Promise<Hotel[]> {
+  const params = new URLSearchParams()
+  if (search) params.set("search", search)
+  const data = await apiRequest<{ hotels: JsonRecord[] }>(`/super-admin/hotels${params.toString() ? `?${params.toString()}` : ""}`)
+  return Array.isArray(data.hotels) ? data.hotels.map(mapHotel) : []
+}
+
+export async function createSuperAdminHotel(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/super-admin/hotels", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateSuperAdminHotelStatus(id: string, status: "active" | "inactive") {
+  return apiRequest<JsonRecord>(`/super-admin/hotels/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  })
+}
+
+export async function deleteSuperAdminHotel(id: string) {
+  return apiRequest<JsonRecord>(`/super-admin/hotels/${id}`, {
+    method: "DELETE",
+  })
+}
+
+export async function updateSuperAdminHotel(id: string, payload: any) {
+  return apiRequest(`/super-admin/hotels/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function getAdminStaff(search?: string, role?: string): Promise<Staff[]> {
+  const params = new URLSearchParams()
+  if (search) params.set("search", search)
+  if (role && role !== "all") params.set("role", role === "admin" ? "hoteladmin" : role)
+  const data = await apiRequest<JsonRecord[]>(`/admin/staff${params.toString() ? `?${params.toString()}` : ""}`)
+  return Array.isArray(data) ? data.map(mapStaff) : []
+}
+
+export async function getAdminStaffSummary() {
+  return apiRequest<{ totalStaff: number; activeStaff: number; admins: number }>("/admin/staff/summary")
+}
+
+export async function createAdminStaff(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/admin/staff", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateAdminStaffStatus(id: string, isActive: boolean) {
+  return apiRequest<JsonRecord>(`/admin/staff/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ isActive }),
+  })
+}
+
+export async function deleteAdminStaff(id: string) {
+  return apiRequest<JsonRecord>(`/admin/staff/${id}`, { method: "DELETE" })
+}
+
+export async function getFrontOfficeRooms(params?: { search?: string; status?: string }): Promise<Room[]> {
+  const query = new URLSearchParams()
+  if (params?.search) query.set("search", params.search)
+  if (params?.status && params.status !== "all") query.set("status", params.status)
+  const data = await apiRequest<{ success: boolean; data: { rooms: JsonRecord[] } }>(`/front-office/rooms${query.toString() ? `?${query.toString()}` : ""}`)
+  return Array.isArray(data.data?.rooms) ? data.data.rooms.map(mapRoom) : []
+}
+
+export async function updateFrontOfficeRoomStatus(roomId: string, status: Room["status"]) {
+  return apiRequest<JsonRecord>(`/front-office/rooms/${roomId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  })
+}
+
+export async function getFrontOfficeReservations(params?: { search?: string; status?: string }): Promise<Reservation[]> {
+  const query = new URLSearchParams()
+  if (params?.search) query.set("search", params.search)
+  if (params?.status && params.status !== "all") query.set("status", params.status)
+  const data = await apiRequest<JsonRecord[] | { success: boolean; data: { reservations: JsonRecord[] } }>(`/front-office/reservations${query.toString() ? `?${query.toString()}` : ""}`)
+
+  if (Array.isArray(data)) {
+    return data.map(mapReservation)
+  }
+
+  const reservations = Array.isArray(data.data?.reservations) ? data.data.reservations : []
+  return reservations.map(mapReservation)
+}
+
+export async function createFrontOfficeReservation(payload: any) {
+  return apiRequest("/front-office/reservations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateFrontOfficeReservation(id: string, payload: any) {
+  return apiRequest<JsonRecord>(`/admin/reservations/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
+// export async function createStaffReservation(payload: any) {
+//   return apiRequest("/staff/reservations", {
+//     method: "POST",
+//     body: JSON.stringify(payload),
+//   });
+// }
+
+export async function updateFrontOfficeReservationStatus(id: string, status: Reservation["status"]) {
+  return apiRequest<JsonRecord>(`/admin/reservations/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  })
+}
+
+export async function getInHouseGuests() {
+  return apiRequest<{ success: boolean; data: { guests: JsonRecord[]; summary: JsonRecord } }>("/front-office/in-house")
+}
+
+export async function getCheckInData() {
+  const [rooms, ratePlans, roomTypes] = await Promise.all([
+    getFrontOfficeRooms({ status: "available" }),
+    getSetupRatePlans(),
+    getSetupRoomTypes()
+  ])
+  return { rooms, ratePlans, roomTypes }
+}
+
+export async function createCheckIn(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/admin/reception/check-in", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function createExpressCheckIn(payload: any) {
+  return apiRequest("/front-office/check-in/express", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createPaxCheckIn(checkInId: string, payload: any) {
+  return apiRequest(`/front-office/check-in/${checkInId}/pax`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getFolioDetails(folioId: string) {
+  return apiRequest<{ success: boolean; data: { folio: Folio } }>(`/front-office/folio/${folioId}`)
+}
+
+export async function createCheckOut(payload: any) {
+  return apiRequest<{ success: boolean; data: any }>("/front-office/check-out", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function getGRCard(roomId: string): Promise<GRCardData> {
+  const response = await apiRequest<{ success: boolean; data: GRCardData }>(`/admin/reception/check-in/grcard/${roomId}`)
+  return response.data
+}
+
+export async function getStaffDashboard() {
+  return apiRequest<JsonRecord>("/staff/dashboard")
+}
+
+export async function getStaffReservations() {
+  return apiRequest<{ success: boolean; data: { stats: JsonRecord; reservations: JsonRecord[] } }>("/staff/reservations")
+}
+
+export async function getStaffGuests(search?: string) {
+  const query = new URLSearchParams()
+  if (search) query.set("search", search)
+  const data = await apiRequest<{ success: boolean; data: { stats: JsonRecord; guests: JsonRecord[] } }>(`/staff/guests${query.toString() ? `?${query.toString()}` : ""}`)
+  return {
+    stats: data.data.stats,
+    guests: Array.isArray(data.data.guests) ? data.data.guests.map(mapGuest) : [],
+  }
+}
+
+export async function createStaffGuest(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/staff/guests", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function createStaffReservation(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/staff/reservations", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateStaffReservationStatus(id: string, status: string) {
+  return apiRequest(`/staff/reservations/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
+// ==================== MODULE & NOTIFICATION APIs ====================
+
+// Module Management APIs
+export async function getAvailableModules() {
+  return apiRequest<{ success: boolean; data: JsonRecord[] }>("/super-admin/modules")
+}
+
+export async function getHotelModules(hotelId: string) {
+  return apiRequest<{ success: boolean; data: JsonRecord }>(`/super-admin/hotels/${hotelId}/modules`)
+}
+
+export async function updateHotelModules(hotelId: string, modules: string[]) {
+  return apiRequest<JsonRecord>(`/super-admin/hotels/${hotelId}/modules`, {
+    method: "PUT",
+    body: JSON.stringify({ modules }),
+  })
+}
+
+// Module Request APIs
+export async function getModuleRequests(status?: "pending" | "approved" | "rejected") {
+  const query = status ? `?status=${status}` : ""
+  return apiRequest<{ success: boolean; data: JsonRecord[] }>(`/super-admin/module-requests${query}`)
+}
+
+export async function getHotelModuleRequests(hotelId: string) {
+  return apiRequest<{ success: boolean; data: JsonRecord[] }>(`/admin/module-requests?hotelId=${hotelId}`)
+}
+
+export async function createModuleRequest(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/admin/module-requests", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function approveModuleRequest(requestId: string, hotelId: string, modules: string[]) {
+  return apiRequest<JsonRecord>(`/super-admin/module-requests/${requestId}`, {
+    method: "PUT",
+    body: JSON.stringify({ status: "approved", hotelId, modules }),
+  })
+}
+
+export async function rejectModuleRequest(requestId: string, reason?: string) {
+  return apiRequest<JsonRecord>(`/super-admin/module-requests/${requestId}`, {
+    method: "PUT",
+    body: JSON.stringify({ status: "rejected", reason }),
+  })
+}
+
+// Notification APIs - for Super Admin/Hotel to send notifications
+export async function sendNotification(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/notifications", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+// Admin sending notifications to hotels about new modules or updates
+export async function sendAdminNotification(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/super-admin/notifications/send", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+// Hotel admin sending promotions/notifications to customers
+export async function sendHotelNotification(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/admin/notifications/send", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+// Get notifications for current user
+export async function getMyNotifications(limit?: number) {
+  const query = limit ? `?limit=${limit}` : ""
+  return apiRequest<{ success: boolean; data: JsonRecord[] }>(`/notifications${query}`)
+}
+
+// Get notifications for super admin (system-wide)
+export async function getSuperAdminNotifications(hotelId?: string) {
+  const query = hotelId ? `?hotelId=${hotelId}` : ""
+  return apiRequest<{ success: boolean; data: JsonRecord[] }>(`/super-admin/notifications${query}`)
+}
+
+// Get notifications for hotel admin
+export async function getHotelNotifications(limit?: number) {
+  const query = limit ? `?limit=${limit}` : ""
+  return apiRequest<{ success: boolean; data: JsonRecord[] }>(`/admin/notifications${query}`)
+}
+
+// Mark notification as read
+export async function markNotificationAsRead(notificationId: string) {
+  return apiRequest<JsonRecord>(`/notifications/${notificationId}/read`, {
+    method: "PUT",
+  })
+}
+
+// Delete notification
+export async function deleteNotification(notificationId: string) {
+  return apiRequest<JsonRecord>(`/notifications/${notificationId}`, {
+    method: "DELETE",
+  })
+}
+
+export async function updateSuperAdminPassword(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/super-admin/security/change-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+export async function getSuperAdminProfile() {
+  return apiRequest<any>("/super-admin/profile")
+}
+
+export async function updateSuperAdminProfile(payload: any) {
+  return apiRequest<any>("/super-admin/profile", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
+// Promotion APIs (sent by hotel admins to customers)
+export async function createPromotion(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/admin/promotions", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function getHotelPromotions() {
+  return apiRequest<{ success: boolean; data: JsonRecord[] }>("/admin/promotions")
+}
+
+export async function updatePromotion(promotionId: string, payload: JsonRecord) {
+  return apiRequest<JsonRecord>(`/admin/promotions/${promotionId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deletePromotion(promotionId: string) {
+  return apiRequest<JsonRecord>(`/admin/promotions/${promotionId}`, {
+    method: "DELETE",
+  })
+}
+
+// Send promotion to customers
+export async function sendPromotionNotification(promotionId: string, guestIds?: string[]) {
+  return apiRequest<JsonRecord>(`/admin/promotions/${promotionId}/send`, {
+    method: "POST",
+    body: JSON.stringify({ guestIds }),
+  })
+}
+
+// ==================== ADMIN SETUP APIs ====================
+
+// Room Types
+export async function getSetupRoomTypes() {
+  const data = await apiRequest<JsonRecord[] | { success: boolean; data: { roomTypes: JsonRecord[] } }>("/admin/setup/room-types")
+  if (Array.isArray(data)) return data
+  return data.data?.roomTypes || []
+}
+
+export async function createSetupRoomType(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/admin/setup/room-types", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateSetupRoomType(id: string, payload: JsonRecord) {
+  return apiRequest<JsonRecord>(`/admin/setup/room-types/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteSetupRoomType(id: string) {
+  return apiRequest<JsonRecord>(`/admin/setup/room-types/${id}`, {
+    method: "DELETE",
+  })
+}
+
+export async function updateSetupRoomTypeStatus(id: string, status: string) {
+  return apiRequest<JsonRecord>(`/admin/setup/room-types/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  })
+}
+
+// Rate Plans
+export async function getSetupRatePlans() {
+  const data = await apiRequest<JsonRecord[] | { success: boolean; data: { ratePlans: JsonRecord[] } }>("/admin/setup/rate-plans")
+  if (Array.isArray(data)) return data
+  return data.data?.ratePlans || []
+}
+
+export async function createSetupRatePlan(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/admin/setup/rate-plans", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateSetupRatePlan(id: string, payload: JsonRecord) {
+  return apiRequest<JsonRecord>(`/admin/setup/rate-plans/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteSetupRatePlan(id: string) {
+  return apiRequest<JsonRecord>(`/admin/setup/rate-plans/${id}`, {
+    method: "DELETE",
+  })
+}
+
+// Service Codes
+export async function getSetupServiceCodes() {
+  const data = await apiRequest<JsonRecord[] | { success: boolean; data: { serviceCodes: JsonRecord[] } }>("/admin/setup/service-codes")
+  if (Array.isArray(data)) return data
+  return data.data?.serviceCodes || []
+}
+
+export async function createSetupServiceCode(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/admin/setup/service-codes", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateSetupServiceCode(id: string, payload: JsonRecord) {
+  return apiRequest<JsonRecord>(`/admin/setup/service-codes/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteSetupServiceCode(id: string) {
+  return apiRequest<JsonRecord>(`/admin/setup/service-codes/${id}`, {
+    method: "DELETE",
+  })
+}
+
+// Hotel Config
+export async function getSetupHotelConfig() {
+  return apiRequest<JsonRecord>("/admin/setup/hotel-config")
+}
+
+export async function updateSetupHotelConfig(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/admin/setup/hotel-config", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
+// Floors & Rooms
+export async function getSetupFloors() {
+  const data = await apiRequest<{ success: boolean; data: { floors: JsonRecord[] } }>("/front-office/floors")
+  return data.data?.floors || []
+}
+
+export async function createSetupFloor(payload: { name: string; floorNumber: number }) {
+  return apiRequest<JsonRecord>("/front-office/floors", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteSetupRoomConfig(floorId: string, roomTypeId: string) {
+  return apiRequest(
+    `/front-office/floors/${floorId}/room-config/${roomTypeId}`,
+    {
+      method: "DELETE",
+    }
+  )
+}
+
+
+export async function createSetupRoomConfig(floorId: string, payload: { roomTypeId: string; count: number; startingRoomNumber: string; roomNumberFormat?: string }) {
+  return apiRequest<JsonRecord>(`/front-office/floors/${floorId}/room-config`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+// Check-Ins & In-House Guests
+export async function getCheckedInRooms() {
+  const res = await apiRequest<{ success: boolean; data: any[] }>("/admin/reception/check-in")
+  return res.data
+}
+
+// Room Advance
+export async function createRoomAdvance(payload: any) {
+  return apiRequest("/admin/reception/room-advance", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+// Advance Transfer
+export async function createAdvanceTransfer(payload: any) {
+  return apiRequest("/admin/reception/advance-transfer", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function getAdvanceTransfers() {
+  return apiRequest<{ success: boolean; data: any[] }>(
+    "/admin/reception/advance-transfer"
+  )
+}
+
+export async function getAdvanceTransferById(id: string) {
+  return apiRequest<{ success: boolean; data: any }>(
+    `/admin/reception/advance-transfer/${id}`
+  )
+}
+
+export async function cancelAdvanceTransfer(id: string) {
+  return apiRequest<{ success: boolean; data: any }>(
+    `/admin/reception/advance-transfer/${id}/cancel`,
+    {
+      method: "PUT",
+    }
+  )
+}
+
+// Shift Room
+export async function shiftRoom(payload: any) {
+  return apiRequest("/admin/reception/shift-room", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+
+// Block Room
+export async function blockRoom(payload: any) {
+  return apiRequest("/admin/reception/block-room", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// Get Blocked Rooms
+export async function getBlockedRooms() {
+  const res = await apiRequest<{ success: boolean; data: any[] }>(
+    "/admin/reception/block-room"
+  );
+  return res.data;
+}
+
+// Unblock Room
+export async function unblockRoom(id: string) {
+  return apiRequest(`/admin/reception/block-room/unblock/${id}`, {
+    method: "PUT",
+  });
+}
+
+// Add Service
+export async function addService(payload: any) {
+  return apiRequest("/admin/reception/post-service", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// Get Services
+export async function getServices() {
+  const res = await apiRequest<{ success: boolean; data: any[] }>(
+    "/admin/reception/post-service"
+  );
+  return res.data;
+}
+
+// Delete Service
+export async function deleteService(id: string) {
+  return apiRequest(`/admin/reception/post-service/${id}`, {
+    method: "DELETE",
+  });
+}
+
+// Update Service
+export async function updateService(id: string, payload: any) {
+  return apiRequest(`/admin/reception/post-service/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+// Settle Folio
+export async function settleFolio(folioId: string, payload: any) {
+  return apiRequest<{ success: boolean; data: any }>(`/front-office/folio/${folioId}/settle`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+// Get Complaints
+export async function getComplaints(params?: { status?: string; priority?: string }) {
+  const query = new URLSearchParams()
+
+  if (params?.status) query.set("status", params.status)
+  if (params?.priority) query.set("priority", params.priority)
+
+  return apiRequest<{ success: boolean; data: { complaints: any[] } }>(
+    `/front-office/complaints${query.toString() ? `?${query.toString()}` : ""}`
+  )
+}
+
+// Create Complaint
+export async function createComplaint(payload: any) {
+  return apiRequest<{ success: boolean; data: any }>(
+    "/front-office/complaints",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+// Update Complaint (Resolve)
+export async function updateComplaint(id: string, payload: any) {
+  return apiRequest<{ success: boolean; data: any }>(
+    `/front-office/complaints/${id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }
+  )
+}
+
+// Extend Checkout
+export async function extendCheckout(folioId: string, payload: any) {
+  return apiRequest<{ success: boolean; data?: any }>(`/front-office/in-house/${folioId}/extend`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// Get linked rooms
+export async function getRoomLinks() {
+  return apiRequest<{ success: boolean; data: any[] }>("/front-office/in-house/link-rooms");
+}
+
+// Room Link/Unlink
+export async function linkRooms(payload: any) {
+  return apiRequest("/front-office/in-house/link-rooms", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// Unlink rooms by master folio ID
+export async function unlinkRooms(masterFolioId: string, payload?: any) {
+  return apiRequest(`/front-office/in-house/link-rooms/${masterFolioId}`, {
+    method: "DELETE",
+    body: JSON.stringify(payload || {}),
+  });
+}
+
+// Create Paidout Refund
+export async function createPaidoutRefund(folioId: string, payload: any) {
+  return apiRequest(`/front-office/folio/${folioId}/paidout`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// Get Paidout/Refund Transactions
+export async function getPaidoutRefundTransactions() {
+  return apiRequest<{ success: boolean; data: any[] }>(
+    "/front-office/paidout-refund"
+  )
+}
+
+// Post Room Tariff
+export async function postRoomTariff(folioId: string, payload: any) {
+  return apiRequest(`/front-office/in-house/${folioId}/room-tariff`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+// Send Offer/Promotion to Guest
+export async function sendOffer(payload: any) {
+  return apiRequest(`/front-office/offers/send`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+// Get Offers/Promotions for Guests
+export async function getOffers() {
+  return apiRequest<{ success: boolean; data: any[] }>(`/front-office/offers`)
+}
+
+
+// ==================== LOOKUP APIs ====================
+export async function getRoomLookup(params?: { search?: string; status?: string }) {
+  const query = new URLSearchParams()
+  if (params?.search) query.set("search", params.search)
+  if (params?.status && params.status !== "all") query.set("status", params.status)
+
+  return apiRequest<any[]>(`/admin/lookups/rooms${query.toString() ? `?${query.toString()}` : ""}`)
+}
+
+export async function getGuestLookup(search?: string) {
+  const query = new URLSearchParams()
+  if (search) query.set("search", search)
+
+  return apiRequest<any[]>(`/admin/lookups/guests${query.toString() ? `?${query.toString()}` : ""}`)
+}
+
+export { mapGuest, mapHotel, mapReservation, mapRoom, mapStaff }
