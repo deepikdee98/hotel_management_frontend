@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Save, RotateCcw, X, Plus, Pencil, Trash2 } from "lucide-react"
 import { addService, getServices, deleteService, updateService, getInHouseGuests, getSetupServiceCodes } from "@/lib/backend-api"
+import EditDetailsModal from "@/components/common/EditDetailsModal"
 
 export default function PostServicesPage() {
   const [services, setServices] = useState<any[]>([])
@@ -52,18 +53,18 @@ export default function PostServicesPage() {
 
   const handleServiceSelect = (id: string) => {
     const svc = serviceCodes.find(s => (s._id || s.id) === id)
-    setForm(prev => ({ 
-      ...prev, 
+    setForm(prev => ({
+      ...prev,
       serviceId: id,
-      serviceName: svc ? svc.serviceName : "", 
+      serviceName: svc ? svc.serviceName : "",
       amount: svc ? String(svc.defaultRate || svc.amount || "0") : "0",
       gst: svc ? Number(svc.gst || 0) : 0
     }))
   }
 
   const baseAmount = Number(form.qty) * Number(form.amount)
-  const totalAmount = form.inclusive 
-    ? baseAmount 
+  const totalAmount = form.inclusive
+    ? baseAmount
     : baseAmount + (baseAmount * (form.gst / 100))
 
   const handleSave = async () => {
@@ -73,20 +74,22 @@ export default function PostServicesPage() {
         return
       }
 
-      const selectedRoom = rooms.find(r => (r._id || r.id) === form.roomNo)
-      
+      const selectedRoom = rooms.find(r => (r.roomId || r._id || r.id) === form.roomNo)
+
       const payload = {
         serviceName: form.serviceName,
         serviceId: form.serviceId,
         serviceCodeId: form.serviceId,
         room: form.roomNo,
         roomId: form.roomNo,
-        roomNumber: selectedRoom?.roomNumber,
+        roomNumber: selectedRoom?.roomNumber || selectedRoom?.room?.roomNumber,
+        folioId: selectedRoom?.folioId || selectedRoom?._id || selectedRoom?.id || form.roomNo,
         qty: Number(form.qty),
         amount: Number(form.amount),
         total: totalAmount,
         remark: form.remark,
-        gstInclusive: form.inclusive
+        gstInclusive: form.inclusive,
+        category: "service"
       }
 
       if (editId) {
@@ -115,11 +118,9 @@ export default function PostServicesPage() {
 
   const handleEdit = (s: any) => {
     setEditId(s._id || s.id)
-    
-    // The service might have room as an object or just ID
+
     const roomVal = typeof s.room === 'object' ? (s.room?._id || s.room?.id) : s.room;
-    
-    // Find service code to get GST
+
     const svc = serviceCodes.find(sc => sc.serviceName === s.serviceName);
 
     setForm({
@@ -150,15 +151,15 @@ export default function PostServicesPage() {
   }
 
   const getRoomDisplay = (s: any) => {
-    const roomInfo = s.room;
-    if (!roomInfo) return s.roomNo || s.roomNumber || "-";
-    
+    const roomInfo = s.room || s.roomId || s.room_id;
+    if (!roomInfo) return s.roomNo || s.roomNumber || s.room_number || "-";
+
     if (typeof roomInfo === 'object') {
-      return roomInfo.roomNumber || roomInfo.number || "-";
+      return roomInfo.roomNumber || roomInfo.number || roomInfo.room_number || "-";
     }
-    
-    const room = rooms.find(r => (r._id || r.id) === roomInfo);
-    return room ? room.roomNumber : roomInfo;
+
+    const room = rooms.find(r => (r._id || r.id || r.roomNumber) === roomInfo);
+    return room ? room.roomNumber : (s.roomNumber || s.room_number || roomInfo);
   };
 
   const totalPostedAmount = services.reduce((sum, s) => sum + (Number(s.total) || 0), 0)
@@ -192,7 +193,7 @@ export default function PostServicesPage() {
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
                     {rooms.map((g: any) => (
-                      <SelectItem key={g._id || g.id || g.roomNumber} value={g._id || g.id || g.roomNumber}>
+                      <SelectItem key={g.roomId || g._id || g.id} value={g.roomId || g._id || g.id}>
                         {g.roomNumber} - {g.guestName}
                       </SelectItem>
                     ))}
@@ -263,7 +264,7 @@ export default function PostServicesPage() {
                     <TableCell className="text-xs font-medium">{Number(s.total || 0).toFixed(2)}</TableCell>
                     <TableCell className="text-xs">{s.remark || "-"}</TableCell>
                     <TableCell className="flex gap-1">
-                      <Button variant="ghost" size="icon" className="h-6 w-6"><Pencil className="h-3 w-3" /></Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit(s)}><Pencil className="h-3 w-3" /></Button>
                       <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDelete(s._id || s.id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
                     </TableCell>
                   </TableRow>

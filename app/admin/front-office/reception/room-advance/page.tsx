@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect} from "react"
+import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -32,70 +32,70 @@ export default function RoomAdvancePage() {
   })
 
   useEffect(() => {
-  const loadRooms = async () => {
-    try {
-      const data = await getCheckedInRooms()
+    const loadRooms = async () => {
+      try {
+        const data = await getCheckedInRooms()
 
-      const formatted = data.map((c: any) => ({
-        id: c.roomId || c.roomNumber?._id,
-        roomNo: c.roomNumber?.roomNumber || c.roomNumber,
-        guest: c.guestName,
-        booking: c.bookingNo || c._id
-      }))
+        const formatted = data.map((c: any) => ({
+          id: c.roomId || c.roomNumber?._id,
+          roomNo: c.roomNumber?.roomNumber || c.roomNumber,
+          guest: c.guestName,
+          booking: c.bookingNo || c._id
+        }))
 
-      setRooms(formatted)
-    } catch (err) {
-      console.error(err)
+        setRooms(formatted)
+      } catch (err) {
+        console.error(err)
+      }
     }
-  }
 
-  loadRooms()
-}, [])
+    loadRooms()
+  }, [])
 
   const handleChange = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }))
-   if (field === "roomNo") {
-  const room = rooms.find(r => r.id === value)
+    if (field === "roomNo") {
+      const room = rooms.find(r => r.id === value)
 
-  if (room) {
-    setForm(prev => ({
-      ...prev,
-      roomNo: value,              
-      bookingNo: room.booking,
-      guestName: room.guest
-    }))
-  }
-}
+      if (room) {
+        setForm(prev => ({
+          ...prev,
+          roomNo: value,
+          bookingNo: room.booking,
+          guestName: room.guest
+        }))
+      }
+    }
     if (field === "paymentMode" && value === "Cash") {
       setForm(prev => ({ ...prev, paymentMode: value, ledgerAc: "Cash" }))
     }
   }
 
   const handleSave = async () => {
-  try {
-    if (!form.roomNo || !form.advanceAmount || !form.paymentMode || !form.ledgerAc) {
-      alert("Please fill all required fields")
-      return
+    try {
+      if (!form.roomNo || !form.advanceAmount || !form.paymentMode || !form.ledgerAc) {
+        alert("Please fill all required fields")
+        return
+      }
+
+      await createRoomAdvance({
+        roomNumber: form.roomNo,
+        advanceAmount: Number(form.advanceAmount),
+        paymentMode: form.paymentMode,
+        ledgerAccount: form.ledgerAc,
+        panNo: form.panNo,
+        noOfPrint: Number(form.noOfPrint),
+        remarks: form.remark
+      })
+
+      alert("Advance saved successfully ")
+      handleReset()
+
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to save")
     }
-
-    await createRoomAdvance({
-      roomNumber: form.roomNo,  
-      advanceAmount: Number(form.advanceAmount),
-      paymentMode: form.paymentMode,
-      ledgerAccount: form.ledgerAc,
-      panNo: form.panNo,
-      noOfPrint: Number(form.noOfPrint),
-      remarks: form.remark
-    })
-
-    alert("Advance saved successfully ")
-    handleReset()
-
-  } catch (err: any) {
-    console.error(err)
-    alert(err.message || "Failed to save")
   }
-}
 
   const handleReset = () => {
     setForm({
@@ -128,11 +128,11 @@ export default function RoomAdvancePage() {
                 <Select value={form.roomNo} onValueChange={v => handleChange("roomNo", v)}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                  {rooms.map(r => (
-  <SelectItem key={r.id} value={r.id}>
-    {r.roomNo} - {r.guest}
-  </SelectItem>
-))}
+                    {rooms.map(r => (
+                      <SelectItem key={r.id + "-" + r.booking} value={r.id}>
+                        {r.roomNo} - {r.guest}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

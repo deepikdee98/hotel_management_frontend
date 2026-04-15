@@ -305,6 +305,13 @@ export async function createCheckIn(payload: JsonRecord) {
   })
 }
 
+export async function updateCheckIn(id: string, payload: any) {
+  return apiRequest<JsonRecord>(`/admin/reception/check-in/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function createExpressCheckIn(payload: any) {
   return apiRequest("/front-office/check-in/express", {
     method: "POST",

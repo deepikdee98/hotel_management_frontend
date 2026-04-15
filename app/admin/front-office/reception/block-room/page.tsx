@@ -29,7 +29,7 @@ export default function BlockRoomPage() {
         setError(null)
         const [blockedData, roomsData] = await Promise.all([
           getBlockedRooms(),
-          getFrontOfficeRooms()
+          getFrontOfficeRooms({ status: "available" })
         ])
 
         setBlocked(blockedData)
@@ -47,46 +47,56 @@ export default function BlockRoomPage() {
   }, [])
 
   const handleBlock = async () => {
-  try {
-    if (!form.roomNo || !form.from || !form.to || !form.remark) {
-      alert("Please fill all fields")
-      return
+    try {
+      if (!form.roomNo || !form.from || !form.to || !form.remark) {
+        alert("Please fill all fields")
+        return
+      }
+
+      await blockRoom({
+        roomId: form.roomNo,
+        from: form.from,
+        to: form.to,
+        remark: form.remark
+      })
+
+      alert("Room blocked successfully ")
+
+      const [blockedData, roomsData] = await Promise.all([
+        getBlockedRooms(),
+        getFrontOfficeRooms({ status: "available" })
+      ])
+
+      setBlocked(blockedData)
+      setRooms(roomsData)
+
+      setForm({ roomNo: "", from: "", to: "", remark: "" })
+
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to block room")
     }
-
-    await blockRoom({
-      roomId: form.roomNo,  
-      from: form.from,
-      to: form.to,
-      remark: form.remark
-    })
-
-    alert("Room blocked successfully ")
-
-    const data = await getBlockedRooms()
-    setBlocked(data)
-
-    setForm({ roomNo: "", from: "", to: "", remark: "" })
-
-  } catch (err: any) {
-    console.error(err)
-    alert(err.message || "Failed to block room")
   }
-}
 
   const handleUnblock = async (id: string) => {
-  try {
-    await unblockRoom(id)
+    try {
+      await unblockRoom(id)
 
-    alert("Room unblocked ")
+      alert("Room unblocked ")
 
-    const data = await getBlockedRooms()
-    setBlocked(data)
+      const [blockedData, roomsData] = await Promise.all([
+        getBlockedRooms(),
+        getFrontOfficeRooms({ status: "available" })
+      ])
 
-  } catch (err: any) {
-    console.error(err)
-    alert(err.message || "Failed to unblock")
+      setBlocked(blockedData)
+      setRooms(roomsData)
+
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to unblock")
+    }
   }
-}
 
   return (
     <DashboardLayout requiredRole="admin">
@@ -108,10 +118,10 @@ export default function BlockRoomPage() {
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
                     {rooms.map(r => (
-  <SelectItem key={r.id} value={r.id}>
-    {r.number}
-  </SelectItem>
-))}
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.number}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -153,7 +163,7 @@ export default function BlockRoomPage() {
               </TableHeader>
               <TableBody>
                 {blocked.map(b => (
-                  <TableRow key={b.id}>
+                  <TableRow key={b._id}>
                     <TableCell className="text-xs font-medium">{b.room?.roomNumber}</TableCell>
                     <TableCell className="text-xs">{b.from}</TableCell>
                     <TableCell className="text-xs">{b.to}</TableCell>

@@ -10,10 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
 import { DoorOpen, Printer, Pencil, CalendarClock, CreditCard, Loader2, Star, CheckCircle2, X } from "lucide-react"
-import { getInHouseGuests, getFolioDetails, createCheckOut, getSetupRoomTypes, getSetupRatePlans } from "@/lib/backend-api"
+import { getInHouseGuests, getFolioDetails, createCheckOut, getSetupRoomTypes, getSetupRatePlans, updateCheckIn } from "@/lib/backend-api"
 import { toast } from "sonner"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
+import EditDetailsModal from "@/components/common/EditDetailsModal"
 
 export default function CheckOutPage() {
   const [selectedRoom, setSelectedRoom] = useState("")
@@ -38,10 +39,45 @@ export default function CheckOutPage() {
   const [comments, setComments] = useState("")
   const [invoiceRequired, setInvoiceRequired] = useState(true)
   const [emailInvoice, setEmailInvoice] = useState(true)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [editFormData, setEditFormData] = useState({
+    guestName: "",
+    mobileNo: "",
+    email: "",
+    address: "",
+    gstNumber: ""
+  })
 
   useEffect(() => {
     fetchInitialData()
   }, [])
+
+  const handleEditCheckIn = () => {
+    if (!room) return
+    setEditFormData({
+      guestName: room.guestName || room.name || "",
+      mobileNo: room.mobileNo || "",
+      email: room.email || "",
+      address: room.address || "",
+      gstNumber: room.gstNumber || ""
+    })
+    setIsEditModalOpen(true)
+  }
+
+  const handleUpdateCheckIn = async () => {
+    if (!room) return
+    try {
+      const response = await updateCheckIn(room.checkinId || room.id, editFormData)
+      if (response.success) {
+        toast.success("Check-in details updated")
+        setIsEditModalOpen(false)
+        fetchInHouseGuests() // Refresh data
+      }
+    } catch (error: any) {
+      console.error("Update failed:", error)
+      toast.error(error.message || "Failed to update details")
+    }
+  }
 
   async function fetchInitialData() {
     setLoading(true)
@@ -291,7 +327,7 @@ export default function CheckOutPage() {
                   </div>
                 )}
                 <div className="flex flex-col gap-2 pt-2">
-                  <Button variant="outline" size="sm" className="gap-1.5 text-xs justify-start"><Pencil className="h-3 w-3" /> Check-in Details Update</Button>
+                  <Button variant="outline" size="sm" className="gap-1.5 text-xs justify-start" onClick={handleEditCheckIn}><Pencil className="h-3 w-3" /> Check-in Details Update</Button>
                   <Button variant="outline" size="sm" className="gap-1.5 text-xs justify-start"><CalendarClock className="h-3 w-3" /> Change Date (F2)</Button>
                   <Button variant="outline" size="sm" className="gap-1.5 text-xs justify-start"><CreditCard className="h-3 w-3" /> Change Tariff (F1)</Button>
                 </div>
@@ -446,6 +482,22 @@ export default function CheckOutPage() {
           </div>
         )}
       </div>
+
+      <EditDetailsModal
+        open={isEditModalOpen}
+        onOpenChange={setIsEditModalOpen}
+        title="Update Guest Details"
+        formData={editFormData}
+        setFormData={setEditFormData}
+        onSubmit={handleUpdateCheckIn}
+        fields={[
+          { name: "guestName", label: "Guest Name" },
+          { name: "mobileNo", label: "Mobile Number" },
+          { name: "email", label: "Email Address" },
+          { name: "address", label: "Address" },
+          { name: "gstNumber", label: "GST Number" },
+        ]}
+      />
     </DashboardLayout>
   )
 }
