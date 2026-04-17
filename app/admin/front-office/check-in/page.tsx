@@ -294,16 +294,19 @@ export default function CheckInPage() {
                 <div className="space-y-2">
                   <Label htmlFor="assignedRoom">Assigned Room</Label>
                   <Select
+                    modal={false}
                     value={checkInForm.assignedRoom}
                     onValueChange={(v) => setCheckInForm({ ...checkInForm, assignedRoom: v })}
                   >
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Select room" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={selectedReservation?.roomNumber || "none"}>
-                        {selectedReservation?.roomNumber} (Reserved)
-                      </SelectItem>
+                      {selectedReservation?.roomNumber && (
+                        <SelectItem value={selectedReservation.roomNumber}>
+                          {selectedReservation.roomNumber} (Reserved)
+                        </SelectItem>
+                      )}
                       {availableRooms.map((room) => (
                         <SelectItem key={room.id} value={room.number}>
                           {room.number} - {room.type}

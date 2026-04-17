@@ -346,6 +346,31 @@ export async function getStaffDashboard() {
   return apiRequest<JsonRecord>("/staff/dashboard")
 }
 
+export async function runNightAudit(payload: { auditDate?: string; tasks?: Record<string, boolean> }) {
+  return apiRequest<{ success: boolean; data: any }>("/front-office/night-audit/run", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+// ==================== REPORTS APIs ====================
+
+export async function getReportDashboard() {
+  return apiRequest<{ success: boolean; data: any }>("/reports/dashboard")
+}
+
+export async function getReportOccupancy() {
+  return apiRequest<{ success: boolean; data: any }>("/reports/occupancy")
+}
+
+export async function getReportRevenue() {
+  return apiRequest<{ success: boolean; data: any }>("/reports/revenue")
+}
+
+export async function getReportGuests() {
+  return apiRequest<{ success: boolean; data: any }>("/reports/guests")
+}
+
 export async function getStaffReservations() {
   return apiRequest<{ success: boolean; data: { stats: JsonRecord; reservations: JsonRecord[] } }>("/staff/reservations")
 }

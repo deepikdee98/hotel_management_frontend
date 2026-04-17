@@ -37,7 +37,6 @@ const ROLES: { id: UserRole; label: string; icon: typeof Shield; description: st
 export function LoginForm() {
   const router = useRouter()
   const { login } = useAuth()
-  const [selectedRole, setSelectedRole] = useState<UserRole | null>(null)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -46,27 +45,24 @@ export function LoginForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (!selectedRole) {
-      setError("Please select a role")
-      return
-    }
+
 
     setIsLoading(true)
     setError("")
 
     try {
-      const success = await login(email, password, selectedRole)
+      const res = await login(email, password)
 
-      if (success) {
-        let targetPath = "/staff"
-        if (selectedRole === "super-admin") {
-          targetPath = "/super-admin"
-        } else if (selectedRole === "admin") {
-          targetPath = "/admin"
+      if (res?.accessToken) {
+        const role = String(res.role || "").toLowerCase()
+
+        if (role === "superadmin" || role === "super-admin") {
+          router.push("/super-admin")
+        } else if (role === "hoteladmin" || role === "admin") {
+          router.push("/admin")
+        } else {
+          router.push("/staff")
         }
-        
-        router.push(targetPath)
       } else {
         setError("Invalid credentials. Please try again.")
         setIsLoading(false)
@@ -87,47 +83,18 @@ export function LoginForm() {
             </div>
           </div>
           <h1 className="text-2xl font-bold text-foreground">HotelManager Pro</h1>
-          <p className="text-muted-foreground mt-1">Hotel Management System</p>
+          
         </div>
 
         <Card className="border-border bg-card">
           <CardHeader className="text-center pb-4">
-            <CardTitle className="text-lg">Sign In</CardTitle>
-            <CardDescription>Select your role and enter credentials</CardDescription>
+            <CardTitle className="text-lg">Sign In
+              <p className="text-muted-foreground mt-1">Hotel Management System</p>
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Role Selection */}
-              <div className="space-y-2">
-                <Label>Select Role</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {ROLES.map((role) => {
-                    const Icon = role.icon
-                    return (
-                      <button
-                        key={role.id}
-                        type="button"
-                        suppressHydrationWarning
-                        onClick={() => setSelectedRole(role.id)}
-                        className={cn(
-                          "flex flex-col items-center gap-2 p-4 rounded-lg border transition-all",
-                          selectedRole === role.id
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "border-border bg-muted/30 hover:border-primary/50 text-muted-foreground hover:text-foreground"
-                        )}
-                      >
-                        <Icon className="h-5 w-5" />
-                        <span className="text-xs font-medium text-center">{role.label}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-                {selectedRole && (
-                  <p className="text-xs text-muted-foreground text-center mt-2">
-                    {ROLES.find((r) => r.id === selectedRole)?.description}
-                  </p>
-                )}
-              </div>
+
 
               {/* Credentials */}
               <div className="space-y-4">
@@ -181,22 +148,6 @@ export function LoginForm() {
                   "Sign In"
                 )}
               </Button>
-
-              {/* Demo Credentials */}
-              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                <p className="text-xs font-medium text-muted-foreground text-center">Demo Credentials</p>
-                <div className="space-y-1 text-xs text-muted-foreground">
-                  <p>
-                    <span className="font-medium">Super Admin:</span> super@hotel.com / admin123
-                  </p>
-                  <p>
-                    <span className="font-medium">Hotel Admin:</span> admin@grandhotel.com / admin123
-                  </p>
-                  <p>
-                    <span className="font-medium">Staff:</span> staff@grandhotel.com / staff123
-                  </p>
-                </div>
-              </div>
             </form>
           </CardContent>
         </Card>

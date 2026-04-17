@@ -449,7 +449,11 @@ export default function ReservationPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="idProofType">ID Proof Type *</Label>
-                      <Select value={formData.idProofType} onValueChange={(v) => handleFormChange("idProofType", v)}>
+                      <Select 
+                        modal={false}
+                        value={formData.idProofType} 
+                        onValueChange={(v) => handleFormChange("idProofType", v)}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Select ID type" />
                         </SelectTrigger>
@@ -525,7 +529,11 @@ export default function ReservationPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="roomType">Room Type *</Label>
-                      <Select value={formData.roomType} onValueChange={(v) => handleFormChange("roomType", v)}>
+                      <Select 
+                        modal={false}
+                        value={formData.roomType} 
+                        onValueChange={(v) => handleFormChange("roomType", v)}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Select room type" />
                         </SelectTrigger>
@@ -540,7 +548,11 @@ export default function ReservationPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="roomNumber">Room Number</Label>
-                      <Select value={formData.roomNumber} onValueChange={(v) => handleFormChange("roomNumber", v)}>
+                      <Select 
+                        modal={false}
+                        value={formData.roomNumber} 
+                        onValueChange={(v) => handleFormChange("roomNumber", v)}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Auto-assign or select" />
                         </SelectTrigger>

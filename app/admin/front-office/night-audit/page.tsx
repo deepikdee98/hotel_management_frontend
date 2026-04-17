@@ -1,18 +1,51 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
-import { ClipboardList, CheckCircle, AlertTriangle, Play, FileText, DollarSign, BedDouble, Users } from "lucide-react"
+import { ClipboardList, CheckCircle, AlertTriangle, Play, FileText, DollarSign, BedDouble, Users, Loader2 } from "lucide-react"
+import { runNightAudit, getAdminDashboard } from "@/lib/backend-api"
+import { useToast } from "@/hooks/use-toast"
 
 export default function NightAuditPage() {
+  const router = useRouter()
+  const { toast } = useToast()
   const [isRunning, setIsRunning] = useState(false)
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
   const [auditComplete, setAuditComplete] = useState(false)
+  const [auditData, setAuditData] = useState<any>(null)
+  const [stats, setStats] = useState({
+    occupiedRooms: 0,
+    inHouseGuests: 0,
+    todayRevenue: 0,
+    totalRooms: 0
+  })
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const response = await getAdminDashboard()
+        if (response.success && response.data) {
+          const s = response.data.stats as any
+          const rs = response.data.roomStatus as any
+          setStats({
+            occupiedRooms: Number(rs.occupied || 0),
+            inHouseGuests: Number(s.todayCheckIns || 0), // Fallback approximation
+            todayRevenue: Number(s.totalRevenue || 0),
+            totalRooms: Number(rs.available || 0) + Number(rs.occupied || 0) + Number(rs.reserved || 0) + Number(rs.maintenance || 0)
+          })
+        }
+      } catch (error) {
+        console.error("Failed to load dashboard stats:", error)
+      }
+    }
+    loadStats()
+  }, [])
 
   const auditSteps = [
     { label: "Post pending room tariffs", status: auditComplete ? "done" : "pending" },
@@ -24,13 +57,44 @@ export default function NightAuditPage() {
     { label: "Roll business date forward", status: auditComplete ? "done" : "pending" },
   ]
 
-  const handleRunAudit = () => {
+  const handleRunAudit = async () => {
     setIsConfirmOpen(false)
     setIsRunning(true)
-    setTimeout(() => {
+    try {
+      const auditDate = new Date().toISOString().slice(0, 10)
+      const res = await runNightAudit({ 
+        auditDate,
+        tasks: {
+          postTariffs: true,
+          postServices: true,
+          processNoShows: true,
+          updateAvailability: true
+        }
+      })
+      
+      if (res.success) {
+        setAuditData(res.data)
+        setAuditComplete(true)
+        toast({
+          title: "Night Audit Completed",
+          description: `Audit for ${auditDate} has been finalized successfully.`,
+        })
+      } else {
+        toast({
+          title: "Night Audit Failed",
+          description: "There was an error running the night audit process.",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "A network error occurred while running the night audit.",
+        variant: "destructive"
+      })
+    } finally {
       setIsRunning(false)
-      setAuditComplete(true)
-    }, 3000)
+    }
   }
 
   return (
@@ -42,17 +106,17 @@ export default function NightAuditPage() {
             <p className="text-sm text-muted-foreground">Run nightly audit process to close the business day</p>
           </div>
           <Button onClick={() => setIsConfirmOpen(true)} disabled={isRunning || auditComplete}>
-            <Play className="h-4 w-4 mr-2" />
+            {isRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
             {isRunning ? "Running..." : auditComplete ? "Completed" : "Run Night Audit"}
           </Button>
         </div>
 
         <div className="grid grid-cols-4 gap-3">
           {[
-            { label: "Occupied Rooms", value: "5", icon: BedDouble },
-            { label: "In-House Guests", value: "8", icon: Users },
-            { label: "Today's Revenue", value: "$28,540", icon: DollarSign },
-            { label: "Pending Postings", value: auditComplete ? "0" : "3", icon: FileText },
+            { label: "Occupied Rooms", value: stats.occupiedRooms.toString(), icon: BedDouble },
+            { label: "In-House Guests", value: stats.inHouseGuests.toString(), icon: Users },
+            { label: "Today's Revenue", value: `₹${stats.todayRevenue.toLocaleString()}`, icon: DollarSign },
+            { label: "Pending Postings", value: auditComplete ? "0" : "...", icon: FileText },
           ].map((s) => (
             <Card key={s.label}>
               <CardContent className="py-3 flex items-center gap-3">
@@ -104,9 +168,16 @@ export default function NightAuditPage() {
               <CheckCircle className="h-6 w-6 text-primary" />
               <div>
                 <p className="font-medium text-foreground">Night Audit Completed Successfully</p>
-                <p className="text-sm text-muted-foreground">Business date rolled to December 23, 2024. All postings have been finalized.</p>
+                <p className="text-sm text-muted-foreground">
+                  Business date rolled to {auditData?.auditDate || new Date().toLocaleDateString()}. 
+                  Total revenue finalized: ₹{auditData?.summary?.totalRevenue?.toLocaleString() || "0"}
+                </p>
               </div>
-              <Button variant="outline" className="ml-auto">
+              <Button 
+                variant="outline" 
+                className="ml-auto"
+                onClick={() => router.push(`/admin/reports?date=${auditData?.auditDate}`)}
+              >
                 <FileText className="h-4 w-4 mr-2" />
                 View Report
               </Button>
@@ -123,9 +194,9 @@ export default function NightAuditPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="py-3 space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">Current Business Date</span><span className="font-medium">December 22, 2024</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Rooms to Post</span><span className="font-medium">5 rooms</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Pending Charges</span><span className="font-medium">3 items</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Current Business Date</span><span className="font-medium">{new Date().toLocaleDateString()}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Rooms to Post</span><span className="font-medium">{stats.occupiedRooms} rooms</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Current Occupancy</span><span className="font-medium">{stats.occupiedRooms} / {stats.totalRooms}</span></div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsConfirmOpen(false)}>Cancel</Button>
