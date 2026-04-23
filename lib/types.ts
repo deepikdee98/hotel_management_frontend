@@ -1,3 +1,55 @@
+// Inventory
+export interface InventoryItem {
+  id: string
+  name: string
+  category: string
+  quantity: number
+  unit: string
+  minStock: number
+  status: "in-stock" | "low-stock" | "critical"
+  lastUpdated: string
+}
+
+// POS
+export interface POSItem {
+  id: string
+  name: string
+  category: string
+  price: number
+  taxRate: number
+  description?: string
+  image?: string
+  status: "active" | "inactive"
+}
+
+export interface POSOrderItem {
+  itemId: string
+  name: string
+  quantity: number
+  unitPrice: number
+  taxRate: number
+  amount: number
+  taxAmount: number
+  total: number
+}
+
+export interface POSOrder {
+  id: string
+  orderNumber: string
+  folioId?: string
+  guestName?: string
+  roomNumber?: string
+  tableNo?: string
+  status: "open" | "closed" | "cancelled"
+  items: POSOrderItem[]
+  subTotal: number
+  taxTotal: number
+  grandTotal: number
+  paidAmount: number
+  paymentMode?: string
+  createdAt: string
+}
+
 // User roles
 export type UserRole = "super-admin" | "admin" | "staff"
 
@@ -107,11 +159,32 @@ export interface Room {
   type: RoomType
   roomTypeId?: string
   status: RoomStatus
+  hkStatus?: "clean" | "dirty" | "cleaning" | "inspected" | "out-of-order"
   price: number
   amenities: string[]
   guestName?: string
   checkIn?: string
   checkOut?: string
+}
+
+// Housekeeping
+export interface HousekeepingTask {
+  id: string
+  room: {
+    id: string
+    roomNumber: string
+    floor: number
+    hkStatus: string
+    status: string
+  }
+  taskType: "checkout" | "stayover" | "deep-clean" | "turndown" | "repair"
+  priority: "low" | "medium" | "high" | "urgent"
+  status: "pending" | "in-progress" | "completed" | "cancelled"
+  assignedTo?: string
+  assignedToName?: string
+  notes?: string
+  createdAt: string
+  completedAt?: string
 }
 
 // Reservation

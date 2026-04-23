@@ -203,6 +203,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       let userProfile: User
 
+      const resolveName = (data: any) => {
+        const email = String(data?.email || "")
+        const fallbackName = email.includes("@") ? email.split("@")[0] : email
+        return (
+          data?.name ||
+          data?.username ||
+          data?.hotelName ||
+          fallbackName
+        )
+      }
+
       try {
         const decoded = JSON.parse(atob(accessToken.split(".")[1]))
         const userData = decoded.user || decoded
@@ -211,7 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: userData.id || userData._id || userData.sub || "",
           email: userData.email || "",
           role: mapRole(userData.role),
-          name: userData.name || userData.email,
+          name: resolveName(userData),
           modules: userData.modules || [],
           hotelId: userData.hotelId,
           hotelName: userData.hotelName,
@@ -223,7 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: data.id || "",
           email: data.email || "",
           role: mapRole(data.role),
-          name: data.name || data.email,
+          name: resolveName(data),
           modules: data.modules || [],
           hotelId: data.hotelId,
           hotelName: data.hotelName,

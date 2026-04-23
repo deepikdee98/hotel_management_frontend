@@ -134,6 +134,15 @@ export default function CheckInPage() {
     ledgerAc: "",
     vehicleNo: "",
     vehicleType: "",
+    // Company Info (Ledger) fields
+    companyInfoCompanyName: "",
+    companyInfoLedgerGroup: "",
+    companyInfoPan: "",
+    companyInfoGst: "",
+    companyInfoBankAccountNo: "",
+    companyInfoIfscCode: "",
+    companyInfoCreditLimit: "",
+    companyInfoBookingCategory: "",
   })
 
   useEffect(() => {
@@ -192,6 +201,10 @@ export default function CheckInPage() {
       guestType: "Main", noOfBeds: "", paxAdultMale: "1", paxAdultFemale: "0",
       paxChildren: "", paymentMode: "", advanceAmount: "", remark: "",
       idProofType: "", idProofNumber: "", ledgerAc: "", vehicleNo: "", vehicleType: "",
+      // Company Info (Ledger) fields
+      companyInfoCompanyName: "", companyInfoLedgerGroup: "", companyInfoPan: "",
+      companyInfoGst: "", companyInfoBankAccountNo: "", companyInfoIfscCode: "",
+      companyInfoCreditLimit: "", companyInfoBookingCategory: "",
     })
     setGuestPhoto(null)
     setCompanions([])
@@ -204,7 +217,7 @@ export default function CheckInPage() {
 
   const handleSave = async () => {
     // Final validation before submit
-    if (!validateTab1() || !validateTab2() ) {
+    if (!validateTab1() || !validateTab2()) {
       toast({
         title: "Missing Fields",
         description: "Please complete all required fields",
@@ -223,6 +236,17 @@ export default function CheckInPage() {
         nights: Number(form.noOfNights) || 1,
         gstInclusive,
         companions: companions.filter(c => c.name),
+        // Company Info (Ledger)
+        companyInfo: {
+          companyName: form.companyInfoCompanyName,
+          ledgerGroup: form.companyInfoLedgerGroup || null,
+          pan: form.companyInfoPan,
+          gst: form.companyInfoGst,
+          bankAccountNo: form.companyInfoBankAccountNo,
+          ifscCode: form.companyInfoIfscCode,
+          creditLimit: Number(form.companyInfoCreditLimit) || 0,
+          bookingCategory: form.companyInfoBookingCategory || null,
+        }
       }
 
       await createCheckIn(payload)
@@ -759,7 +783,7 @@ export default function CheckInPage() {
                 Submit Check-In
               </Button>
             )}
-          </div> 
+          </div>
         </TabsContent>
 
         {/* Tab 4: Vehicle / Company */}
@@ -791,43 +815,43 @@ export default function CheckInPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <FormField label="Ledger A/C Name">
-                    <Input placeholder="Ledger account name" />
+                  <FormField label="Company Name">
+                    <Input value={form.companyInfoCompanyName} onChange={e => handleChange("companyInfoCompanyName", e.target.value)} placeholder="Company name" />
                   </FormField>
-                  <FormField label="Group Head">
-                    <Select>
+                  <FormField label="Ledger Group">
+                    <Select value={form.companyInfoLedgerGroup} onValueChange={v => handleChange("companyInfoLedgerGroup", v)}>
                       <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                       <SelectContent>
-                        {["B.T.C. Ledger", "Cash Ledger", "Bank Ledger", "Sundry Debtors"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+                        {["B.T.C. Ledger", "Cash Ledger", "Bank Ledger", "Sundry Debtors", "Other"].map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </FormField>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <FormField label="PAN No">
-                    <Input placeholder="PAN number" />
+                  <FormField label="PAN">
+                    <Input value={form.companyInfoPan} onChange={e => handleChange("companyInfoPan", e.target.value)} placeholder="PAN number" />
                   </FormField>
-                  <FormField label="GST No">
-                    <Input placeholder="GST number" />
+                  <FormField label="GST">
+                    <Input value={form.companyInfoGst} onChange={e => handleChange("companyInfoGst", e.target.value)} placeholder="GST number" />
                   </FormField>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <FormField label="Bank A/C No">
-                    <Input placeholder="Account number" />
+                    <Input value={form.companyInfoBankAccountNo} onChange={e => handleChange("companyInfoBankAccountNo", e.target.value)} placeholder="Account number" />
                   </FormField>
                   <FormField label="IFSC Code">
-                    <Input placeholder="IFSC Code" />
+                    <Input value={form.companyInfoIfscCode} onChange={e => handleChange("companyInfoIfscCode", e.target.value)} placeholder="IFSC Code" />
                   </FormField>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <FormField label="Credit Limit">
-                    <Input type="number" placeholder="0.00" />
+                    <Input type="number" value={form.companyInfoCreditLimit} onChange={e => handleChange("companyInfoCreditLimit", e.target.value)} placeholder="0.00" />
                   </FormField>
                   <FormField label="Booking Category">
-                    <Select>
+                    <Select value={form.companyInfoBookingCategory} onValueChange={v => handleChange("companyInfoBookingCategory", v)}>
                       <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                       <SelectContent>
-                        {["Corporate", "Group", "Regular", "Government"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                        {["Corporate", "Group", "Regular", "Government", "Other"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </FormField>

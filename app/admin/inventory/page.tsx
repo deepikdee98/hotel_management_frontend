@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -39,19 +39,12 @@ import {
   Plus,
   Search,
   ShoppingCart,
+  Loader2,
+  Trash2,
 } from "lucide-react"
-
-// Mock inventory data
-const mockInventory = [
-  { id: "INV-001", name: "Bath Towels", category: "Linens", quantity: 250, minStock: 100, unit: "pcs", status: "in-stock", lastUpdated: "Jan 15" },
-  { id: "INV-002", name: "Shampoo Bottles", category: "Toiletries", quantity: 45, minStock: 50, unit: "bottles", status: "low-stock", lastUpdated: "Jan 14" },
-  { id: "INV-003", name: "Bed Sheets (Queen)", category: "Linens", quantity: 180, minStock: 80, unit: "sets", status: "in-stock", lastUpdated: "Jan 13" },
-  { id: "INV-004", name: "Coffee Pods", category: "F&B", quantity: 12, minStock: 100, unit: "boxes", status: "critical", lastUpdated: "Jan 15" },
-  { id: "INV-005", name: "Hand Soap", category: "Toiletries", quantity: 200, minStock: 100, unit: "bottles", status: "in-stock", lastUpdated: "Jan 12" },
-  { id: "INV-006", name: "Pillows", category: "Linens", quantity: 65, minStock: 50, unit: "pcs", status: "in-stock", lastUpdated: "Jan 10" },
-  { id: "INV-007", name: "Bottled Water", category: "F&B", quantity: 480, minStock: 200, unit: "bottles", status: "in-stock", lastUpdated: "Jan 15" },
-  { id: "INV-008", name: "Toilet Paper", category: "Toiletries", quantity: 38, minStock: 50, unit: "rolls", status: "low-stock", lastUpdated: "Jan 14" },
-]
+import { getInventory, createInventoryItem, updateInventoryItem, deleteInventoryItem } from "@/lib/backend-api"
+import type { InventoryItem } from "@/lib/types"
+import { toast } from "sonner"
 
 const categories = ["All", "Linens", "Toiletries", "F&B", "Cleaning", "Equipment"]
 
@@ -59,13 +52,102 @@ export default function InventoryPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterCategory, setFilterCategory] = useState("All")
   const [isAddItemOpen, setIsAddItemOpen] = useState(false)
+  const [isUpdateItemOpen, setIsUpdateItemOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [currentItem, setCurrentItem] = useState<Partial<InventoryItem> | null>(null)
 
-  const filteredInventory = mockInventory.filter((item) => {
-    const matchesSearch =
+  // Form state for adding/updating
+  const [formData, setFormData] = useState({
+    name: "",
+    category: "",
+    quantity: 0,
+    unit: "",
+    minStock: 0,
+  })
+
+  useEffect(() => {
+    fetchInventory()
+  }, [filterCategory])
+
+  const fetchInventory = async () => {
+    setIsLoading(true)
+    try {
+      const data = await getInventory({
+        category: filterCategory === "All" ? undefined : filterCategory,
+      })
+      setInventory(data)
+    } catch (error) {
+      toast.error("Failed to load inventory")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleAddItem = async () => {
+    try {
+      await createInventoryItem(formData)
+      toast.success("Item added successfully")
+      setIsAddItemOpen(false)
+      resetForm()
+      fetchInventory()
+    } catch (error) {
+      toast.error("Failed to add item")
+    }
+  }
+
+  const handleUpdateItem = async () => {
+    if (!currentItem?.id) return
+    try {
+      await updateInventoryItem(currentItem.id, formData)
+      toast.success("Item updated successfully")
+      setIsUpdateItemOpen(false)
+      resetForm()
+      fetchInventory()
+    } catch (error) {
+      toast.error("Failed to update item")
+    }
+  }
+
+  const handleDeleteItem = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this item?")) return
+    try {
+      await deleteInventoryItem(id)
+      toast.success("Item deleted")
+      fetchInventory()
+    } catch (error) {
+      toast.error("Failed to delete item")
+    }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      category: "",
+      quantity: 0,
+      unit: "",
+      minStock: 0,
+    })
+    setCurrentItem(null)
+  }
+
+  const openUpdateDialog = (item: InventoryItem) => {
+    setCurrentItem(item)
+    setFormData({
+      name: item.name,
+      category: item.category,
+      quantity: item.quantity,
+      unit: item.unit,
+      minStock: item.minStock,
+    })
+    setIsUpdateItemOpen(true)
+  }
+
+  const filteredInventory = inventory.filter((item) => {
+    return (
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.id.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesCategory = filterCategory === "All" || item.category === filterCategory
-    return matchesSearch && matchesCategory
+    )
   })
 
   const getStatusBadge = (status: string) => {
@@ -81,9 +163,12 @@ export default function InventoryPage() {
     }
   }
 
-  const totalItems = mockInventory.length
-  const lowStockItems = mockInventory.filter((i) => i.status === "low-stock").length
-  const criticalItems = mockInventory.filter((i) => i.status === "critical").length
+  const stats = {
+    total: inventory.length,
+    lowStock: inventory.filter((i) => i.status === "low-stock").length,
+    critical: inventory.filter((i) => i.status === "critical").length,
+    categories: new Set(inventory.map(i => i.category)).size
+  }
 
   return (
     <DashboardLayout requiredRole="admin">
@@ -101,7 +186,7 @@ export default function InventoryPage() {
             </Button>
             <Dialog open={isAddItemOpen} onOpenChange={setIsAddItemOpen}>
               <DialogTrigger asChild>
-                <Button>
+                <Button onClick={resetForm}>
                   <Plus className="mr-2 h-4 w-4" />
                   Add Item
                 </Button>
@@ -114,17 +199,21 @@ export default function InventoryPage() {
                 <div className="grid gap-4 py-4">
                   <div className="grid gap-2">
                     <Label>Item Name</Label>
-                    <Input placeholder="Enter item name" />
+                    <Input
+                      placeholder="Enter item name"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    />
                   </div>
                   <div className="grid gap-2">
                     <Label>Category</Label>
-                    <Select>
+                    <Select value={formData.category} onValueChange={(v) => setFormData({ ...formData, category: v })}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select category" />
                       </SelectTrigger>
                       <SelectContent>
                         {categories.slice(1).map((cat) => (
-                          <SelectItem key={cat} value={cat.toLowerCase()}>
+                          <SelectItem key={cat} value={cat}>
                             {cat}
                           </SelectItem>
                         ))}
@@ -134,28 +223,111 @@ export default function InventoryPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
                       <Label>Quantity</Label>
-                      <Input type="number" placeholder="0" />
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        value={formData.quantity === 0 ? "" : formData.quantity}
+                        onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
+                      />
                     </div>
                     <div className="grid gap-2">
                       <Label>Unit</Label>
-                      <Input placeholder="pcs, bottles, etc." />
+                      <Input
+                        placeholder="pcs, bottles, etc."
+                        value={formData.unit}
+                        onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                      />
                     </div>
                   </div>
                   <div className="grid gap-2">
                     <Label>Minimum Stock Level</Label>
-                    <Input type="number" placeholder="0" />
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={formData.minStock === 0 ? "" : formData.minStock}
+                      onChange={(e) => setFormData({ ...formData, minStock: Number(e.target.value) })}
+                    />
                   </div>
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsAddItemOpen(false)}>
                     Cancel
                   </Button>
-                  <Button onClick={() => setIsAddItemOpen(false)}>Add Item</Button>
+                  <Button onClick={handleAddItem}>Add Item</Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
           </div>
         </div>
+
+        {/* Update Dialog */}
+        <Dialog open={isUpdateItemOpen} onOpenChange={setIsUpdateItemOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Update Inventory Item</DialogTitle>
+              <DialogDescription>Update stock level or item details</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Item Name</Label>
+                <Input
+                  placeholder="Enter item name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Category</Label>
+                <Select value={formData.category} onValueChange={(v) => setFormData({ ...formData, category: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.slice(1).map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Quantity</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={formData.quantity === 0 ? "" : formData.quantity}
+                    onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Unit</Label>
+                  <Input
+                    placeholder="pcs, bottles, etc."
+                    value={formData.unit}
+                    onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label>Minimum Stock Level</Label>
+                <Input
+                  type="number"
+                  placeholder="0"
+                  value={formData.minStock === 0 ? "" : formData.minStock}
+                  onChange={(e) => setFormData({ ...formData, minStock: Number(e.target.value) })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsUpdateItemOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleUpdateItem}>Update Item</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Stats */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -165,7 +337,7 @@ export default function InventoryPage() {
               <Boxes className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">{totalItems}</div>
+              <div className="text-2xl font-bold text-foreground">{stats.total}</div>
               <p className="text-xs text-muted-foreground">Items tracked</p>
             </CardContent>
           </Card>
@@ -175,7 +347,7 @@ export default function InventoryPage() {
               <TrendingDown className="h-4 w-4 text-warning" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">{lowStockItems}</div>
+              <div className="text-2xl font-bold text-foreground">{stats.lowStock}</div>
               <p className="text-xs text-warning">Needs reordering soon</p>
             </CardContent>
           </Card>
@@ -185,7 +357,7 @@ export default function InventoryPage() {
               <AlertTriangle className="h-4 w-4 text-destructive" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">{criticalItems}</div>
+              <div className="text-2xl font-bold text-foreground">{stats.critical}</div>
               <p className="text-xs text-destructive">Order immediately</p>
             </CardContent>
           </Card>
@@ -195,7 +367,7 @@ export default function InventoryPage() {
               <Package className="h-4 w-4 text-chart-2" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">{categories.length - 1}</div>
+              <div className="text-2xl font-bold text-foreground">{stats.categories}</div>
               <p className="text-xs text-muted-foreground">Item categories</p>
             </CardContent>
           </Card>
@@ -235,40 +407,58 @@ export default function InventoryPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="text-muted-foreground">Item ID</TableHead>
-                  <TableHead className="text-muted-foreground">Name</TableHead>
-                  <TableHead className="text-muted-foreground">Category</TableHead>
-                  <TableHead className="text-muted-foreground">Quantity</TableHead>
-                  <TableHead className="text-muted-foreground">Min Stock</TableHead>
-                  <TableHead className="text-muted-foreground">Status</TableHead>
-                  <TableHead className="text-muted-foreground">Last Updated</TableHead>
-                  <TableHead className="text-muted-foreground text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredInventory.map((item) => (
-                  <TableRow key={item.id} className="border-border">
-                    <TableCell className="font-medium text-foreground">{item.id}</TableCell>
-                    <TableCell className="text-foreground">{item.name}</TableCell>
-                    <TableCell className="text-foreground">{item.category}</TableCell>
-                    <TableCell className="text-foreground">
-                      {item.quantity} {item.unit}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{item.minStock}</TableCell>
-                    <TableCell>{getStatusBadge(item.status)}</TableCell>
-                    <TableCell className="text-muted-foreground">{item.lastUpdated}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm">
-                        Update
-                      </Button>
-                    </TableCell>
+            {isLoading ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="text-muted-foreground">Item ID</TableHead>
+                    <TableHead className="text-muted-foreground">Name</TableHead>
+                    <TableHead className="text-muted-foreground">Category</TableHead>
+                    <TableHead className="text-muted-foreground">Unit</TableHead>
+                    <TableHead className="text-muted-foreground">Quantity</TableHead>
+                    <TableHead className="text-muted-foreground">Min Stock</TableHead>
+                    <TableHead className="text-muted-foreground">Status</TableHead>
+                    <TableHead className="text-muted-foreground">Last Updated</TableHead>
+                    <TableHead className="text-muted-foreground text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredInventory.map((item) => (
+                    <TableRow key={item.id} className="border-border">
+                      <TableCell className="font-medium text-foreground">...{item.id.slice(-6)}</TableCell>
+                      <TableCell className="text-foreground">{item.name}</TableCell>
+                      <TableCell className="text-foreground">{item.category}</TableCell>
+                      <TableCell className="text-foreground">{item.unit}</TableCell>
+                      <TableCell className="text-foreground">{item.quantity}</TableCell>
+                      <TableCell className="text-muted-foreground">{item.minStock}</TableCell>
+                      <TableCell>{getStatusBadge(item.status)}</TableCell>
+                      <TableCell className="text-muted-foreground">{item.lastUpdated}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => openUpdateDialog(item)}>
+                            Update
+                          </Button>
+                          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeleteItem(item.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {filteredInventory.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                        No inventory items found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

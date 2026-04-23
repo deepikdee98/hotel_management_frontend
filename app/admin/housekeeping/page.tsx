@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -43,22 +43,15 @@ import {
   BedDouble,
   Loader2,
 } from "lucide-react"
-
-// Mock housekeeping data
-const mockTasks = [
-  { id: "HK-001", room: "101", type: "checkout", priority: "high", assignee: "Maria Garcia", status: "in-progress", time: "09:00 AM" },
-  { id: "HK-002", room: "205", type: "stayover", priority: "medium", assignee: "Juan Rodriguez", status: "pending", time: "10:00 AM" },
-  { id: "HK-003", room: "302", type: "checkout", priority: "high", assignee: "Maria Garcia", status: "completed", time: "08:30 AM" },
-  { id: "HK-004", room: "118", type: "deep-clean", priority: "low", assignee: "Ana Martinez", status: "pending", time: "02:00 PM" },
-  { id: "HK-005", room: "401", type: "turndown", priority: "medium", assignee: "Juan Rodriguez", status: "pending", time: "06:00 PM" },
-  { id: "HK-006", room: "215", type: "stayover", priority: "medium", assignee: "Ana Martinez", status: "in-progress", time: "11:00 AM" },
-]
-
-const mockStaff = [
-  { id: "1", name: "Maria Garcia", tasksToday: 8, completed: 5, avgTime: "32 min" },
-  { id: "2", name: "Juan Rodriguez", tasksToday: 6, completed: 3, avgTime: "28 min" },
-  { id: "3", name: "Ana Martinez", tasksToday: 7, completed: 4, avgTime: "35 min" },
-]
+import { 
+  getHousekeepingTasks, 
+  getHousekeepingRooms, 
+  getAdminStaff, 
+  createHousekeepingTask, 
+  updateHousekeepingTask 
+} from "@/lib/backend-api"
+import type { HousekeepingTask, Room, Staff } from "@/lib/types"
+import { toast } from "sonner"
 
 const cleaningChecklist = [
   "Make bed with fresh linens",
@@ -75,14 +68,89 @@ export default function HousekeepingPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState("all")
   const [isAssignTaskOpen, setIsAssignTaskOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [tasks, setTasks] = useState<HousekeepingTask[]>([])
+  const [rooms, setRooms] = useState<Room[]>([])
+  const [staff, setStaff] = useState<Staff[]>([])
+  
+  // Form state
+  const [newTask, setNewTask] = useState({
+    roomId: "",
+    taskType: "checkout",
+    priority: "medium",
+    assignedTo: "",
+    notes: ""
+  })
 
-  const filteredTasks = mockTasks.filter((task) => {
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  const fetchData = async () => {
+    setIsLoading(true)
+    try {
+      const [tasksData, roomsData, staffData] = await Promise.all([
+        getHousekeepingTasks(),
+        getHousekeepingRooms(),
+        getAdminStaff()
+      ])
+      setTasks(tasksData)
+      setRooms(roomsData)
+      setStaff(staffData)
+    } catch (error) {
+      console.error("Failed to fetch housekeeping data:", error)
+      toast.error("Failed to load housekeeping data")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleCreateTask = async () => {
+    if (!newTask.roomId) {
+      toast.error("Please select a room")
+      return
+    }
+    try {
+      await createHousekeepingTask(newTask)
+      toast.success("Task assigned successfully")
+      setIsAssignTaskOpen(false)
+      setNewTask({
+        roomId: "",
+        taskType: "checkout",
+        priority: "medium",
+        assignedTo: "",
+        notes: ""
+      })
+      fetchData()
+    } catch (error) {
+      toast.error("Failed to assign task")
+    }
+  }
+
+  const handleUpdateStatus = async (taskId: string, status: string) => {
+    try {
+      await updateHousekeepingTask(taskId, { status })
+      toast.success(`Task marked as ${status}`)
+      fetchData()
+    } catch (error) {
+      toast.error("Failed to update task status")
+    }
+  }
+
+  const filteredTasks = tasks.filter((task) => {
     const matchesSearch =
-      task.room.includes(searchQuery) ||
-      task.assignee.toLowerCase().includes(searchQuery.toLowerCase())
+      task.room.roomNumber.includes(searchQuery) ||
+      (task.assignedToName || "").toLowerCase().includes(searchQuery.toLowerCase())
     const matchesStatus = filterStatus === "all" || task.status === filterStatus
     return matchesSearch && matchesStatus
   })
+
+  const stats = {
+    total: tasks.length,
+    completed: tasks.filter(t => t.status === "completed").length,
+    inProgress: tasks.filter(t => t.status === "in-progress").length,
+    highPriority: tasks.filter(t => t.priority === "high" || t.priority === "urgent").length,
+  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -100,6 +168,7 @@ export default function HousekeepingPage() {
   const getPriorityBadge = (priority: string) => {
     switch (priority) {
       case "high":
+      case "urgent":
         return <Badge variant="destructive">High</Badge>
       case "medium":
         return <Badge className="bg-warning/20 text-warning border-0">Medium</Badge>
@@ -123,6 +192,16 @@ export default function HousekeepingPage() {
       default:
         return type
     }
+  }
+
+  if (isLoading) {
+    return (
+      <DashboardLayout requiredRole="admin">
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    )
   }
 
   return (
@@ -149,22 +228,28 @@ export default function HousekeepingPage() {
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
                   <Label>Room Number</Label>
-                  <Select>
+                  <Select 
+                    value={newTask.roomId} 
+                    onValueChange={(v) => setNewTask({...newTask, roomId: v})}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select room" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="101">Room 101</SelectItem>
-                      <SelectItem value="102">Room 102</SelectItem>
-                      <SelectItem value="103">Room 103</SelectItem>
-                      <SelectItem value="201">Room 201</SelectItem>
-                      <SelectItem value="202">Room 202</SelectItem>
+                      {rooms.map(room => (
+                        <SelectItem key={room.id} value={room.id}>
+                          Room {room.number} ({room.hkStatus || 'dirty'})
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="grid gap-2">
                   <Label>Task Type</Label>
-                  <Select>
+                  <Select 
+                    value={newTask.taskType} 
+                    onValueChange={(v) => setNewTask({...newTask, taskType: v})}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
@@ -173,17 +258,23 @@ export default function HousekeepingPage() {
                       <SelectItem value="stayover">Stayover Service</SelectItem>
                       <SelectItem value="deep-clean">Deep Clean</SelectItem>
                       <SelectItem value="turndown">Turndown Service</SelectItem>
+                      <SelectItem value="inspection">Inspection</SelectItem>
+                      <SelectItem value="maintenance">Maintenance</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="grid gap-2">
                   <Label>Priority</Label>
-                  <Select>
+                  <Select 
+                    value={newTask.priority} 
+                    onValueChange={(v) => setNewTask({...newTask, priority: v})}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select priority" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="urgent">Urgent</SelectItem>
                       <SelectItem value="medium">Medium</SelectItem>
                       <SelectItem value="low">Low</SelectItem>
                     </SelectContent>
@@ -191,29 +282,36 @@ export default function HousekeepingPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label>Assign To</Label>
-                  <Select>
+                  <Select 
+                    value={newTask.assignedTo} 
+                    onValueChange={(v) => setNewTask({...newTask, assignedTo: v})}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select staff member" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockStaff.map((staff) => (
-                        <SelectItem key={staff.id} value={staff.id}>
-                          {staff.name}
+                      {staff.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label>Scheduled Time</Label>
-                  <Input type="time" />
+                  <Label>Notes</Label>
+                  <Input 
+                    placeholder="Optional notes" 
+                    value={newTask.notes}
+                    onChange={(e) => setNewTask({...newTask, notes: e.target.value})}
+                  />
                 </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsAssignTaskOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={() => setIsAssignTaskOpen(false)}>Assign Task</Button>
+                <Button onClick={handleCreateTask}>Assign Task</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -227,7 +325,7 @@ export default function HousekeepingPage() {
               <Sparkles className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">21</div>
+              <div className="text-2xl font-bold text-foreground">{stats.total}</div>
               <p className="text-xs text-muted-foreground">For today</p>
             </CardContent>
           </Card>
@@ -237,8 +335,10 @@ export default function HousekeepingPage() {
               <CheckCircle2 className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">12</div>
-              <p className="text-xs text-primary">57% completion rate</p>
+              <div className="text-2xl font-bold text-foreground">{stats.completed}</div>
+              <p className="text-xs text-primary">
+                {stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}% completion rate
+              </p>
             </CardContent>
           </Card>
           <Card className="bg-card border-border">
@@ -247,7 +347,7 @@ export default function HousekeepingPage() {
               <Loader2 className="h-4 w-4 text-chart-2" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">4</div>
+              <div className="text-2xl font-bold text-foreground">{stats.inProgress}</div>
               <p className="text-xs text-muted-foreground">Being cleaned now</p>
             </CardContent>
           </Card>
@@ -257,7 +357,7 @@ export default function HousekeepingPage() {
               <AlertTriangle className="h-4 w-4 text-destructive" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">3</div>
+              <div className="text-2xl font-bold text-foreground">{stats.highPriority}</div>
               <p className="text-xs text-destructive">Requires attention</p>
             </CardContent>
           </Card>
@@ -311,51 +411,74 @@ export default function HousekeepingPage() {
                 <TableBody>
                   {filteredTasks.map((task) => (
                     <TableRow key={task.id} className="border-border">
-                      <TableCell className="font-medium text-foreground">{task.room}</TableCell>
-                      <TableCell className="text-foreground">{getTypeLabel(task.type)}</TableCell>
+                      <TableCell className="font-medium text-foreground">{task.room.roomNumber}</TableCell>
+                      <TableCell className="text-foreground">{getTypeLabel(task.taskType)}</TableCell>
                       <TableCell>{getPriorityBadge(task.priority)}</TableCell>
-                      <TableCell className="text-foreground">{task.assignee}</TableCell>
+                      <TableCell className="text-foreground">{task.assignedToName || 'Unassigned'}</TableCell>
                       <TableCell>{getStatusBadge(task.status)}</TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm">
-                          View
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          {task.status === 'pending' && (
+                            <Button variant="outline" size="sm" onClick={() => handleUpdateStatus(task.id, 'in-progress')}>
+                              Start
+                            </Button>
+                          )}
+                          {task.status === 'in-progress' && (
+                            <Button variant="outline" size="sm" onClick={() => handleUpdateStatus(task.id, 'completed')}>
+                              Complete
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
+                  {filteredTasks.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        No tasks found
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
           </Card>
 
-          {/* Staff Performance */}
+          {/* Staff Workload */}
           <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle className="text-foreground flex items-center gap-2">
                 <Users className="h-5 w-5 text-primary" />
-                Staff Performance
+                Staff Workload
               </CardTitle>
               <CardDescription>Today's cleaning staff</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {mockStaff.map((staff) => (
-                <div key={staff.id} className="p-3 rounded-lg bg-secondary/50">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="font-medium text-foreground">{staff.name}</p>
-                    <Badge variant="secondary">{staff.avgTime}</Badge>
+              {staff.map((s) => {
+                const staffTasks = tasks.filter(t => t.assignedTo === s.id)
+                const completed = staffTasks.filter(t => t.status === 'completed').length
+                const total = staffTasks.length
+                const percent = total > 0 ? Math.round((completed / total) * 100) : 0
+                
+                return (
+                  <div key={s.id} className="p-3 rounded-lg bg-secondary/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="font-medium text-foreground">{s.name}</p>
+                      <Badge variant="secondary">{s.status}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>Tasks: {completed}/{total}</span>
+                      <span>{percent}% done</span>
+                    </div>
+                    <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-primary rounded-full transition-all"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                    <span>Tasks: {staff.completed}/{staff.tasksToday}</span>
-                    <span>{Math.round((staff.completed / staff.tasksToday) * 100)}% done</span>
-                  </div>
-                  <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full transition-all"
-                      style={{ width: `${(staff.completed / staff.tasksToday) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </CardContent>
           </Card>
         </div>
@@ -374,12 +497,12 @@ export default function HousekeepingPage() {
               {cleaningChecklist.map((item, index) => (
                 <div key={index} className="flex items-center space-x-2">
                   <Checkbox id={`check-${index}`} />
-                  <label
+                  <Label
                     htmlFor={`check-${index}`}
-                    className="text-sm text-foreground cursor-pointer"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                   >
                     {item}
-                  </label>
+                  </Label>
                 </div>
               ))}
             </div>

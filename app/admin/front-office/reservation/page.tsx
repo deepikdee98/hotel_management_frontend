@@ -24,6 +24,13 @@ export default function ReservationPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [isNewReservationOpen, setIsNewReservationOpen] = useState(false)
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null)
+
+  useEffect(() => {
+    if (isNewReservationOpen) {
+      setFormData(prev => ({ ...prev, adults: "", children: "", ratePlan: "" }));
+    }
+  }, [isNewReservationOpen]);
+
   const [reservations, setReservations] = useState<any[]>([])
   const [rooms, setRooms] = useState<Room[]>([])
   const [roomTypes, setRoomTypes] = useState<any[]>([])
@@ -45,6 +52,7 @@ export default function ReservationPage() {
           reservationId: r.reservationId,
           guestName: r.guestName,
           guestPhone: r.guestPhone,
+          guestEmail: r.guestEmail,
           roomNumber: r.roomNumber,
           checkIn: r.checkIn,
           checkOut: r.checkOut,
@@ -77,14 +85,14 @@ export default function ReservationPage() {
     idProofNumber: "",
     checkInDate: "",
     checkOutDate: "",
-    adults: "1",
-    children: "0",
+    adults: "",
+    children: "",
     roomType: "",
     roomNumber: "",
-    ratePlan: "standard",
-    bookingSource: "walk-in",
+    ratePlan: "",
+    bookingSource: "",
     advanceAmount: "",
-    paymentMode: "cash",
+    paymentMode: "",
     specialRequests: "",
   })
 
@@ -192,7 +200,7 @@ export default function ReservationPage() {
   const handleSaveReservation = async () => {
     try {
       let selectedRoomId = ""
-      
+
       if (formData.roomNumber === "auto") {
         const autoRoom = availableRooms.find(r => r.roomTypeId === formData.roomType)
         if (autoRoom) {
@@ -239,6 +247,7 @@ export default function ReservationPage() {
           reservationId: r.reservationId,
           guestName: r.guestName,
           guestPhone: r.guestPhone,
+          guestEmail: r.guestEmail,
           roomNumber: r.roomNumber,
           checkIn: r.checkIn,
           checkOut: r.checkOut,
@@ -248,12 +257,12 @@ export default function ReservationPage() {
         }))
 
         setReservations(formatted)
-        
+
         toast({
           title: "Success",
           description: "Reservation created successfully",
         })
-        
+
         setIsNewReservationOpen(false)
         setFormData({
           guestName: "",
@@ -263,14 +272,14 @@ export default function ReservationPage() {
           idProofNumber: "",
           checkInDate: "",
           checkOutDate: "",
-          adults: "1",
-          children: "0",
+          adults: "",
+          children: "",
           roomType: "",
           roomNumber: "",
-          ratePlan: "standard",
-          bookingSource: "walk-in",
+          ratePlan: "",
+          bookingSource: "",
           advanceAmount: "",
-          paymentMode: "cash",
+          paymentMode: "",
           specialRequests: "",
         })
       } else {
@@ -349,6 +358,7 @@ export default function ReservationPage() {
         reservationId: r.id,
         guestName: r.guestName,
         guestPhone: r.guestPhone,
+        guestEmail: r.guestEmail,
         roomNumber: r.roomNumber,
         checkIn: r.checkIn,
         checkOut: r.checkOut,
@@ -359,7 +369,7 @@ export default function ReservationPage() {
 
       setReservations(formatted)
       setIsEditOpen(false)
-      
+
       toast({
         title: "Success",
         description: "Reservation updated successfully",
@@ -376,7 +386,7 @@ export default function ReservationPage() {
 
   const editFields = [
     { name: "guestName", label: "Guest Name" },
-    { name: "guestPhone", label: "Phone" }, 
+    { name: "guestPhone", label: "Phone" },
     { name: "guestEmail", label: "Email" },
     { name: "roomNumber", label: "Room Number" },
     { name: "checkIn", label: "Check-in", type: "date" },
@@ -449,9 +459,8 @@ export default function ReservationPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="idProofType">ID Proof Type *</Label>
-                      <Select 
-                        modal={false}
-                        value={formData.idProofType} 
+                      <Select
+                        value={formData.idProofType}
                         onValueChange={(v) => handleFormChange("idProofType", v)}
                       >
                         <SelectTrigger>
@@ -499,9 +508,9 @@ export default function ReservationPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="adults">Number of Adults</Label>
-                      <Select value={formData.adults} onValueChange={(v) => handleFormChange("adults", v)}>
+                      <Select value={formData.adults || undefined} onValueChange={(v) => handleFormChange("adults", v)}>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Select adults" />
                         </SelectTrigger>
                         <SelectContent>
                           {[1, 2, 3, 4, 5].map((n) => (
@@ -514,9 +523,9 @@ export default function ReservationPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="children">Number of Children</Label>
-                      <Select value={formData.children} onValueChange={(v) => handleFormChange("children", v)}>
+                      <Select value={formData.children || undefined} onValueChange={(v) => handleFormChange("children", v)}>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Select children" />
                         </SelectTrigger>
                         <SelectContent>
                           {[0, 1, 2, 3, 4].map((n) => (
@@ -529,9 +538,8 @@ export default function ReservationPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="roomType">Room Type *</Label>
-                      <Select 
-                        modal={false}
-                        value={formData.roomType} 
+                      <Select
+                        value={formData.roomType || undefined}
                         onValueChange={(v) => handleFormChange("roomType", v)}
                       >
                         <SelectTrigger>
@@ -548,9 +556,8 @@ export default function ReservationPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="roomNumber">Room Number</Label>
-                      <Select 
-                        modal={false}
-                        value={formData.roomNumber} 
+                      <Select
+                        value={formData.roomNumber || undefined}
                         onValueChange={(v) => handleFormChange("roomNumber", v)}
                       >
                         <SelectTrigger>
@@ -570,7 +577,7 @@ export default function ReservationPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="ratePlan">Rate Plan</Label>
-                      <Select value={formData.ratePlan} onValueChange={(v) => handleFormChange("ratePlan", v)}>
+                      <Select value={formData.ratePlan || undefined} onValueChange={(v) => handleFormChange("ratePlan", v)}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select rate plan" />
                         </SelectTrigger>
@@ -585,9 +592,9 @@ export default function ReservationPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="bookingSource">Booking Source</Label>
-                      <Select value={formData.bookingSource} onValueChange={(v) => handleFormChange("bookingSource", v)}>
+                      <Select value={formData.bookingSource || undefined} onValueChange={(v) => handleFormChange("bookingSource", v)}>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Select source" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="walk-in">Walk-in</SelectItem>
@@ -625,9 +632,9 @@ export default function ReservationPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="paymentMode">Payment Mode</Label>
-                      <Select value={formData.paymentMode} onValueChange={(v) => handleFormChange("paymentMode", v)}>
+                      <Select value={formData.paymentMode || undefined} onValueChange={(v) => handleFormChange("paymentMode", v)}>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Select mode" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="cash">Cash</SelectItem>
@@ -652,6 +659,14 @@ export default function ReservationPage() {
                         <div className="flex justify-between font-medium border-t border-border pt-2 mt-2">
                           <span>Total Estimated</span>
                           <span>${estimates.total.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-success">
+                          <span>Advance Paid</span>
+                          <span>-${Number(formData.advanceAmount || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between font-bold border-t border-border pt-2 mt-2 text-lg">
+                          <span>Total Payable</span>
+                          <span>${(estimates.total - Number(formData.advanceAmount || 0)).toFixed(2)}</span>
                         </div>
                       </div>
                     </CardContent>
@@ -733,7 +748,7 @@ export default function ReservationPage() {
               <TableBody>
                 {filteredReservations.map((reservation) => (
                   <TableRow key={reservation.id}>
-                    <TableCell className="font-medium">{reservation.registerNo || reservation.reservationId|| "N/A"}</TableCell>
+                    <TableCell className="font-medium">{reservation.registerNo || reservation.reservationId || "N/A"}</TableCell>
                     <TableCell>
                       <div>
                         <p className="font-medium">{reservation.guestName}</p>
@@ -754,7 +769,7 @@ export default function ReservationPage() {
                       <div className="flex justify-end gap-2">
                         {reservation.status === "confirmed" && (
                           <Button size="sm" variant="outline" onClick={() => handleStatusChange(reservation.id, "checked-in")} className="gap-1 bg-transparent">
-                            <CheckCircle className="h-3 w-3"  />
+                            <CheckCircle className="h-3 w-3" />
                             Check In
                           </Button>
                         )}

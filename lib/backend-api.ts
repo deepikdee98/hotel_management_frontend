@@ -1,4 +1,4 @@
-import type { Guest, Hotel, Reservation, Room, Staff, GRCardData, Folio } from "@/lib/types"
+import type { Guest, Hotel, Reservation, Room, Staff, GRCardData, Folio, HousekeepingTask, InventoryItem, POSItem, POSOrder } from "@/lib/types"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"
 const TOKEN_STORAGE_KEY = "hotel_manager_tokens"
@@ -80,6 +80,7 @@ function mapRoom(raw: JsonRecord): Room {
     type: toRoomType(roomTypeName),
     roomTypeId: roomTypeId,
     status: toRoomStatus(String(raw.status || "available")),
+    hkStatus: raw.hkStatus as any,
     price: Number(raw.rate || raw.price || 0),
     amenities: Array.isArray(raw.amenities) ? (raw.amenities as string[]) : [],
     guestName: raw.guestName ? String(raw.guestName) : undefined,
@@ -344,6 +345,11 @@ export async function getGRCard(roomId: string): Promise<GRCardData> {
 
 export async function getStaffDashboard() {
   return apiRequest<JsonRecord>("/staff/dashboard")
+}
+
+export async function getNightAuditStatus(date?: string) {
+  const query = date ? `?date=${date}` : ""
+  return apiRequest<{ success: boolean; data: any }>(`/front-office/night-audit/status${query}`)
 }
 
 export async function runNightAudit(payload: { auditDate?: string; tasks?: Record<string, boolean> }) {
@@ -921,6 +927,219 @@ export async function getGuestLookup(search?: string) {
   if (search) query.set("search", search)
 
   return apiRequest<any[]>(`/admin/lookups/guests${query.toString() ? `?${query.toString()}` : ""}`)
+}
+
+// ==================== HOUSEKEEPING APIs ====================
+
+export function mapHousekeepingTask(raw: JsonRecord): HousekeepingTask {
+  return {
+    id: String(raw._id || raw.id || ""),
+    room: {
+      id: String((raw.roomId as any)?._id || (raw.roomId as any)?.id || ""),
+      roomNumber: String((raw.roomId as any)?.roomNumber || ""),
+      floor: Number((raw.roomId as any)?.floor || 0),
+      hkStatus: String((raw.roomId as any)?.hkStatus || ""),
+      status: String((raw.roomId as any)?.status || ""),
+    },
+    taskType: raw.taskType as any,
+    priority: raw.priority as any,
+    status: raw.status as any,
+    assignedTo: String(raw.assignedTo || ""),
+    notes: String(raw.notes || ""),
+    createdAt: String(raw.createdAt || ""),
+    completedAt: raw.completedAt ? String(raw.completedAt) : undefined,
+  }
+}
+
+export async function getHousekeepingRooms(params?: { hkStatus?: string; status?: string }): Promise<Room[]> {
+  const query = new URLSearchParams()
+  if (params?.hkStatus) query.set("hkStatus", params.hkStatus)
+  if (params?.status) query.set("status", params.status)
+
+  const data = await apiRequest<{ success: boolean; data: { rooms: JsonRecord[] } }>(
+    `/housekeeping/rooms${query.toString() ? `?${query.toString()}` : ""}`
+  )
+  return Array.isArray(data.data?.rooms) ? data.data.rooms.map(mapRoom) : []
+}
+
+export async function updateRoomHkStatus(roomId: string, payload: { hkStatus?: string; status?: string }) {
+  return apiRequest<{ success: boolean; data: any }>(`/housekeeping/rooms/${roomId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function getHousekeepingTasks(params?: { status?: string; priority?: string }): Promise<HousekeepingTask[]> {
+  const query = new URLSearchParams()
+  if (params?.status) query.set("status", params.status)
+  if (params?.priority) query.set("priority", params.priority)
+
+  const data = await apiRequest<{ success: boolean; data: { tasks: JsonRecord[] } }>(
+    `/housekeeping/tasks${query.toString() ? `?${query.toString()}` : ""}`
+  )
+  return Array.isArray(data.data?.tasks) ? data.data.tasks.map(mapHousekeepingTask) : []
+}
+
+export async function createHousekeepingTask(payload: {
+  roomId: string
+  taskType: string
+  priority: string
+  assignedTo?: string
+  notes?: string
+}) {
+  return apiRequest<{ success: boolean; data: any }>("/housekeeping/tasks", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateHousekeepingTask(
+  taskId: string,
+  payload: {
+    status?: string
+    assignedTo?: string
+    notes?: string
+  }
+) {
+  return apiRequest<{ success: boolean; data: any }>(`/housekeeping/tasks/${taskId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  })
+}
+
+// ==================== INVENTORY APIs ====================
+
+function mapInventoryItem(raw: JsonRecord): InventoryItem {
+  return {
+    id: String(raw._id || raw.id || ""),
+    name: String(raw.name || ""),
+    category: String(raw.category || ""),
+    quantity: Number(raw.quantity || 0),
+    unit: String(raw.unit || ""),
+    minStock: Number(raw.minStock || 0),
+    status: raw.status as any,
+    lastUpdated: raw.updatedAt ? new Date(String(raw.updatedAt)).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "N/A",
+  }
+}
+
+export async function getInventory(params?: { category?: string; search?: string }): Promise<InventoryItem[]> {
+  const query = new URLSearchParams()
+  if (params?.category) query.set("category", params.category)
+  if (params?.search) query.set("search", params.search)
+
+  const data = await apiRequest<{ success: boolean; data: JsonRecord[] }>(
+    `/admin/inventory${query.toString() ? `?${query.toString()}` : ""}`
+  )
+  return Array.isArray(data.data) ? data.data.map(mapInventoryItem) : []
+}
+
+export async function createInventoryItem(payload: Partial<InventoryItem>) {
+  return apiRequest<{ success: boolean; data: JsonRecord }>("/admin/inventory", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateInventoryItem(id: string, payload: Partial<InventoryItem>) {
+  return apiRequest<{ success: boolean; data: JsonRecord }>(`/admin/inventory/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteInventoryItem(id: string) {
+  return apiRequest<{ success: boolean; message: string }>(`/admin/inventory/${id}`, {
+    method: "DELETE",
+  })
+}
+
+// ==================== POS APIs ====================
+
+function mapPOSItem(raw: JsonRecord): POSItem {
+  return {
+    id: String(raw._id || raw.id || ""),
+    name: String(raw.name || ""),
+    category: String(raw.category || ""),
+    price: Number(raw.price || 0),
+    taxRate: Number(raw.taxRate || 0),
+    description: String(raw.description || ""),
+    status: raw.status as any,
+  }
+}
+
+function mapPOSOrder(raw: JsonRecord): POSOrder {
+  return {
+    id: String(raw._id || raw.id || ""),
+    orderNumber: String(raw.orderNumber || ""),
+    folioId: String(raw.folioId?._id || raw.folioId || ""),
+    guestName: String(raw.folioId?.guestName || ""),
+    roomNumber: String(raw.folioId?.roomNumber || ""),
+    tableNo: String(raw.tableNo || ""),
+    status: raw.status as any,
+    items: Array.isArray(raw.items) ? raw.items : [],
+    subTotal: Number(raw.subTotal || 0),
+    taxTotal: Number(raw.taxTotal || 0),
+    grandTotal: Number(raw.grandTotal || 0),
+    paidAmount: Number(raw.paidAmount || 0),
+    paymentMode: String(raw.paymentMode || ""),
+    createdAt: String(raw.createdAt || ""),
+  }
+}
+
+export async function getPOSItems(): Promise<POSItem[]> {
+  const data = await apiRequest<{ success: boolean; data: { items: JsonRecord[] } }>("/pos/items")
+  return Array.isArray(data.data?.items) ? data.data.items.map(mapPOSItem) : []
+}
+
+export async function createPOSItem(payload: Partial<POSItem>) {
+  return apiRequest<{ success: boolean; data: JsonRecord }>("/pos/items", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updatePOSItem(id: string, payload: Partial<POSItem>) {
+  return apiRequest<{ success: boolean; data: JsonRecord }>(`/pos/items/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deletePOSItem(id: string) {
+  return apiRequest<{ success: boolean; message: string }>(`/pos/items/${id}`, {
+    method: "DELETE",
+  })
+}
+
+export async function getPOSOrders(): Promise<POSOrder[]> {
+  const data = await apiRequest<{ success: boolean; data: { orders: JsonRecord[] } }>("/pos/orders")
+  return Array.isArray(data.data?.orders) ? data.data.orders.map(mapPOSOrder) : []
+}
+
+export async function createPOSOrder(payload: {
+  items: Array<{ itemId: string; quantity: number }>
+  folioId?: string
+  tableNo?: string
+  status?: string
+}) {
+  return apiRequest<{ success: boolean; data: JsonRecord }>("/pos/orders", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updatePOSOrderStatus(id: string, status: string) {
+  return apiRequest<{ success: boolean; data: JsonRecord }>(`/pos/orders/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  })
+}
+
+export async function processPOSPayment(id: string, payload: { amount: number; paymentMode: string }) {
+  return apiRequest<{ success: boolean; data: JsonRecord }>(`/pos/orders/${id}/payment`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
 }
 
 export { mapGuest, mapHotel, mapReservation, mapRoom, mapStaff }
