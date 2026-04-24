@@ -89,9 +89,83 @@ function mapRoom(raw: JsonRecord): Room {
   }
 }
 
+function normalizeSelectValue(raw: unknown, lookup: Record<string, string>, fallback: string = "") {
+  if (raw == null) return fallback
+  const value = String(raw).trim()
+  const normalized = value.toLowerCase()
+  return lookup[normalized] ?? value
+}
+
+function getRoomTypeName(rawRoomType: unknown, rawRoom: JsonRecord | undefined): string {
+  if (rawRoomType && typeof rawRoomType === "object" && rawRoomType !== null) {
+    const roomTypeObj = rawRoomType as JsonRecord
+    return String(roomTypeObj.name || roomTypeObj.type || roomTypeObj.code || roomTypeObj._id || roomTypeObj.id || "")
+  }
+
+  const value = String(rawRoomType || "").trim()
+  if (value && /^[0-9a-f]{24}$/i.test(value) && rawRoom && typeof rawRoom === "object") {
+    return String(rawRoom.type || rawRoom.name || "")
+  }
+
+  return value
+}
+
+function getRatePlanId(rawRatePlan: unknown): string {
+  if (rawRatePlan && typeof rawRatePlan === "object" && rawRatePlan !== null) {
+    const plan = rawRatePlan as JsonRecord
+    return String(plan._id || plan.id || plan.code || "")
+  }
+  return String(rawRatePlan || "")
+}
+
+function getRoomObjectValue(room: unknown, key: string): string {
+  if (!room || typeof room !== "object" || room === null) return ""
+  const roomObj = room as JsonRecord
+  return String(roomObj[key] || roomObj[key === "roomNumber" ? "number" : key] || "")
+}
+
 function mapReservation(raw: JsonRecord): Reservation {
   const checkIn = String(raw.checkInDate || raw.checkIn || "")
   const checkOut = String(raw.checkOutDate || raw.checkOut || "")
+
+  const idProofType = normalizeSelectValue(raw.idProofType, {
+    "aadhaar": "Aadhaar Card",
+    "aadhaar card": "Aadhaar Card",
+    "passport": "Passport",
+    "driving license": "Driving License",
+    "drivinglicense": "Driving License",
+    "voter id": "Voter ID",
+    "voterid": "Voter ID",
+    "pan": "PAN Card",
+    "pan card": "PAN Card",
+  })
+
+  const paymentMode = normalizeSelectValue(raw.paymentMode, {
+    "cash": "Cash",
+    "card": "Card",
+    "upi": "UPI",
+    "online": "Online",
+  })
+
+  const bookingSource = normalizeSelectValue(raw.bookingSource, {
+    "walk-in": "Walk-in",
+    "walkin": "Walk-in",
+    "travel agent": "Travel Agent",
+    "travel-agent": "Travel Agent",
+    "online": "Online",
+    "corporate": "Corporate",
+    "other": "Other",
+  })
+
+  const roomObject = raw.room
+  const roomNumber = String(raw.roomNumber || getRoomObjectValue(roomObject, "roomNumber") || getRoomObjectValue(roomObject, "number") || "")
+  const roomId = String(
+    raw.roomId ||
+    getRoomObjectValue(roomObject, "_id") ||
+    getRoomObjectValue(roomObject, "id") ||
+    getRoomObjectValue(roomObject, "roomTypeId") ||
+    ""
+  )
 
   return {
     id: String(raw._id || raw.id || raw.reservationId || ""),
@@ -99,13 +173,21 @@ function mapReservation(raw: JsonRecord): Reservation {
     guestName: String(raw.guestName || ""),
     guestEmail: String(raw.email || raw.guestEmail || ""),
     guestPhone: String(raw.phone || raw.guestPhone || ""),
-    roomId: String(raw.room || raw.roomId || ""),
-    roomNumber: String(raw.roomNumber || raw.room || ""),
+    roomId,
+    roomNumber,
+    roomType: getRoomTypeName(raw.roomType || raw.type || raw.roomTypeId, raw.room as JsonRecord | undefined),
+    idProofType: idProofType || undefined,
+    idProofNumber: raw.idProofNumber ? String(raw.idProofNumber) : undefined,
     checkIn: checkIn ? new Date(checkIn).toISOString().slice(0, 10) : "",
     checkOut: checkOut ? new Date(checkOut).toISOString().slice(0, 10) : "",
     status: (String(raw.status || "confirmed") as Reservation["status"]),
+    adults: raw.adults ? Number(raw.adults) : undefined,
+    children: raw.children ? Number(raw.children) : undefined,
     totalAmount: Number(raw.totalAmount || 0),
     paidAmount: Number(raw.paidAmount || raw.advanceAmount || 0),
+    paymentMode: paymentMode || undefined,
+    ratePlan: getRatePlanId(raw.ratePlan || raw.planType),
+    bookingSource: bookingSource || undefined,
     createdAt: raw.createdAt ? new Date(String(raw.createdAt)).toISOString().slice(0, 10) : "",
   }
 }
@@ -256,6 +338,15 @@ export async function getFrontOfficeReservations(params?: { search?: string; sta
 
   const reservations = Array.isArray(data.data?.reservations) ? data.data.reservations : []
   return reservations.map(mapReservation)
+}
+
+export async function getFrontOfficeReservationById(id: string): Promise<Reservation | null> {
+  try {
+    const data = await apiRequest<JsonRecord>(`/front-office/reservations/${id}`)
+    return mapReservation(data)
+  } catch {
+    return null
+  }
 }
 
 export async function createFrontOfficeReservation(payload: any) {

@@ -1,16 +1,25 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Users, BedDouble, CalendarCheck, DollarSign, ArrowUpRight, ArrowDownRight, Clock, TrendingUp } from "lucide-react"
+import { BedDouble, CalendarCheck, DollarSign, ArrowUpRight, ArrowDownRight, Clock, TrendingUp, ShieldAlert } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { getAdminDashboard, getAdminStaff, getFrontOfficeReservations, getFrontOfficeRooms, mapReservation } from "@/lib/backend-api"
 import { useAuth } from "@/lib/auth-context"
+
+interface BlockedRoom {
+  id: string
+  roomNumber: string
+  from: string
+  to: string
+  remark: string
+}
 
 export default function AdminDashboard() {
   const { user } = useAuth()
   const [rooms, setRooms] = useState<Awaited<ReturnType<typeof getFrontOfficeRooms>>>([])
   const [reservations, setReservations] = useState<Awaited<ReturnType<typeof getFrontOfficeReservations>>>([])
   const [staff, setStaff] = useState<Awaited<ReturnType<typeof getAdminStaff>>>([])
+  const [blockedRooms, setBlockedRooms] = useState<BlockedRoom[]>([])
   const [dashboardStats, setDashboardStats] = useState({
     totalRooms: 0,
     occupiedRooms: 0,
@@ -34,6 +43,10 @@ export default function AdminDashboard() {
         setRooms(roomData)
         setReservations(reservationData)
         setStaff(staffData)
+
+        if (dashboard.success && dashboard.data.blockedRooms) {
+          setBlockedRooms(dashboard.data.blockedRooms as BlockedRoom[])
+        }
 
         const stats = dashboard.data.stats as Record<string, number>
         const roomStatus = dashboard.data.roomStatus as Record<string, number>
@@ -152,58 +165,107 @@ export default function AdminDashboard() {
 
       {/* Main Content Grid */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Recent Reservations */}
-        <Card className="lg:col-span-2 bg-card border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Recent Reservations</CardTitle>
-            <CardDescription>{pendingReservations} pending check-ins</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {reservations.slice(0, 5).map((reservation) => (
-                <div
-                  key={reservation.id}
-                  className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <span className="text-sm font-medium text-primary">
-                        {reservation.guestName.split(" ").map(n => n[0]).join("")}
+        {/* Left Column: Reservations & Blocked Rooms */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Recent Reservations */}
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Recent Reservations</CardTitle>
+              <CardDescription>{pendingReservations} pending check-ins</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {reservations.slice(0, 5).map((reservation) => (
+                  <div
+                    key={reservation.id}
+                    className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <span className="text-sm font-medium text-primary">
+                          {reservation.guestName.split(" ").map(n => n[0]).join("")}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">{reservation.guestName}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Room {reservation.roomNumber} &middot; {reservation.checkIn} to {reservation.checkOut}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="font-medium text-foreground">${reservation.totalAmount}</p>
+                        <p className="text-xs text-muted-foreground">
+                          ${reservation.paidAmount} paid
+                        </p>
+                      </div>
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                          reservation.status === "checked-in"
+                            ? "bg-success/10 text-success"
+                            : reservation.status === "confirmed"
+                              ? "bg-primary/10 text-primary"
+                              : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {reservation.status.replace("-", " ")}
                       </span>
                     </div>
-                    <div>
-                      <p className="font-medium text-foreground">{reservation.guestName}</p>
-                      <p className="text-sm text-muted-foreground">
-                        Room {reservation.roomNumber} &middot; {reservation.checkIn} to {reservation.checkOut}
-                      </p>
-                    </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="font-medium text-foreground">${reservation.totalAmount}</p>
-                      <p className="text-xs text-muted-foreground">
-                        ${reservation.paidAmount} paid
-                      </p>
-                    </div>
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                        reservation.status === "checked-in"
-                          ? "bg-success/10 text-success"
-                          : reservation.status === "confirmed"
-                            ? "bg-primary/10 text-primary"
-                            : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {reservation.status.replace("-", " ")}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
-        {/* Quick Stats Sidebar */}
+          {/* Blocked Rooms */}
+          <Card className="bg-card border-border">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg">Blocked Rooms</CardTitle>
+                  <CardDescription>Rooms currently out of service</CardDescription>
+                </div>
+                {/* <ShieldAlert className="h-5 w-5 text-muted-foreground" /> */}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {blockedRooms.length > 0 ? (
+                  blockedRooms.slice(0, 5).map((block) => (
+                    <div
+                      key={block.id}
+                      className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-lg bg-muted-foreground/10 flex items-center justify-center">
+                          <BedDouble className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">Room {block.roomNumber}</p>
+                          <p className="text-xs text-muted-foreground">Blocked Range</p>
+                          
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-foreground">{block.remark}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(block.from).toLocaleDateString()} to {new Date(block.to).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground">
+                    No rooms currently blocked
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Column: Status & Staff */}
         <div className="space-y-6">
           {/* Room Status */}
           <Card className="bg-card border-border">

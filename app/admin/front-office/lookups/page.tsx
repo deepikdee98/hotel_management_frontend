@@ -2,7 +2,6 @@
 
 
 import { useEffect, useState } from "react"
-import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -60,8 +59,7 @@ export default function LookupsPage() {
   }
 
   return (
-    <DashboardLayout requiredRole="admin">
-      <div className="space-y-4">
+    <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Lookups</h1>
           <p className="text-sm text-muted-foreground">Quick lookup for rooms, guests, reservations and folios</p>
@@ -190,7 +188,6 @@ export default function LookupsPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </DashboardLayout>
   )
 }
 

@@ -11,8 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Camera, Upload, UserCircle, Save, RotateCcw, X, FileText, Plus, Trash2, Loader2 } from "lucide-react"
-import { createCheckIn, getFrontOfficeRooms, getSetupRatePlans } from "@/lib/backend-api"
+import { Camera, Upload, UserCircle, Save, RotateCcw, X, FileText, Plus, Trash2, Loader2, Search } from "lucide-react"
+import { createCheckIn, getFrontOfficeRooms, getSetupRatePlans, getFrontOfficeReservationById } from "@/lib/backend-api"
 import { useToast } from "@/hooks/use-toast"
 import type { Room } from "@/lib/types"
 
@@ -39,6 +39,8 @@ export default function CheckInPage() {
 
   const [rooms, setRooms] = useState<Room[]>([])
   const [ratePlans, setRatePlans] = useState<any[]>([])
+  const [reservationSearchId, setReservationIdSearch] = useState("")
+  const [isFetchingReservation, setIsFetchingReservation] = useState(false)
 
   const tabOrder = ["guest-info", "guest-id", "companion", "vehicle-company"] as const;
 
@@ -88,6 +90,7 @@ export default function CheckInPage() {
 
   const [form, setForm] = useState({
     bookingNo: "BK-" + Date.now().toString().slice(-6),
+    reservationId: "",
     registerNo: "",
     title: "",
     guestName: "",
@@ -145,6 +148,65 @@ export default function CheckInPage() {
     companyInfoBookingCategory: "",
   })
 
+  const handleReservationSearch = async () => {
+    if (!reservationSearchId.trim()) return;
+
+    setIsFetchingReservation(true);
+    try {
+      const reservation = await getFrontOfficeReservationById(reservationSearchId);
+      if (reservation) {
+        const matchingRoom = rooms.find(r => r.number === reservation.roomNumber || r.id === reservation.roomId)
+        const resolvedRoomType = matchingRoom?.type || reservation.roomType || ""
+
+        setForm(prev => {
+          const checkIn = reservation.checkIn ? new Date(reservation.checkIn) : new Date();
+          const checkOut = reservation.checkOut ? new Date(reservation.checkOut) : new Date();
+          const noOfNights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
+          return {
+            ...prev,
+            reservationId: reservation.reservationId || reservation.id,
+            guestName: reservation.guestName || "",
+            mobile: reservation.guestPhone || "",
+            email: reservation.guestEmail || "",
+            idProofType: reservation.idProofType || "",
+            idProofNumber: reservation.idProofNumber || "",
+            roomType: resolvedRoomType,
+            roomNo: reservation.roomNumber || "",
+            checkInDate: reservation.checkIn ? new Date(reservation.checkIn).toISOString().slice(0, 16) : prev.checkInDate,
+            checkoutPlan: reservation.checkOut ? new Date(reservation.checkOut).toISOString().slice(0, 16) : "",
+            noOfNights: noOfNights.toString(),
+            advanceAmount: reservation.paidAmount?.toString() || "0",
+            planCharges: reservation.totalAmount?.toString() || "",
+            paymentMode: reservation.paymentMode || "",
+            planType: reservation.ratePlan || "",
+            businessSource: reservation.bookingSource || "",
+            paxAdultMale: reservation.adults?.toString() || "1",
+            paxChildren: reservation.children?.toString() || "0",
+          };
+        });
+        setSelectedRoomType(resolvedRoomType);
+        toast({
+          title: "Reservation Found",
+          description: `Data populated for ${reservation.guestName}`,
+        });
+      } else {
+        toast({
+          title: "Not Found",
+          description: "No reservation found with this ID",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to fetch reservation details",
+        variant: "destructive",
+      });
+    } finally {
+      setIsFetchingReservation(false);
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -161,9 +223,28 @@ export default function CheckInPage() {
     fetchData()
   }, [])
 
-  const filteredRooms = selectedRoomType
+  const baseFilteredRooms = selectedRoomType
     ? rooms.filter(r => r.type === selectedRoomType && r.status === "available")
     : rooms.filter(r => r.status === "available")
+
+  const selectedRoom = form.roomNo ? rooms.find(r => r.number === form.roomNo) : undefined
+  const reservationRoomOption = form.roomNo && !selectedRoom
+    ? {
+      id: `reservation-${form.roomNo}`,
+      number: form.roomNo,
+      floor: 0,
+      type: form.roomType || "Reserved",
+      status: "available" as const,
+      price: Number(form.planCharges) || 0,
+      amenities: [],
+    }
+    : undefined
+
+  const filteredRooms = selectedRoom
+    ? [...baseFilteredRooms.filter(r => r.number !== selectedRoom.number), selectedRoom]
+    : reservationRoomOption
+      ? [...baseFilteredRooms, reservationRoomOption]
+      : baseFilteredRooms
 
   const handleChange = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -191,6 +272,7 @@ export default function CheckInPage() {
   const handleReset = () => {
     setForm({
       bookingNo: "BK-" + Date.now().toString().slice(-6),
+      reservationId: "",
       registerNo: "", title: "", guestName: "", mobile: "", email: "", dob: "",
       gender: "", address: "", country: "", state: "", city: "", zip: "",
       nationality: "", gstIn: "", referredBy: "", referredName: "", arrivalFrom: "",
@@ -275,7 +357,31 @@ export default function CheckInPage() {
           <h1 className="text-2xl font-bold text-foreground">Check-In</h1>
           <p className="text-sm text-muted-foreground">Register guest arrival and assign room</p>
         </div>
-        <Badge variant="outline" className="text-xs">Booking: {form.bookingNo}</Badge>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="reservation-search" className="text-base font-semibold whitespace-nowrap">Reservation ID:</Label>
+            <div className="relative">
+              <Input
+                id="reservation-search"
+                className="h-8 w-60 md:w-80 lg:w-96  text-xs pr-8"
+                placeholder="Enter ID..."
+                value={reservationSearchId}
+                onChange={(e) => setReservationIdSearch(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleReservationSearch()}
+              />
+              <Button
+                size="icon"
+                variant="ghost"
+                className="absolute right-0 top-0 h-8 w-8"
+                onClick={handleReservationSearch}
+                disabled={isFetchingReservation}
+              >
+                {isFetchingReservation ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+              </Button>
+            </div>
+          </div>
+          <Badge variant="outline" className="text-xs">Booking: {form.bookingNo}</Badge>
+        </div>
       </div>
 
       {/* Tabs */}

@@ -2,20 +2,19 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { ClipboardList, CheckCircle, AlertTriangle, Play, FileText, DollarSign, BedDouble, Users, Loader2 } from "lucide-react"
-import { runNightAudit, getAdminDashboard } from "@/lib/backend-api"
+import { runNightAudit, getAdminDashboard, getNightAuditStatus } from "@/lib/backend-api"
 import { useToast } from "@/hooks/use-toast"
 
 export default function NightAuditPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [isRunning, setIsRunning] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
   const [auditComplete, setAuditComplete] = useState(false)
   const [auditData, setAuditData] = useState<any>(null)
@@ -27,24 +26,39 @@ export default function NightAuditPage() {
   })
 
   useEffect(() => {
-    const loadStats = async () => {
+    const loadInitialData = async () => {
+      setIsLoading(true)
       try {
-        const response = await getAdminDashboard()
-        if (response.success && response.data) {
-          const s = response.data.stats as any
-          const rs = response.data.roomStatus as any
+        const today = new Date().toISOString().slice(0, 10)
+        const [dashboardRes, auditStatusRes] = await Promise.all([
+          getAdminDashboard(),
+          getNightAuditStatus(today)
+        ])
+
+        if (dashboardRes.success && dashboardRes.data) {
+          const s = dashboardRes.data.stats as any
+          const rs = dashboardRes.data.roomStatus as any
           setStats({
-            occupiedRooms: Number(rs.occupied || 0),
-            inHouseGuests: Number(s.todayCheckIns || 0), // Fallback approximation
-            todayRevenue: Number(s.totalRevenue || 0),
-            totalRooms: Number(rs.available || 0) + Number(rs.occupied || 0) + Number(rs.reserved || 0) + Number(rs.maintenance || 0)
+            occupiedRooms: Number(rs?.occupied || 0),
+            inHouseGuests: Number(s?.todayCheckIns || 0),
+            todayRevenue: Number(s?.totalRevenue || 0),
+            totalRooms: Number(rs?.available || 0) + Number(rs?.occupied || 0) + Number(rs?.reserved || 0) + Number(rs?.maintenance || 0)
           })
         }
+
+        if (auditStatusRes.success && auditStatusRes.data) {
+          if (auditStatusRes.data.status === "Completed") {
+            setAuditData(auditStatusRes.data)
+            setAuditComplete(true)
+          }
+        }
       } catch (error) {
-        console.error("Failed to load dashboard stats:", error)
+        console.error("Failed to load night audit data:", error)
+      } finally {
+        setIsLoading(false)
       }
     }
-    loadStats()
+    loadInitialData()
   }, [])
 
   const auditSteps = [
@@ -97,19 +111,26 @@ export default function NightAuditPage() {
     }
   }
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
   return (
-    <DashboardLayout requiredRole="admin">
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Night Audit</h1>
-            <p className="text-sm text-muted-foreground">Run nightly audit process to close the business day</p>
-          </div>
-          <Button onClick={() => setIsConfirmOpen(true)} disabled={isRunning || auditComplete}>
-            {isRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
-            {isRunning ? "Running..." : auditComplete ? "Completed" : "Run Night Audit"}
-          </Button>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Night Audit</h1>
+          <p className="text-sm text-muted-foreground">Run nightly audit process to close the business day</p>
         </div>
+        <Button onClick={() => setIsConfirmOpen(true)} disabled={isRunning || auditComplete}>
+          {isRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+          {isRunning ? "Running..." : auditComplete ? "Completed" : "Run Night Audit"}
+        </Button>
+      </div>
 
         <div className="grid grid-cols-4 gap-3">
           {[
@@ -205,6 +226,5 @@ export default function NightAuditPage() {
           </DialogContent>
         </Dialog>
       </div>
-    </DashboardLayout>
   )
 }

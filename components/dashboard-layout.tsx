@@ -41,7 +41,7 @@ export function DashboardLayout({ children, requiredRole }: DashboardLayoutProps
   return (
     <div className="min-h-screen bg-background">
       <DashboardSidebar role={requiredRole} />
-      <div className="ml-65 min-h-screen">
+      <div className="ml-64 min-h-screen">
         <main className="p-4">
           {children}
         </main>

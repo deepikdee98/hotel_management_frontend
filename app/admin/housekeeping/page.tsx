@@ -48,7 +48,8 @@ import {
   getHousekeepingRooms, 
   getAdminStaff, 
   createHousekeepingTask, 
-  updateHousekeepingTask 
+  updateHousekeepingTask,
+  updateRoomHkStatus
 } from "@/lib/backend-api"
 import type { HousekeepingTask, Room, Staff } from "@/lib/types"
 import { toast } from "sonner"
@@ -134,6 +135,16 @@ export default function HousekeepingPage() {
       fetchData()
     } catch (error) {
       toast.error("Failed to update task status")
+    }
+  }
+
+  const handleUpdateRoomHkStatus = async (roomId: string, hkStatus: string) => {
+    try {
+      await updateRoomHkStatus(roomId, { hkStatus })
+      toast.success(`Room marked as ${hkStatus}`)
+      fetchData()
+    } catch (error) {
+      toast.error("Failed to update room status")
     }
   }
 

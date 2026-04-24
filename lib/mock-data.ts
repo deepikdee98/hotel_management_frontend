@@ -123,6 +123,7 @@ export const MOCK_ROOMS: Room[] = [
 export const MOCK_RESERVATIONS: Reservation[] = [
   {
     id: "res-1",
+    reservationId: "RES-001",
     guestName: "James Wilson",
     guestEmail: "james@email.com",
     guestPhone: "+1 555 0101",
@@ -137,6 +138,7 @@ export const MOCK_RESERVATIONS: Reservation[] = [
   },
   {
     id: "res-2",
+    reservationId: "RES-002",
     guestName: "Emma Davis",
     guestEmail: "emma@email.com",
     guestPhone: "+1 555 0102",
@@ -151,6 +153,7 @@ export const MOCK_RESERVATIONS: Reservation[] = [
   },
   {
     id: "res-3",
+    reservationId: "RES-003",
     guestName: "Robert Brown",
     guestEmail: "robert@email.com",
     guestPhone: "+1 555 0103",
@@ -165,6 +168,7 @@ export const MOCK_RESERVATIONS: Reservation[] = [
   },
   {
     id: "res-4",
+    reservationId: "RES-004",
     guestName: "Olivia Martinez",
     guestEmail: "olivia@email.com",
     guestPhone: "+1 555 0104",
@@ -179,6 +183,7 @@ export const MOCK_RESERVATIONS: Reservation[] = [
   },
   {
     id: "res-5",
+    reservationId: "RES-005",
     guestName: "Michael Johnson",
     guestEmail: "michael@email.com",
     guestPhone: "+1 555 0105",

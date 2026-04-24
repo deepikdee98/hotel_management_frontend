@@ -190,17 +190,25 @@ export interface HousekeepingTask {
 // Reservation
 export interface Reservation {
   id: string
-  reservationId: string 
+  reservationId: string
   guestName: string
   guestEmail: string
   guestPhone: string
+  idProofType?: string
+  idProofNumber?: string
   roomId: string
   roomNumber: string
+  roomType?: string
   checkIn: string
   checkOut: string
   status: "confirmed" | "checked-in" | "checked-out" | "cancelled"
+  adults?: number
+  children?: number
   totalAmount: number
   paidAmount: number
+  paymentMode?: string
+  ratePlan?: string
+  bookingSource?: string
   createdAt: string
 }
 

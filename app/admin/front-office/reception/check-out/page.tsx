@@ -29,6 +29,18 @@ export default function CheckOutPage() {
   const [checkoutResult, setCheckoutResult] = useState<any>(null)
   const [showSuccess, setShowSuccess] = useState(false)
 
+  const getGuestRoomNumber = (guest: any) => {
+    return String(guest?.roomNumber ?? guest?.room?.roomNumber ?? guest?.room?.number ?? guest?.room?.roomNo ?? "").trim()
+  }
+
+  const getGuestDisplayName = (guest: any) => {
+    return String(guest?.guestName ?? guest?.name ?? "").trim()
+  }
+
+  const getGuestFolioNumber = (guest: any) => {
+    return String(guest?.folioNumber ?? guest?.folio?.folioNumber ?? "").trim()
+  }
+
   // Extra checkout fields
   const [keyCardsReturned, setKeyCardsReturned] = useState(1)
   const [minibarChecked, setMinibarChecked] = useState(true)
@@ -116,7 +128,8 @@ export default function CheckOutPage() {
   const handleRoomChange = async (roomNumber: string) => {
     setShowSuccess(false)
     setSelectedRoom(roomNumber)
-    const guest = inHouseGuests.find(g => (g.roomNumber || g.room?.roomNumber) === roomNumber)
+    setFolioData(null)
+    const guest = inHouseGuests.find(g => getGuestRoomNumber(g) === String(roomNumber).trim())
     if (guest && (guest.folioId || guest.id)) {
       setFetchingFolio(true)
       try {
@@ -138,7 +151,11 @@ export default function CheckOutPage() {
 
     setProcessingCheckout(true)
     try {
-      const guest = inHouseGuests.find(g => (g.roomNumber || g.room?.roomNumber) === selectedRoom)
+      const guest = inHouseGuests.find(g => getGuestRoomNumber(g) === String(selectedRoom).trim())
+      if (!guest) {
+        toast.error("Selected room details were not found")
+        return
+      }
       const payload = {
         folioId: guest.folioId || guest.id,
         actualCheckOutTime: new Date().toISOString(),
@@ -161,7 +178,7 @@ export default function CheckOutPage() {
         toast.success("Checkout processed successfully")
         setCheckoutResult(response.data)
         setShowSuccess(true)
-        
+
         // Reset and refresh
         // setSelectedRoom("")
         // setFolioData(null)
@@ -172,7 +189,7 @@ export default function CheckOutPage() {
         setDamageCharges(0)
         setRating(5)
         setComments("")
-        
+
         fetchInHouseGuests()
       }
     } catch (error: any) {
@@ -219,13 +236,32 @@ export default function CheckOutPage() {
     }
   }
 
-  const room = inHouseGuests.find(g => (g.roomNumber || g.room?.roomNumber) === selectedRoom)
-  
+  const room = inHouseGuests.find(g => getGuestRoomNumber(g) === String(selectedRoom).trim())
+  const roomOptions = Array.from(
+    new Map(
+      inHouseGuests
+        .map((guest) => {
+          const roomNumber = getGuestRoomNumber(guest)
+          if (!roomNumber) return null
+
+          return [
+            roomNumber,
+            {
+              roomNumber,
+              guestName: getGuestDisplayName(guest),
+              folioNumber: getGuestFolioNumber(guest),
+            },
+          ] as const
+        })
+        .filter((entry): entry is readonly [string, { roomNumber: string; guestName: string; folioNumber: string }] => Boolean(entry))
+    ).values()
+  ).sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true, sensitivity: "base" }))
+
   // Calculate billing from folioData or fallback to room data
   const charges = folioData?.charges || []
   const roomCharges = charges.filter((c: any) => c.category === "room-tariff").reduce((sum: number, c: any) => sum + (c.amount || 0), 0) || (room?.planCharges * room?.nights) || 0
   const serviceCharges = charges.filter((c: any) => c.category !== "room-tariff").reduce((sum: number, c: any) => sum + (c.amount || 0), 0) || 0
-  
+
   const cgst = folioData?.cgst || 0
   const sgst = folioData?.sgst || 0
   const totalTax = cgst + sgst
@@ -270,7 +306,7 @@ export default function CheckOutPage() {
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
-            <div id="gr-card-print" className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div id="gr-card-print" className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             {/* Room Selection */}
             <Card className="lg:col-span-1">
               <CardHeader className="pb-2">
@@ -282,10 +318,15 @@ export default function CheckOutPage() {
                   <Select value={selectedRoom} onValueChange={handleRoomChange}>
                     <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select room" /></SelectTrigger>
                     <SelectContent>
-                      {inHouseGuests.map(g => {
-                        const rNum = g.roomNumber || g.room?.roomNumber
-                        return <SelectItem key={rNum} value={rNum}>{rNum} - {g.guestName || g.name}</SelectItem>
-                      })}
+                      {roomOptions.length > 0 ? (
+                        roomOptions.map((option) => (
+                          <SelectItem key={option.roomNumber} value={option.roomNumber}>
+                            {[option.roomNumber, option.guestName, option.folioNumber].filter(Boolean).join(" - ")}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="no-rooms" disabled>No occupied rooms available</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -302,25 +343,27 @@ export default function CheckOutPage() {
                 </div>
                 {room && (
                   <div className="space-y-2 pt-2">
+                    <div className="flex justify-between text-xs"><span className="text-muted-foreground">Room:</span><span className="font-medium text-foreground">{getGuestRoomNumber(room) || "N/A"}</span></div>
                     <div className="flex justify-between text-xs"><span className="text-muted-foreground">Guest:</span><span className="font-medium text-foreground">{room.guestName || room.name}</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-muted-foreground">Folio:</span><span className="text-foreground">{folioData?.folioNumber || room.folioNumber || "N/A"}</span></div>
                     <div className="flex justify-between text-xs"><span className="text-muted-foreground">Booking:</span><span className="text-foreground">{room.bookingNo || room.bookingId || room.reservationId || "N/A"}</span></div>
                     <div className="flex justify-between text-xs"><span className="text-muted-foreground">Check-In:</span><span className="text-foreground">{room.checkInDate || room.checkIn}</span></div>
                     <div className="flex justify-between text-xs"><span className="text-muted-foreground">Check-Out:</span><span className="text-foreground">{room.checkOutDate || room.checkOut || "N/A"}</span></div>
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Room Type:</span>
                       <span className="text-foreground">
-                        {room.roomType?.name || 
-                         room.type || 
-                         roomTypes.find(rt => (rt._id === (room.roomType?.$oid || room.roomType)) || (rt.id === (room.roomType?.$oid || room.roomType)))?.name || 
-                         "N/A"}
+                        {room.roomType?.name ||
+                          room.type ||
+                          roomTypes.find(rt => (rt._id === (room.roomType?.$oid || room.roomType)) || (rt.id === (room.roomType?.$oid || room.roomType)))?.name ||
+                          "N/A"}
                       </span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Plan:</span>
                       <span className="text-foreground">
-                        {room.ratePlan?.name || 
-                         ratePlans.find(rp => (rp._id === (room.planType?.$oid || room.planType)) || (rp.id === (room.planType?.$oid || room.planType)))?.name || 
-                         "N/A"}
+                        {room.ratePlan?.name ||
+                          ratePlans.find(rp => (rp._id === (room.planType?.$oid || room.planType)) || (rp.id === (room.planType?.$oid || room.planType)))?.name ||
+                          "N/A"}
                       </span>
                     </div>
                     <div className="flex justify-between text-xs"><span className="text-muted-foreground">Nights:</span><span className="text-foreground">{room.nights || 0}</span></div>
@@ -381,7 +424,7 @@ export default function CheckOutPage() {
                     </div>
 
                     <Separator />
-                    
+
                     <div className="grid grid-cols-2 gap-4 pt-2">
                       <div className="space-y-3">
                         <div className="flex items-center space-x-2">
@@ -394,31 +437,31 @@ export default function CheckOutPage() {
                         </div>
                         <div className="space-y-1">
                           <Label className="text-[10px] text-muted-foreground uppercase">Key Cards Returned</Label>
-                          <Input 
-                            type="number" 
-                            className="h-7 text-xs" 
-                            value={keyCardsReturned} 
-                            onChange={(e) => setKeyCardsReturned(parseInt(e.target.value))} 
+                          <Input
+                            type="number"
+                            className="h-7 text-xs"
+                            value={keyCardsReturned}
+                            onChange={(e) => setKeyCardsReturned(parseInt(e.target.value))}
                           />
                         </div>
                       </div>
                       <div className="space-y-3">
                         <div className="space-y-1">
                           <Label className="text-[10px] text-muted-foreground uppercase">Minibar Charges</Label>
-                          <Input 
-                            type="number" 
-                            className="h-7 text-xs" 
-                            value={minibarCharges} 
-                            onChange={(e) => setMinibarCharges(parseFloat(e.target.value))} 
+                          <Input
+                            type="number"
+                            className="h-7 text-xs"
+                            value={minibarCharges}
+                            onChange={(e) => setMinibarCharges(parseFloat(e.target.value))}
                           />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-[10px] text-muted-foreground uppercase">Damage Charges</Label>
-                          <Input 
-                            type="number" 
-                            className="h-7 text-xs" 
-                            value={damageCharges} 
-                            onChange={(e) => setDamageCharges(parseFloat(e.target.value))} 
+                          <Input
+                            type="number"
+                            className="h-7 text-xs"
+                            value={damageCharges}
+                            onChange={(e) => setDamageCharges(parseFloat(e.target.value))}
                           />
                         </div>
                       </div>
@@ -435,11 +478,11 @@ export default function CheckOutPage() {
                           />
                         ))}
                       </div>
-                      <Textarea 
-                        placeholder="Comments..." 
-                        className="text-xs h-16" 
-                        value={comments} 
-                        onChange={(e) => setComments(e.target.value)} 
+                      <Textarea
+                        placeholder="Comments..."
+                        className="text-xs h-16"
+                        value={comments}
+                        onChange={(e) => setComments(e.target.value)}
                       />
                     </div>
 
@@ -470,9 +513,9 @@ export default function CheckOutPage() {
             {billingType === "split" && (
               <Button variant="outline" size="sm" className="gap-1.5"><Printer className="h-3.5 w-3.5" /> Split Print (F5)</Button>
             )}
-            <Button 
-              size="sm" 
-              className="gap-1.5" 
+            <Button
+              size="sm"
+              className="gap-1.5"
               onClick={handleCheckout}
               disabled={processingCheckout}
             >
