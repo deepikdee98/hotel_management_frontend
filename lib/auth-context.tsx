@@ -16,7 +16,17 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 const AUTH_STORAGE_KEY = "hotel_manager_auth"
 const AUTH_TOKEN_STORAGE_KEY = "hotel_manager_tokens"
-const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"
+const API_BASE_URL = "http://localhost:3001"
+
+function pickModules(...sources: unknown[]): ModuleType[] {
+  for (const source of sources) {
+    if (Array.isArray(source)) {
+      return source as ModuleType[]
+    }
+  }
+
+  return []
+}
 
 function pickToken(payload: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {
@@ -225,27 +235,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const decoded = JSON.parse(atob(accessToken.split(".")[1]))
         const userData = decoded.user || decoded
+        const hotelData = userData?.hotel
 
         userProfile = {
           id: userData.id || userData._id || userData.sub || "",
           email: userData.email || "",
           role: mapRole(userData.role),
           name: resolveName(userData),
-          modules: userData.modules || [],
-          hotelId: userData.hotelId,
-          hotelName: userData.hotelName,
+          modules: pickModules(userData.modules, hotelData?.modules),
+          hotelId: userData.hotelId || hotelData?._id || hotelData?.id,
+          hotelName: userData.hotelName || hotelData?.name,
         }
       } catch {
         const data = payload.data?.user || payload.user || payload
+        const hotelData = data?.hotel || payload.data?.hotel || payload.hotel
 
         userProfile = {
           id: data.id || "",
           email: data.email || "",
           role: mapRole(data.role),
           name: resolveName(data),
-          modules: data.modules || [],
-          hotelId: data.hotelId,
-          hotelName: data.hotelName,
+          modules: pickModules(data.modules, payload.data?.modules, payload.modules, hotelData?.modules),
+          hotelId: data.hotelId || hotelData?._id || hotelData?.id,
+          hotelName: data.hotelName || hotelData?.name,
         }
       }
 
@@ -263,10 +275,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasAccess = useCallback(
     (module: ModuleType) => {
       if (!user) return false
-      // Admin has access to all modules
-      if (user.role === "admin" || user.role === "super-admin" || user.role === "hoteladmin") return true
+      if (user.role === "super-admin") return true
       
-      // Staff has access only to assigned modules
       if (!user.modules || !Array.isArray(user.modules)) return false
       
       return user.modules.some(m => {
