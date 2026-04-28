@@ -47,7 +47,7 @@ export default function EventsPage() {
   const totalRevenue = MOCK_EVENTS.filter((e) => e.status !== "cancelled").reduce((sum, e) => sum + e.amount, 0)
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>

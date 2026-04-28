@@ -43,7 +43,12 @@ export default function RoomAdvancePage() {
           booking: c.bookingNo || c._id
         }))
 
-        setRooms(formatted)
+        // Deduplicate rooms by ID to avoid duplicate key warnings
+        const uniqueRooms = Array.from(
+          new Map(formatted.map(r => [r.id, r])).values()
+        )
+
+        setRooms(uniqueRooms)
       } catch (err) {
         console.error(err)
       }
@@ -107,7 +112,7 @@ export default function RoomAdvancePage() {
   }
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-4 max-w-2xl">
         <div className="flex items-center justify-between">
           <div>
@@ -129,7 +134,7 @@ export default function RoomAdvancePage() {
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
                     {rooms.map(r => (
-                      <SelectItem key={r.id + "-" + r.booking} value={r.id}>
+                      <SelectItem key={r.id} value={r.id}>
                         {r.roomNo} - {r.guest}
                       </SelectItem>
                     ))}

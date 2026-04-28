@@ -1053,6 +1053,11 @@ export async function getHousekeepingRooms(params?: { hkStatus?: string; status?
   return Array.isArray(data.data?.rooms) ? data.data.rooms.map(mapRoom) : []
 }
 
+export async function getHousekeepingStaff(): Promise<Staff[]> {
+  const data = await apiRequest<{ success: boolean; data: { staff: JsonRecord[] } }>("/housekeeping/staff")
+  return Array.isArray(data.data?.staff) ? data.data.staff.map(mapStaff) : []
+}
+
 export async function updateRoomHkStatus(roomId: string, payload: { hkStatus?: string; status?: string }) {
   return apiRequest<{ success: boolean; data: any }>(`/housekeeping/rooms/${roomId}/status`, {
     method: "PATCH",

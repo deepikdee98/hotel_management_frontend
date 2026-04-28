@@ -172,7 +172,7 @@ export default function AdminFrontOfficePage() {
   }
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">

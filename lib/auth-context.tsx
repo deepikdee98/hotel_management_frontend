@@ -39,7 +39,11 @@ function pickToken(payload: Record<string, unknown>, keys: string[]): string {
 function pickUser(payload: Record<string, unknown>): User | null {
   const directUser = payload.user
   if (directUser && typeof directUser === "object") {
-    return directUser as User
+    const user = directUser as any
+    return {
+      ...user,
+      modules: user.modules || payload.modules || []
+    } as User
   }
 
   const data = payload.data
@@ -47,7 +51,11 @@ function pickUser(payload: Record<string, unknown>): User | null {
     const dataRecord = data as Record<string, unknown>
     const nestedUser = dataRecord.user
     if (nestedUser && typeof nestedUser === "object") {
-      return nestedUser as User
+      const user = nestedUser as any
+      return {
+        ...user,
+        modules: user.modules || dataRecord.modules || payload.modules || []
+      } as User
     }
   }
 
@@ -255,8 +263,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasAccess = useCallback(
     (module: ModuleType) => {
       if (!user) return false
-      // All authenticated roles have access to their defined modules in this version
-      return true
+      // Admin has access to all modules
+      if (user.role === "admin" || user.role === "super-admin" || user.role === "hoteladmin") return true
+      
+      // Staff has access only to assigned modules
+      if (!user.modules || !Array.isArray(user.modules)) return false
+      
+      return user.modules.some(m => {
+        const normalizedM = String(m).toLowerCase().trim()
+        const normalizedTarget = String(module).toLowerCase().trim()
+        return normalizedM === normalizedTarget || 
+               normalizedM.replace(/-/g, '') === normalizedTarget.replace(/-/g, '')
+      })
     },
     [user]
   )

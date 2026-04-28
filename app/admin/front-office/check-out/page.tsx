@@ -96,7 +96,7 @@ export default function CheckOutPage() {
   }
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-4">
         {/* Header */}
         <div>

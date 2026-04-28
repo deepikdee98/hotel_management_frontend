@@ -282,7 +282,7 @@ export default function POSPage() {
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0)
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-6">
         {error && (
           <Alert className="border-destructive/50 bg-destructive/10">

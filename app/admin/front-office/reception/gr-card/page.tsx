@@ -108,7 +108,7 @@ export default function GRCardPage() {
 }
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-4 max-w-2xl print:max-w-none print:p-0">
         <div className="print:hidden">
           <h1 className="text-2xl font-bold text-foreground">GR Card (Guest Registration Card)</h1>

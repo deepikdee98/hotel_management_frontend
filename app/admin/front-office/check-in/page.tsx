@@ -112,7 +112,7 @@ export default function CheckInPage() {
   }
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-6">
         {/* Header */}
         <div>

@@ -28,7 +28,7 @@ type Room = {
 
 export default function PostRoomTariffPage() {
   const [search, setSearch] = useState("")
-  const [selectedRooms, setSelectedRooms] = useState<string[]>([])
+  const [selectedFolios, setSelectedFolios] = useState<string[]>([])
   const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(false)
   const [posting, setPosting] = useState(false)
@@ -64,7 +64,15 @@ export default function PostRoomTariffPage() {
         }
       })
 
-      setRooms(formattedRooms)
+      // Deduplicate by roomNo and guestName
+      const uniqueRooms = formattedRooms.filter((room: Room, index: number, self: Room[]) =>
+        index === self.findIndex((t) => t.roomNo === room.roomNo && t.guestName === room.guestName)
+      )
+
+      // Sort by room number numerically
+      uniqueRooms.sort((a, b) => a.roomNo.localeCompare(b.roomNo, undefined, { numeric: true }))
+
+      setRooms(uniqueRooms)
     } catch (err: any) {
       setError(err.message || "Failed to load rooms")
       console.error("Error loading rooms:", err)
@@ -81,10 +89,10 @@ export default function PostRoomTariffPage() {
 
       let failedRooms: string[] = []
 
-      for (const roomNo of selectedRooms) {
-        const room = rooms.find(r => r.roomNo === roomNo)
+      for (const folioId of selectedFolios) {
+        const room = rooms.find(r => r.folioId === folioId)
         if (!room) {
-          failedRooms.push(roomNo)
+          failedRooms.push(folioId)
           continue
         }
 
@@ -100,15 +108,15 @@ export default function PostRoomTariffPage() {
           })
           setPostedRooms(prev => new Set([...prev, room.folioId]))
         } catch (err) {
-          failedRooms.push(roomNo)
+          failedRooms.push(room.roomNo)
         }
       }
 
       if (failedRooms.length > 0) {
-        setError(`Failed to post tariff for rooms: ${failedRooms.join(", ")}`)
+        setError(`Failed to post tariff for: ${failedRooms.join(", ")}`)
       } else {
         setSuccess(true)
-        setSelectedRooms([])
+        setSelectedFolios([])
         setTimeout(() => {
           loadRooms()
         }, 1500)
@@ -133,23 +141,23 @@ export default function PostRoomTariffPage() {
   )
 
   const unposted = filtered.filter((r: Room) => !r.posted)
-  const toggleRoom = (roomNo: string) => {
-    setSelectedRooms((prev) =>
-      prev.includes(roomNo) ? prev.filter((r) => r !== roomNo) : [...prev, roomNo]
+  const toggleRoom = (folioId: string) => {
+    setSelectedFolios((prev) =>
+      prev.includes(folioId) ? prev.filter((id) => id !== folioId) : [...prev, folioId]
     )
   }
   const selectAll = () => {
-    if (selectedRooms.length === unposted.length) {
-      setSelectedRooms([])
+    if (selectedFolios.length === unposted.length) {
+      setSelectedFolios([])
     } else {
-      setSelectedRooms(unposted.map((r: Room) => r.roomNo))
+      setSelectedFolios(unposted.map((r: Room) => r.folioId))
     }
   }
 
-  const totalSelected = filtered.filter((r: Room) => selectedRooms.includes(r.roomNo)).reduce((sum: number, r: Room) => sum + r.total, 0)
+  const totalSelected = filtered.filter((r: Room) => selectedFolios.includes(r.folioId)).reduce((sum: number, r: Room) => sum + r.total, 0)
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-4">
         {error && (
           <Alert className="border-destructive/50 bg-destructive/10">
@@ -172,18 +180,18 @@ export default function PostRoomTariffPage() {
           </div>
           <Button
             onClick={handlePostTariff}
-            disabled={selectedRooms.length === 0 || posting || loading}
+            disabled={selectedFolios.length === 0 || posting || loading}
             className="gap-2"
           >
             <CreditCard className="h-4 w-4" />
-            {posting ? "Posting..." : `Post Tariff (${selectedRooms.length} rooms)`}
+            {posting ? "Posting..." : `Post Tariff (${selectedFolios.length} rooms)`}
           </Button>
         </div>
 
-        {selectedRooms.length > 0 && (
+        {selectedFolios.length > 0 && (
           <Card className="border-primary/30 bg-primary/5">
             <CardContent className="py-3 flex items-center justify-between">
-              <span className="text-sm font-medium">{selectedRooms.length} room(s) selected</span>
+              <span className="text-sm font-medium">{selectedFolios.length} room(s) selected</span>
               <span className="text-sm font-bold">Total: ${totalSelected.toLocaleString()}</span>
             </CardContent>
           </Card>
@@ -221,7 +229,7 @@ export default function PostRoomTariffPage() {
                   <TableRow>
                     <TableHead className="w-10">
                       <Checkbox
-                        checked={selectedRooms.length === unposted.length && unposted.length > 0}
+                        checked={selectedFolios.length === unposted.length && unposted.length > 0}
                         onCheckedChange={selectAll}
                         disabled={loading}
                       />
@@ -239,12 +247,12 @@ export default function PostRoomTariffPage() {
                 </TableHeader>
                 <TableBody>
                   {filtered.map((room: Room) => (
-                    <TableRow key={room.roomNo} className={room.posted ? "opacity-60" : ""}>
+                    <TableRow key={room.folioId} className={room.posted ? "opacity-60" : ""}>
                       <TableCell>
                         {!room.posted && (
                           <Checkbox
-                            checked={selectedRooms.includes(room.roomNo)}
-                            onCheckedChange={() => toggleRoom(room.roomNo)}
+                            checked={selectedFolios.includes(room.folioId)}
+                            onCheckedChange={() => toggleRoom(room.folioId)}
                             disabled={posting}
                           />
                         )}

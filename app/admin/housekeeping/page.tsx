@@ -46,7 +46,7 @@ import {
 import { 
   getHousekeepingTasks, 
   getHousekeepingRooms, 
-  getAdminStaff, 
+  getHousekeepingStaff,
   createHousekeepingTask, 
   updateHousekeepingTask,
   updateRoomHkStatus
@@ -93,7 +93,7 @@ export default function HousekeepingPage() {
       const [tasksData, roomsData, staffData] = await Promise.all([
         getHousekeepingTasks(),
         getHousekeepingRooms(),
-        getAdminStaff()
+        getHousekeepingStaff()
       ])
       setTasks(tasksData)
       setRooms(roomsData)
@@ -207,7 +207,7 @@ export default function HousekeepingPage() {
 
   if (isLoading) {
     return (
-      <DashboardLayout requiredRole="admin">
+      <DashboardLayout requiredModule="housekeeping">
         <div className="flex items-center justify-center h-[60vh]">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
@@ -216,7 +216,7 @@ export default function HousekeepingPage() {
   }
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredModule="housekeeping">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

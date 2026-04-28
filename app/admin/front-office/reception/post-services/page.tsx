@@ -40,7 +40,14 @@ export default function PostServicesPage() {
         ])
 
         setServices(serviceData)
-        setRooms(roomData?.data?.guests || [])
+
+        // Deduplicate rooms by ID to avoid duplicate key warnings
+        const guestsList = roomData?.data?.guests || []
+        const uniqueRooms = Array.from(
+          new Map(guestsList.map((r: any) => [r.roomId || r._id || r.id, r])).values()
+        )
+        setRooms(uniqueRooms)
+
         setServiceCodes(serviceCodeData)
 
       } catch (err) {
@@ -165,7 +172,7 @@ export default function PostServicesPage() {
   const totalPostedAmount = services.reduce((sum, s) => sum + (Number(s.total) || 0), 0)
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Post Other Services</h1>
@@ -192,11 +199,14 @@ export default function PostServicesPage() {
                 <Select value={form.roomNo} onValueChange={v => setForm(prev => ({ ...prev, roomNo: v }))}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    {rooms.map((g: any) => (
-                      <SelectItem key={g.roomId || g._id || g.id} value={g.roomId || g._id || g.id}>
-                        {g.roomNumber} - {g.guestName}
-                      </SelectItem>
-                    ))}
+                    {rooms.map((g: any) => {
+                      const roomId = g.roomId || g._id || g.id
+                      return (
+                        <SelectItem key={roomId} value={roomId}>
+                          {g.roomNumber} - {g.guestName}
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>

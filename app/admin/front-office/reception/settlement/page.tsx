@@ -195,7 +195,7 @@ export default function SettlementPage() {
   }, [netPayable])
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-4 max-w-2xl">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Settlement Check-Out</h1>

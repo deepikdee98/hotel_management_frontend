@@ -131,7 +131,7 @@ export default function ExtendCheckoutPage() {
   const upcomingCount = guests.filter(g => getStatus(g.checkOutDate || g.checkOut || g.expectedCheckOut) === "upcoming").length
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>

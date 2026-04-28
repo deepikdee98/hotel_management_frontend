@@ -99,7 +99,7 @@ export default function BlockRoomPage() {
   }
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Block Room</h1>

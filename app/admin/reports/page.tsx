@@ -62,7 +62,7 @@ export default function ReportsPage() {
 
   if (loading) {
     return (
-      <DashboardLayout requiredRole="admin">
+      <DashboardLayout requiredModule="reports">
         <div className="flex items-center justify-center h-[400px]">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <span className="ml-2 text-lg font-medium">Loading reports...</span>
@@ -77,7 +77,7 @@ export default function ReportsPage() {
   ]
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredModule="reports">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

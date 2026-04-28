@@ -137,7 +137,7 @@ export default function ShiftRoomPage() {
   }
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-4 max-w-3xl">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Shift Room</h1>

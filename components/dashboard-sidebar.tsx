@@ -60,6 +60,7 @@ interface NavItem {
   href: string
   icon: typeof LayoutDashboard
   module?: ModuleType
+  roles?: UserRole[]
   subItems?: SubNavItem[]
 }
 
@@ -69,9 +70,9 @@ const SUPER_ADMIN_NAV: NavItem[] = [
   { label: "Settings", href: "/super-admin/settings", icon: Settings },
 ]
 
-const ADMIN_NAV: NavItem[] = [
+const HOTEL_NAV: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
-  { label: "Staff", href: "/admin/staff", icon: Users },
+  { label: "Staff", href: "/admin/staff", icon: Users, roles: ["admin"] },
   { 
     label: "Front Office", 
     href: "/admin/front-office", 
@@ -135,21 +136,13 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Reports", href: "/admin/reports", icon: BarChart, module: "reports" },
 ]
 
-const STAFF_NAV: NavItem[] = [
-  { label: "Dashboard", href: "/staff", icon: LayoutDashboard },
-  { label: "Rooms", href: "/staff/rooms", icon: BedDouble, module: "front-office" },
-  { label: "Reservations", href: "/staff/reservations", icon: CalendarCheck, module: "front-office" },
-  { label: "Guests", href: "/staff/guests", icon: UserCircle, module: "front-office" },
-]
-
 function getNavItems(role: UserRole): NavItem[] {
   switch (role) {
     case "super-admin":
       return SUPER_ADMIN_NAV
     case "admin":
-      return ADMIN_NAV
     case "staff":
-      return STAFF_NAV
+      return HOTEL_NAV
     default:
       return []
   }
@@ -166,6 +159,10 @@ export function DashboardSidebar({ role }: DashboardSidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
 
   const navItems = getNavItems(role).filter((item) => {
+    // Check role access if defined
+    if (item.roles && !item.roles.includes(role)) return false
+    
+    // Check module access if defined
     if (!item.module) return true
     return hasAccess(item.module)
   })

@@ -191,7 +191,7 @@ export default function SendOffersPage() {
   }, 0)
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-4">
         {error && (
           <Alert className="border-destructive/50 bg-destructive/10">

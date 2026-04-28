@@ -85,7 +85,7 @@ export default function InHouseGuestsPage() {
   const totalBalance = inHouseGuests.reduce((sum, guest) => sum + guest.balance, 0)
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-6">
         {/* Header */}
         <div>

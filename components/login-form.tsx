@@ -58,10 +58,8 @@ export function LoginForm() {
 
         if (role === "superadmin" || role === "super-admin") {
           router.push("/super-admin")
-        } else if (role === "hoteladmin" || role === "admin") {
-          router.push("/admin")
         } else {
-          router.push("/staff")
+          router.push("/admin")
         }
       } else {
         setError("Invalid credentials. Please try again.")

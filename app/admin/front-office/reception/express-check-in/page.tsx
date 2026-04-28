@@ -74,7 +74,7 @@ export default function ExpressCheckInPage() {
   };
 
   return (
-    <DashboardLayout requiredRole="admin">
+    <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-4 max-w-2xl">
         <div className="flex items-center justify-between">
           <div>
