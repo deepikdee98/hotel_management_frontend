@@ -1,14 +1,16 @@
 "use client"
 
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react"
 import type { User, UserRole, ModuleType } from "./types"
+import { getSubscriptionInfo, normalizeSubscriptionStatus, type SubscriptionInfo } from "./subscription"
 
 interface AuthContextType {
   user: User | null
+  subscriptionInfo: SubscriptionInfo | null
   isAuthenticated: boolean
   isLoading: boolean
   login: (email: string, password: string) => Promise<any>
-  logout: () => void
+  logout: (message?: string) => void
   hasAccess: (module: ModuleType) => boolean
 }
 
@@ -16,7 +18,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 const AUTH_STORAGE_KEY = "hotel_manager_auth"
 const AUTH_TOKEN_STORAGE_KEY = "hotel_manager_tokens"
-const API_BASE_URL = "http://localhost:3001"
+const SUBSCRIPTION_STORAGE_KEY = "hotel_manager_subscription"
+const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"
 
 function pickModules(...sources: unknown[]): ModuleType[] {
   for (const source of sources) {
@@ -72,11 +75,59 @@ function pickUser(payload: Record<string, unknown>): User | null {
   return null
 }
 
+function pickExpiryDate(...sources: unknown[]): string | undefined {
+  for (const source of sources) {
+    if (typeof source === "string" && source) return source
+
+    if (source && typeof source === "object") {
+      const record = source as Record<string, unknown>
+      const expiryDate = record.expiryDate
+      if (typeof expiryDate === "string" && expiryDate) return expiryDate
+    }
+  }
+
+  return undefined
+}
+
+function resolveSubscriptionInfo(payload: any, expiryDate?: string): SubscriptionInfo | null {
+  const rawSubscription = payload?.subscription || payload?.data?.subscription
+  const resolvedExpiryDate = pickExpiryDate(expiryDate, rawSubscription, payload?.hotel, payload?.data?.hotel)
+
+  if (resolvedExpiryDate) {
+    return getSubscriptionInfo(resolvedExpiryDate)
+  }
+
+  if (rawSubscription?.status) {
+    return {
+      status: normalizeSubscriptionStatus(rawSubscription.status),
+      daysLeft: Number(rawSubscription.daysLeft || 0),
+      message: String(rawSubscription.message || ""),
+      expiryDate: rawSubscription.expiryDate || null,
+    } as SubscriptionInfo
+  }
+
+  return null
+}
+
+function getStoredAccessToken(): string | null {
+  try {
+    const tokensRaw = sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+    if (!tokensRaw) return null
+
+    const { accessToken } = JSON.parse(tokensRaw)
+    return typeof accessToken === "string" && accessToken ? accessToken : null
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const subscriptionRefreshKeyRef = useRef<string | null>(null)
 
-  const logout = useCallback(() => {
+  const logout = useCallback((message?: string) => {
     const tokensRaw = sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
 
     if (tokensRaw) {
@@ -95,22 +146,125 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setUser(null)
+    setSubscriptionInfo(null)
     sessionStorage.removeItem(AUTH_STORAGE_KEY)
     sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
-    window.location.href = "/"
+    sessionStorage.removeItem(SUBSCRIPTION_STORAGE_KEY)
+    window.location.href = message ? `/?error=${encodeURIComponent(message)}` : "/"
   }, [])
 
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem(AUTH_STORAGE_KEY)
       if (stored) {
-        setUser(JSON.parse(stored))
+        const restoredUser = JSON.parse(stored) as User
+        setUser(restoredUser)
+
+        if (restoredUser.expiryDate) {
+          const nextSubscriptionInfo = getSubscriptionInfo(restoredUser.expiryDate)
+          setSubscriptionInfo(nextSubscriptionInfo)
+          sessionStorage.setItem(SUBSCRIPTION_STORAGE_KEY, JSON.stringify(nextSubscriptionInfo))
+        } else {
+          const storedSubscription = sessionStorage.getItem(SUBSCRIPTION_STORAGE_KEY)
+          if (storedSubscription) {
+            const parsedSubscription = JSON.parse(storedSubscription) as SubscriptionInfo
+            setSubscriptionInfo({
+              ...parsedSubscription,
+              status: normalizeSubscriptionStatus(parsedSubscription.status),
+            })
+          }
+        }
       }
     } catch (e) {
       console.error("Restore failed:", e)
     }
     setIsLoading(false)
   }, [])
+
+  useEffect(() => {
+    if (!user?.expiryDate || user.role === "super-admin") {
+      return
+    }
+
+    const refreshSubscriptionInfo = () => {
+      const nextSubscriptionInfo = getSubscriptionInfo(user.expiryDate as string)
+      setSubscriptionInfo(nextSubscriptionInfo)
+      sessionStorage.setItem(SUBSCRIPTION_STORAGE_KEY, JSON.stringify(nextSubscriptionInfo))
+
+      if (nextSubscriptionInfo.status === "EXPIRED") {
+        logout(nextSubscriptionInfo.message)
+      }
+    }
+
+    refreshSubscriptionInfo()
+    const interval = window.setInterval(refreshSubscriptionInfo, 60 * 60 * 1000)
+
+    return () => window.clearInterval(interval)
+  }, [logout, user?.expiryDate, user?.role])
+
+  useEffect(() => {
+    if (!user || user.role === "super-admin") {
+      return
+    }
+
+    const refreshKey = `${user.id || ""}:${user.hotelId || ""}`
+    if (subscriptionRefreshKeyRef.current === refreshKey) {
+      return
+    }
+
+    subscriptionRefreshKeyRef.current = refreshKey
+    let isCancelled = false
+
+    const loadHotelSubscription = async () => {
+      const accessToken = getStoredAccessToken()
+      if (!accessToken) {
+        subscriptionRefreshKeyRef.current = null
+        return
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/admin/setup/hotel-config`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          cache: "no-store",
+        })
+
+        if (!response.ok) {
+          subscriptionRefreshKeyRef.current = null
+          return
+        }
+
+        const hotelConfig = await response.json()
+        const expiryDate = pickExpiryDate(hotelConfig)
+        if (!expiryDate || isCancelled) return
+
+        const nextUser = {
+          ...user,
+          expiryDate,
+          hotelName: user.hotelName || String(hotelConfig.name || ""),
+        }
+        const nextSubscriptionInfo = getSubscriptionInfo(expiryDate)
+
+        setUser(nextUser)
+        setSubscriptionInfo(nextSubscriptionInfo)
+        sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextUser))
+        sessionStorage.setItem(SUBSCRIPTION_STORAGE_KEY, JSON.stringify(nextSubscriptionInfo))
+
+        if (nextSubscriptionInfo.status === "EXPIRED") {
+          logout(nextSubscriptionInfo.message)
+        }
+      } catch {
+        // Keep the existing session usable if the config lookup fails.
+      }
+    }
+
+    loadHotelSubscription()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [logout, user])
 
   useEffect(() => {
     const tokensRaw = sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
@@ -224,6 +378,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       let userProfile: User
+      const payloadSubscriptionInfo = resolveSubscriptionInfo(payload)
+      const payloadExpiryDate = payloadSubscriptionInfo?.expiryDate || pickExpiryDate(
+        payload.subscription,
+        payload.hotel,
+        payload.data?.subscription,
+        payload.data?.hotel
+      )
 
       const resolveName = (data: any) => {
         const email = String(data?.email || "")
@@ -249,6 +410,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           modules: pickModules(userData.modules, hotelData?.modules),
           hotelId: userData.hotelId || hotelData?._id || hotelData?.id,
           hotelName: userData.hotelName || hotelData?.name,
+          expiryDate: payloadExpiryDate,
         }
       } catch {
         const data = payload.data?.user || payload.user || payload
@@ -262,11 +424,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           modules: pickModules(data.modules, payload.data?.modules, payload.modules, hotelData?.modules),
           hotelId: data.hotelId || hotelData?._id || hotelData?.id,
           hotelName: data.hotelName || hotelData?.name,
+          expiryDate: payloadExpiryDate || pickExpiryDate(data, hotelData),
         }
       }
 
+      const nextSubscriptionInfo = userProfile.expiryDate
+        ? getSubscriptionInfo(userProfile.expiryDate)
+        : payloadSubscriptionInfo
+
+      if (nextSubscriptionInfo?.status === "EXPIRED") {
+        sessionStorage.removeItem(AUTH_STORAGE_KEY)
+        sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+        sessionStorage.removeItem(SUBSCRIPTION_STORAGE_KEY)
+        throw new Error(nextSubscriptionInfo.message)
+      }
+
       setUser(userProfile)
+      setSubscriptionInfo(nextSubscriptionInfo)
       sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userProfile))
+      if (nextSubscriptionInfo) {
+        sessionStorage.setItem(SUBSCRIPTION_STORAGE_KEY, JSON.stringify(nextSubscriptionInfo))
+      } else {
+        sessionStorage.removeItem(SUBSCRIPTION_STORAGE_KEY)
+      }
 
       return { accessToken, refreshToken, role: userProfile.role }
     } catch (error) {
@@ -280,14 +460,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (module: ModuleType) => {
       if (!user) return false
       if (user.role === "super-admin") return true
-      
+
       if (!user.modules || !Array.isArray(user.modules)) return false
-      
+
       return user.modules.some(m => {
         const normalizedM = String(m).toLowerCase().trim()
         const normalizedTarget = String(module).toLowerCase().trim()
-        return normalizedM === normalizedTarget || 
-               normalizedM.replace(/-/g, '') === normalizedTarget.replace(/-/g, '')
+        return normalizedM === normalizedTarget ||
+          normalizedM.replace(/-/g, '') === normalizedTarget.replace(/-/g, '')
       })
     },
     [user]
@@ -297,6 +477,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        subscriptionInfo,
         isAuthenticated: !!user,
         isLoading,
         login,

@@ -120,9 +120,10 @@ export interface Hotel {
   modules: ModuleType[]
   status: "active" | "inactive" | "pending" | "suspended"
   isActive: boolean
-  subscriptionStatus?: "ACTIVE" | "GRACE_PERIOD" | "EXPIRED" | "INACTIVE" | "NOT_FOUND"
+  subscriptionStatus?: "ACTIVE" | "WARNING" | "GRACE" | "EXPIRED" | "INACTIVE"
   subscriptionMessage?: string
   subscriptionIsValid?: boolean
+  subscriptionDaysLeft?: number
   expiryDate: string
   createdAt: string
   roomCount: number
@@ -149,6 +150,7 @@ export interface User {
   role: UserRole
   hotelId?: string
   hotelName?: string
+  expiryDate?: string
   modules?: ModuleType[]
   avatar?: string
 }

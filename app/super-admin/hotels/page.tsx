@@ -230,7 +230,9 @@ export default function HotelsPage() {
     switch (status) {
       case "ACTIVE":
         return "bg-success/10 text-success"
-      case "GRACE_PERIOD":
+      case "WARNING":
+        return "bg-destructive/10 text-destructive"
+      case "GRACE":
         return "bg-warning/10 text-warning"
       case "EXPIRED":
       case "INACTIVE":
@@ -244,7 +246,9 @@ export default function HotelsPage() {
     switch (status) {
       case "ACTIVE":
         return "Subscription Active"
-      case "GRACE_PERIOD":
+      case "WARNING":
+        return "Expiring Soon"
+      case "GRACE":
         return "Grace Period"
       case "EXPIRED":
         return "Expired"

@@ -7,7 +7,8 @@ import { useEffect, useState } from "react"
 import { DashboardSidebar } from "./dashboard-sidebar"
 import { useAuth } from "@/lib/auth-context"
 import type { UserRole, ModuleType } from "@/lib/types"
-import { Loader2 } from "lucide-react"
+import { normalizeSubscriptionStatus } from "@/lib/subscription"
+import { AlertTriangle, Loader2 } from "lucide-react"
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -18,7 +19,7 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children, requiredRole, requiredModule }: DashboardLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const { user, isAuthenticated, isLoading, hasAccess } = useAuth()
+  const { user, subscriptionInfo, isAuthenticated, isLoading, hasAccess } = useAuth()
   const [isReady, setIsReady] = useState(false)
 
   const routeModule =
@@ -31,6 +32,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
     undefined
 
   const moduleToCheck = requiredModule || routeModule
+  const subscriptionStatus = normalizeSubscriptionStatus(subscriptionInfo?.status)
 
   useEffect(() => {
     // Wait for auth to finish loading from sessionStorage
@@ -72,6 +74,20 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
       <DashboardSidebar role={user?.role || "staff"} />
       <div className="ml-64 min-h-screen">
         <main className="p-4">
+          {subscriptionStatus === "WARNING" && subscriptionInfo?.message && (
+            <div className="mb-4 flex items-start gap-3 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 shadow-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{subscriptionInfo.message}</span>
+            </div>
+          )}
+
+          {subscriptionStatus === "GRACE" && subscriptionInfo?.message && (
+            <div className="mb-4 flex items-start gap-3 rounded-md border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm font-medium text-yellow-900 shadow-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{subscriptionInfo.message}</span>
+            </div>
+          )}
+
           {children}
         </main>
       </div>

@@ -1,6 +1,6 @@
 import type { Guest, Hotel, Reservation, Room, Staff, GRCardData, Folio, HousekeepingTask, InventoryItem, POSItem, POSOrder } from "@/lib/types"
 
-const API_BASE_URL = "http://localhost:3001"
+const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"
 const TOKEN_STORAGE_KEY = "hotel_manager_tokens"
 
 type JsonRecord = Record<string, unknown>
@@ -46,19 +46,20 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
       const shouldShowLoginError =
         errorData.code === "HOTEL_INACTIVE" ||
-          errorData.code === "SUBSCRIPTION_EXPIRED" ||
-          errorData.message?.toLowerCase().includes("deactivated") ||
-          errorData.message?.toLowerCase().includes("expired")
+        errorData.code === "SUBSCRIPTION_EXPIRED" ||
+        errorData.message?.toLowerCase().includes("deactivated") ||
+        errorData.message?.toLowerCase().includes("expired")
 
       if (response.status === 401 || shouldShowLoginError) {
-        
+
         sessionStorage.removeItem("hotel_manager_auth")
         sessionStorage.removeItem(TOKEN_STORAGE_KEY)
+        sessionStorage.removeItem("hotel_manager_subscription")
         window.location.href = shouldShowLoginError
           ? `/?error=${encodeURIComponent(errorData.message || "Session expired")}`
           : "/"
       }
-      
+
       throw new Error(errorData.message || `Request failed: ${response.status}`)
     }
     const text = await response.text()
@@ -236,6 +237,7 @@ function mapHotel(raw: JsonRecord): Hotel {
     subscriptionStatus: raw.subscriptionStatus as Hotel["subscriptionStatus"],
     subscriptionMessage: raw.subscriptionMessage ? String(raw.subscriptionMessage) : undefined,
     subscriptionIsValid: typeof raw.subscriptionIsValid === "boolean" ? raw.subscriptionIsValid : undefined,
+    subscriptionDaysLeft: typeof raw.subscriptionDaysLeft === "number" ? raw.subscriptionDaysLeft : undefined,
     expiryDate: raw.expiryDate ? new Date(String(raw.expiryDate)).toISOString() : "",
     createdAt: raw.createdAt ? new Date(String(raw.createdAt)).toISOString().slice(0, 10) : "",
     roomCount: Number(raw.totalRooms || raw.roomCount || 0),
@@ -1208,7 +1210,7 @@ function mapPOSItem(raw: JsonRecord): POSItem {
   }
 }
 
-function mapPOSOrder(raw: JsonRecord): POSOrder {
+function mapPOSOrder(raw: any): POSOrder {
   return {
     id: String(raw._id || raw.id || ""),
     orderNumber: String(raw.orderNumber || ""),
