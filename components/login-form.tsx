@@ -1,41 +1,17 @@
 "use client"
 
-import React from "react"
-
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { Building2, Shield, UserCog, Users, Eye, EyeOff, Loader2 } from "lucide-react"
+import { useEffect, useState, type FormEvent } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Building2, Eye, EyeOff, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/lib/auth-context"
-import type { UserRole } from "@/lib/types"
-import { cn } from "@/lib/utils"
-
-const ROLES: { id: UserRole; label: string; icon: typeof Shield; description: string }[] = [
-  {
-    id: "super-admin",
-    label: "Super Admin",
-    icon: Shield,
-    description: "Manage all hotels and modules",
-  },
-  {
-    id: "admin",
-    label: "Hotel Admin",
-    icon: UserCog,
-    description: "Manage hotel staff and operations",
-  },
-  {
-    id: "staff",
-    label: "Staff",
-    icon: Users,
-    description: "Access assigned modules",
-  },
-]
 
 export function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { login } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -43,33 +19,49 @@ export function LoginForm() {
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  useEffect(() => {
+    const errorParam = searchParams.get("error")
+    if (errorParam) {
+      const message = decodeURIComponent(errorParam)
+      if (message.toLowerCase() === "user is not authorized") {
+        router.replace("/")
+        return
+      }
+      setError(message)
+    }
+  }, [router, searchParams])
 
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
 
-    setIsLoading(true)
-    setError("")
+    setIsLoading(true);
+    setError("");
 
     try {
-      const res = await login(email, password)
+      const res = await login(email, password);
 
       if (res?.accessToken) {
-        const role = String(res.role || "").toLowerCase()
+        const role = String(res.role || "").toLowerCase();
 
         if (role === "superadmin" || role === "super-admin") {
-          router.push("/super-admin")
+          router.push("/super-admin");
         } else {
-          router.push("/admin")
+          router.push("/admin");
         }
       } else {
-        setError("Invalid credentials. Please try again.")
-        setIsLoading(false)
+        setError("Login failed. Please try again.");
       }
-    } catch (err) {
-      setError("An error occurred. Please try again.")
-      setIsLoading(false)
+
+    } catch (error: any) {
+      console.log("ERROR:", error);
+      const message =
+        error?.response?.data?.message ||
+        error?.message;
+      setError(message || "Login failed. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">

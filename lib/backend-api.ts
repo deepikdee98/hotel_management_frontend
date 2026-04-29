@@ -35,13 +35,41 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   })
 
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== "undefined") {
-      sessionStorage.removeItem("hotel_manager_auth")
-      sessionStorage.removeItem(TOKEN_STORAGE_KEY)
-      window.location.href = "/"
+    if ((response.status === 401 || response.status === 403) && typeof window !== "undefined") {
+      const text = await response.text()
+      let errorData;
+      try {
+        errorData = JSON.parse(text)
+      } catch {
+        errorData = { message: text }
+      }
+
+      const shouldShowLoginError =
+        errorData.code === "HOTEL_INACTIVE" ||
+          errorData.code === "SUBSCRIPTION_EXPIRED" ||
+          errorData.message?.toLowerCase().includes("deactivated") ||
+          errorData.message?.toLowerCase().includes("expired")
+
+      if (response.status === 401 || shouldShowLoginError) {
+        
+        sessionStorage.removeItem("hotel_manager_auth")
+        sessionStorage.removeItem(TOKEN_STORAGE_KEY)
+        window.location.href = shouldShowLoginError
+          ? `/?error=${encodeURIComponent(errorData.message || "Session expired")}`
+          : "/"
+      }
+      
+      throw new Error(errorData.message || `Request failed: ${response.status}`)
     }
     const text = await response.text()
-    throw new Error(text || `Request failed: ${response.status}`)
+    let errorMessage = text
+    try {
+      const errorData = JSON.parse(text)
+      errorMessage = errorData.message || errorMessage
+    } catch {
+      // Keep the original response text when it is not JSON.
+    }
+    throw new Error(errorMessage || `Request failed: ${response.status}`)
   }
 
   return (await response.json()) as T
@@ -203,7 +231,12 @@ function mapHotel(raw: JsonRecord): Hotel {
     phone: String(raw.phone || ""),
     email: String(raw.email || ""),
     modules: Array.isArray(raw.modules) ? (raw.modules as Hotel["modules"]) : [],
-    status: status === "active" || status === "inactive" || status === "pending" ? status : "inactive",
+    status: status === "active" || status === "inactive" || status === "pending" || status === "suspended" ? status : "inactive",
+    isActive: Boolean(raw.isActive ?? true),
+    subscriptionStatus: raw.subscriptionStatus as Hotel["subscriptionStatus"],
+    subscriptionMessage: raw.subscriptionMessage ? String(raw.subscriptionMessage) : undefined,
+    subscriptionIsValid: typeof raw.subscriptionIsValid === "boolean" ? raw.subscriptionIsValid : undefined,
+    expiryDate: raw.expiryDate ? new Date(String(raw.expiryDate)).toISOString() : "",
     createdAt: raw.createdAt ? new Date(String(raw.createdAt)).toISOString().slice(0, 10) : "",
     roomCount: Number(raw.totalRooms || raw.roomCount || 0),
   }
@@ -278,6 +311,18 @@ export async function updateSuperAdminHotel(id: string, payload: any) {
   return apiRequest(`/super-admin/hotels/${id}`, {
     method: "PUT",
     body: JSON.stringify(payload),
+  })
+}
+
+export async function extendSuperAdminHotelSubscription(id: string) {
+  return apiRequest<JsonRecord>(`/super-admin/hotels/${id}/extend-subscription`, {
+    method: "PATCH",
+  })
+}
+
+export async function toggleSuperAdminHotelActive(id: string) {
+  return apiRequest<JsonRecord>(`/super-admin/hotels/${id}/toggle-active`, {
+    method: "PATCH",
   })
 }
 

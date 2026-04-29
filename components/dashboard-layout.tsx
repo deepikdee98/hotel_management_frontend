@@ -2,8 +2,8 @@
 
 import React from "react"
 
-import { useRouter } from "next/navigation"
-import { useEffect, useState, useRef } from "react"
+import { usePathname, useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
 import { DashboardSidebar } from "./dashboard-sidebar"
 import { useAuth } from "@/lib/auth-context"
 import type { UserRole, ModuleType } from "@/lib/types"
@@ -17,8 +17,20 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, requiredRole, requiredModule }: DashboardLayoutProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const { user, isAuthenticated, isLoading, hasAccess } = useAuth()
   const [isReady, setIsReady] = useState(false)
+
+  const routeModule =
+    pathname.startsWith("/admin/front-office") ? "front-office" :
+    pathname.startsWith("/admin/pos") ? "point-of-sale" :
+    pathname.startsWith("/admin/housekeeping") ? "housekeeping" :
+    pathname.startsWith("/admin/accounts") ? "accounts" :
+    pathname.startsWith("/admin/inventory") ? "inventory" :
+    pathname.startsWith("/admin/reports") ? "reports" :
+    undefined
+
+  const moduleToCheck = requiredModule || routeModule
 
   useEffect(() => {
     // Wait for auth to finish loading from sessionStorage
@@ -29,14 +41,8 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
       return
     }
 
-    // Admin has access to everything
-    if (user.role === "admin" || user.role === "hoteladmin" || user.role === "super-admin") {
-      setIsReady(true)
-      return
-    }
-
     // Check module access if required
-    if (requiredModule && !hasAccess(requiredModule)) {
+    if (moduleToCheck && !hasAccess(moduleToCheck)) {
       router.replace("/")
       return
     }
@@ -51,7 +57,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
     }
 
     setIsReady(true)
-  }, [isLoading, isAuthenticated, user, requiredRole, requiredModule, router, hasAccess])
+  }, [isLoading, isAuthenticated, user, requiredRole, moduleToCheck, router, hasAccess])
 
   if (isLoading || !isReady) {
     return (

@@ -129,8 +129,11 @@ export default function FOSetupPage() {
         gstNumber: hc?.gstNumber || "",
         checkInTime: hc?.checkInTime || "14:00",
         checkOutTime: hc?.checkOutTime || "11:00",
-        currency: hc?.currency || "inr",
-        dateFormat: hc?.dateFormat || "dd-mm-yyyy",
+        currency: String(hc?.currency || "INR").toUpperCase(),
+        dateFormat: String(hc?.dateFormat || "DD-MM-YYYY").toUpperCase(),
+        nightAuditTime: hc?.nightAuditTime || "00:00",
+        nightAuditEnabled: hc?.nightAuditEnabled ?? true,
+        lastNightAuditAt: hc?.lastNightAuditAt || null,
       })
     } catch (error: any) {
       toast({
@@ -255,6 +258,8 @@ export default function FOSetupPage() {
         checkOutTime: hotelConfigForm.checkOutTime,
         currency: hotelConfigForm.currency,
         dateFormat: hotelConfigForm.dateFormat,
+        nightAuditTime: hotelConfigForm.nightAuditTime,
+        nightAuditEnabled: hotelConfigForm.nightAuditEnabled,
       })
 
       const updatedHotel = (result as any)?.hotel || {
@@ -274,6 +279,9 @@ export default function FOSetupPage() {
         checkOutTime: updatedHotel.checkOutTime,
         currency: updatedHotel.currency,
         dateFormat: updatedHotel.dateFormat,
+        nightAuditTime: updatedHotel.nightAuditTime || hotelConfigForm.nightAuditTime,
+        nightAuditEnabled: updatedHotel.nightAuditEnabled ?? hotelConfigForm.nightAuditEnabled,
+        lastNightAuditAt: updatedHotel.lastNightAuditAt || hotelConfigForm.lastNightAuditAt || null,
       })
 
       toast({
@@ -894,26 +902,52 @@ export default function FOSetupPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Default Currency</Label>
-                  <Select value={hotelConfigForm.currency || "inr"} onValueChange={(val) => setHotelConfigForm({ ...hotelConfigForm, currency: val })}>
+                  <Select value={hotelConfigForm.currency || "INR"} onValueChange={(val) => setHotelConfigForm({ ...hotelConfigForm, currency: val })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="inr">INR (Indian Rupee)</SelectItem>
-                      <SelectItem value="usd">USD (US Dollar)</SelectItem>
-                      <SelectItem value="eur">EUR (Euro)</SelectItem>
-                      <SelectItem value="gbp">GBP (British Pound)</SelectItem>
+                      <SelectItem value="INR">INR (Indian Rupee)</SelectItem>
+                      <SelectItem value="USD">USD (US Dollar)</SelectItem>
+                      <SelectItem value="EUR">EUR (Euro)</SelectItem>
+                      <SelectItem value="GBP">GBP (British Pound)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Date Format</Label>
-                  <Select value={hotelConfigForm.dateFormat || "dd-mm-yyyy"} onValueChange={(val) => setHotelConfigForm({ ...hotelConfigForm, dateFormat: val })}>
+                  <Select value={hotelConfigForm.dateFormat || "DD-MM-YYYY"} onValueChange={(val) => setHotelConfigForm({ ...hotelConfigForm, dateFormat: val })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="dd-mm-yyyy">DD-MM-YYYY</SelectItem>
-                      <SelectItem value="mm-dd-yyyy">MM-DD-YYYY</SelectItem>
-                      <SelectItem value="yyyy-mm-dd">YYYY-MM-DD</SelectItem>
+                      <SelectItem value="DD-MM-YYYY">DD-MM-YYYY</SelectItem>
+                      <SelectItem value="MM-DD-YYYY">MM-DD-YYYY</SelectItem>
+                      <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Night Audit Time</Label>
+                    <Input
+                      type="time"
+                      value={hotelConfigForm.nightAuditTime || "00:00"}
+                      onChange={(e) => setHotelConfigForm({ ...hotelConfigForm, nightAuditTime: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Night Audit</Label>
+                    <Select
+                      value={hotelConfigForm.nightAuditEnabled === false ? "disabled" : "enabled"}
+                      onValueChange={(val) => setHotelConfigForm({ ...hotelConfigForm, nightAuditEnabled: val === "enabled" })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="enabled">Enabled</SelectItem>
+                        <SelectItem value="disabled">Disabled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                  Last night audit: {hotelConfigForm.lastNightAuditAt ? new Date(hotelConfigForm.lastNightAuditAt).toLocaleString() : "Not run yet"}
                 </div>
                 <Button className="w-full" onClick={handleSaveHotelConfig}>Save Settings</Button>
               </CardContent>

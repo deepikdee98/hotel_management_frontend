@@ -46,11 +46,9 @@ export default function NightAuditPage() {
           })
         }
 
-        if (auditStatusRes.success && auditStatusRes.data) {
-          if (auditStatusRes.data.status === "Completed") {
-            setAuditData(auditStatusRes.data)
-            setAuditComplete(true)
-          }
+        if (auditStatusRes.success && auditStatusRes.data?.report) {
+          setAuditData(auditStatusRes.data.report)
+          setAuditComplete(["completed", "completed_with_errors"].includes(auditStatusRes.data.report.status))
         }
       } catch (error) {
         console.error("Failed to load night audit data:", error)
@@ -190,8 +188,8 @@ export default function NightAuditPage() {
               <div>
                 <p className="font-medium text-foreground">Night Audit Completed Successfully</p>
                 <p className="text-sm text-muted-foreground">
-                  Business date rolled to {auditData?.auditDate || new Date().toLocaleDateString()}. 
-                  Total revenue finalized: ₹{auditData?.summary?.totalRevenue?.toLocaleString() || "0"}
+                  Business date {auditData?.businessDateKey || new Date().toISOString().slice(0, 10)} closed by {auditData?.triggerSource || "manual"} audit.
+                  Total revenue finalized: ₹{auditData?.totalRevenue?.toLocaleString() || "0"}
                 </p>
               </div>
               <Button 

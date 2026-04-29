@@ -195,6 +195,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const payload = await response.json()
 
+      if (!response.ok) {
+        throw new Error(payload.message || "Login failed")
+      }
+
       const accessToken =
         payload.accessToken ||
         payload.data?.token ||
@@ -265,8 +269,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userProfile))
 
       return { accessToken, refreshToken, role: userProfile.role }
-    } catch {
-      return null
+    } catch (error) {
+      throw error instanceof Error ? error : new Error("Login failed")
     }
   }, [])
 

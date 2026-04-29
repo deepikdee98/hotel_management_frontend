@@ -49,8 +49,10 @@ import {
 } from "@/components/ui/select"
 import { AVAILABLE_MODULES } from "@/lib/types"
 import type { Staff, ModuleType } from "@/lib/types"
+import { useAuth } from "@/lib/auth-context"
 
 export default function StaffManagementPage() {
+  const { user } = useAuth()
   const [staff, setStaff] = useState<Staff[]>([])
   const [search, setSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState<string>("all")
@@ -93,6 +95,10 @@ export default function StaffManagementPage() {
     const matchesRole = roleFilter === "all" || s.role === roleFilter
     return matchesSearch && matchesRole
   })
+
+  const assignableModules = AVAILABLE_MODULES.filter((module) =>
+    user?.modules?.includes(module.id)
+  )
 
   const handleModuleToggle = (moduleId: ModuleType) => {
     setSelectedModules((prev) =>
@@ -231,7 +237,7 @@ export default function StaffManagementPage() {
                   Select which modules this staff member can access
                 </p>
                 <div className="grid grid-cols-2 gap-3">
-                  {AVAILABLE_MODULES.map((module) => (
+                  {assignableModules.map((module) => (
                     <div
                       key={module.id}
                       className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-all ${

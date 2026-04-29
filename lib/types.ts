@@ -118,7 +118,12 @@ export interface Hotel {
   phone: string
   email: string
   modules: ModuleType[]
-  status: "active" | "inactive" | "pending"
+  status: "active" | "inactive" | "pending" | "suspended"
+  isActive: boolean
+  subscriptionStatus?: "ACTIVE" | "GRACE_PERIOD" | "EXPIRED" | "INACTIVE" | "NOT_FOUND"
+  subscriptionMessage?: string
+  subscriptionIsValid?: boolean
+  expiryDate: string
   createdAt: string
   roomCount: number
 }
