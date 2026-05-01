@@ -11,11 +11,16 @@ import { getInHouseGuests, createPaxCheckIn } from "@/lib/backend-api";
 import { Textarea } from "@/components/ui/textarea"
 import { Save, RotateCcw, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { useSetupOptions } from "@/hooks/use-setup-options"
 
 
 
 export default function PaxCheckInPage() {
   const [inHouseGuests, setInHouseGuests] = useState<any[]>([]);
+  const paymentModeOptions = useSetupOptions("paymentMode")
+  const titleOptions = useSetupOptions("title")
+  const genderOptions = useSetupOptions("gender")
+  const idProofOptions = useSetupOptions("idProof")
   const [form, setForm] = useState({
     bookingNo: "BK-" + Date.now().toString().slice(-6),
     roomNo: "",
@@ -48,6 +53,12 @@ export default function PaxCheckInPage() {
       }
     }
   };
+
+  const renderSetupItems = (options: { data: Array<{ _id: string; value: string }>; loading: boolean }) => {
+    if (options.loading) return <SelectItem value="__loading__" disabled>Loading...</SelectItem>
+    if (!options.data.length) return <SelectItem value="__empty__" disabled>No options configured</SelectItem>
+    return options.data.map((option) => <SelectItem key={option._id} value={option.value}>{option.value}</SelectItem>)
+  }
 
   useEffect(() => {
     const loadData = async () => {
@@ -164,7 +175,7 @@ export default function PaxCheckInPage() {
                 <Select value={form.title} onValueChange={v => handleChange("title", v)}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    {["Mr.", "Mrs.", "Ms.", "Dr."].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    {renderSetupItems(titleOptions)}
                   </SelectContent>
                 </Select>
               </div>
@@ -183,8 +194,7 @@ export default function PaxCheckInPage() {
                 <Select value={form.gender} onValueChange={v => handleChange("gender", v)}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Male">Male</SelectItem>
-                    <SelectItem value="Female">Female</SelectItem>
+                    {renderSetupItems(genderOptions)}
                   </SelectContent>
                 </Select>
               </div>
@@ -199,7 +209,7 @@ export default function PaxCheckInPage() {
                 <Select value={form.idProofType} onValueChange={v => handleChange("idProofType", v)}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    {["Aadhaar Card", "Passport", "Driving License", "Voter ID"].map(id => <SelectItem key={id} value={id}>{id}</SelectItem>)}
+                    {renderSetupItems(idProofOptions)}
                   </SelectContent>
                 </Select>
               </div>
@@ -218,7 +228,7 @@ export default function PaxCheckInPage() {
                 <Select value={form.paymentMode} onValueChange={v => handleChange("paymentMode", v)}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    {["Cash", "Credit Card", "Debit Card", "UPI"].map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    {renderSetupItems(paymentModeOptions)}
                   </SelectContent>
                 </Select>
               </div>

@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Plus, Search, Download, Filter, Eye } from "lucide-react"
+import { useSetupOptions } from "@/hooks/use-setup-options"
 
 const mockTransactions = [
   { id: "TXN-001", date: "2024-01-15", time: "14:30", description: "Room 101 - Checkout Payment", type: "income", category: "Room Revenue", paymentMode: "Credit Card", reference: "CC-4521", amount: 450.00, status: "completed", createdBy: "John Doe" },
@@ -45,14 +46,13 @@ const mockTransactions = [
 ]
 
 const categories = ["Room Revenue", "F&B Revenue", "Other Services", "Supplies", "Utilities", "Payroll", "Maintenance", "Marketing"]
-const paymentModes = ["Cash", "Credit Card", "Debit Card", "UPI", "Bank Transfer", "Cheque"]
-
 export default function TransactionsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [selectedTxn, setSelectedTxn] = useState<typeof mockTransactions[0] | null>(null)
+  const paymentModeOptions = useSetupOptions("paymentMode")
 
   const filteredTransactions = mockTransactions.filter((txn) => {
     const matchesSearch = txn.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -134,9 +134,13 @@ export default function TransactionsPage() {
                         <SelectValue placeholder="Select mode" />
                       </SelectTrigger>
                       <SelectContent>
-                        {paymentModes.map(mode => (
-                          <SelectItem key={mode} value={mode}>{mode}</SelectItem>
-                        ))}
+                        {paymentModeOptions.loading ? (
+                          <SelectItem value="__loading__" disabled>Loading...</SelectItem>
+                        ) : (
+                          paymentModeOptions.data.map((mode) => (
+                            <SelectItem key={mode._id} value={mode.value}>{mode.value}</SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>

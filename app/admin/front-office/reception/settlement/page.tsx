@@ -11,9 +11,12 @@ import { Separator } from "@/components/ui/separator"
 import { Save, RotateCcw, X, Printer, Loader2 } from "lucide-react"
 import { getInHouseGuests, getFolioDetails, settleFolio } from "@/lib/backend-api"
 import { useToast } from "@/hooks/use-toast"
+import { useSetupOptions } from "@/hooks/use-setup-options"
 
 export default function SettlementPage() {
   const { toast } = useToast()
+  const paymentModeOptions = useSetupOptions("paymentMode")
+  const ledgerAccountOptions = useSetupOptions("ledgerAccount")
   const [rooms, setRooms] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [fetchingFolio, setFetchingFolio] = useState(false)
@@ -259,7 +262,7 @@ export default function SettlementPage() {
                 }}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    {["Cash", "UPI", "Credit Card", "Debit Card", "Bank Transfer"].map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    {paymentModeOptions.loading ? <SelectItem value="__loading__" disabled>Loading...</SelectItem> : paymentModeOptions.data.map(p => <SelectItem key={p._id} value={p.value}>{p.value}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -268,7 +271,7 @@ export default function SettlementPage() {
                 <Select value={form.ledgerAc} onValueChange={v => setForm(prev => ({ ...prev, ledgerAc: v }))}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    {["Cash", "HDFC Hotel Account", "SBI Hotel Account", "ICICI Hotel Account"].map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                    {ledgerAccountOptions.loading ? <SelectItem value="__loading__" disabled>Loading...</SelectItem> : ledgerAccountOptions.data.map(l => <SelectItem key={l._id} value={l.value}>{l.value}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

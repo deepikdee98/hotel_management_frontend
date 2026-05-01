@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { Search, LogOut, CreditCard, Printer, Star, CheckCircle } from "lucide-react"
+import { useSetupOptions } from "@/hooks/use-setup-options"
 
 // Mock guests ready for checkout
 const MOCK_CHECKOUT_GUESTS = [
@@ -61,10 +62,11 @@ const MOCK_CHECKOUT_GUESTS = [
 ]
 
 export default function CheckOutPage() {
+  const paymentModeOptions = useSetupOptions("paymentMode")
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedGuest, setSelectedGuest] = useState<typeof MOCK_CHECKOUT_GUESTS[0] | null>(null)
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false)
-  const [paymentMode, setPaymentMode] = useState("cash")
+  const [paymentMode, setPaymentMode] = useState("")
   const [feedback, setFeedback] = useState("")
   const [rating, setRating] = useState(0)
 
@@ -225,10 +227,7 @@ export default function CheckOutPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="card">Credit/Debit Card</SelectItem>
-                        <SelectItem value="upi">UPI</SelectItem>
-                        <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
+                        {paymentModeOptions.loading ? <SelectItem value="__loading__" disabled>Loading...</SelectItem> : paymentModeOptions.data.map(p => <SelectItem key={p._id} value={p.value}>{p.value}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>

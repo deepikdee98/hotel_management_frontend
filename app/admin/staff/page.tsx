@@ -59,7 +59,8 @@ export default function StaffManagementPage() {
   const [summary, setSummary] = useState({
     totalStaff: 0,
     activeStaff: 0,
-    admins: 0,
+    totalAdmins: 0,
+    activeAdmins: 0,
   })
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [selectedModules, setSelectedModules] = useState<ModuleType[]>([])
@@ -160,8 +161,10 @@ export default function StaffManagementPage() {
     }
   }
 
-  const activeCount = useMemo(() => summary.activeStaff || staff.filter((s) => s.status === "active").length, [summary.activeStaff, staff])
-  const adminCount = useMemo(() => summary.admins || staff.filter((s) => s.role === "admin").length, [summary.admins, staff])
+  const totalStaffCount = useMemo(() => summary.totalStaff || staff.filter((s) => s.role === "staff").length, [summary.totalStaff, staff])
+  const activeStaffCount = useMemo(() => summary.activeStaff || staff.filter((s) => s.role === "staff" && s.status === "active").length, [summary.activeStaff, staff])
+  const totalAdminCount = useMemo(() => summary.totalAdmins || staff.filter((s) => s.role === "admin").length, [summary.totalAdmins, staff])
+  const activeAdminCount = useMemo(() => summary.activeAdmins || staff.filter((s) => s.role === "admin" && s.status === "active").length, [summary.activeAdmins, staff])
 
   return (
     <div className="space-y-6">
@@ -169,19 +172,19 @@ export default function StaffManagementPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Staff Management</h1>
-          <p className="text-muted-foreground">Create staff accounts and assign module access</p>
+          <p className="text-muted-foreground">Create admin or staff accounts and assign module access</p>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
-              Add Staff
+              Add User
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Create New Staff Account</DialogTitle>
-              <DialogDescription>Add a new staff member and assign their module permissions</DialogDescription>
+              <DialogTitle>Create New User Account</DialogTitle>
+              <DialogDescription>Add an admin or staff user and assign module permissions</DialogDescription>
             </DialogHeader>
             <div className="space-y-6 py-4">
               <div className="grid grid-cols-2 gap-4">
@@ -234,17 +237,16 @@ export default function StaffManagementPage() {
               <div className="space-y-3">
                 <Label>Assign Module Access</Label>
                 <p className="text-sm text-muted-foreground">
-                  Select which modules this staff member can access
+                  Select which modules this user can access
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   {assignableModules.map((module) => (
                     <div
                       key={module.id}
-                      className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                        selectedModules.includes(module.id)
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/50"
-                      }`}
+                      className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-all ${selectedModules.includes(module.id)
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/50"
+                        }`}
                       onClick={() => handleModuleToggle(module.id)}
                     >
                       <Checkbox
@@ -264,11 +266,11 @@ export default function StaffManagementPage() {
                 <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button 
-                  onClick={handleAddStaff} 
-                  disabled={!formData.name || !formData.email || selectedModules.length === 0}
+                <Button
+                  onClick={handleAddStaff}
+                  disabled={!formData.name || !formData.email || !formData.password || selectedModules.length === 0}
                 >
-                  Create Staff Account
+                  {formData.role === "admin" ? "Create Admin Account" : "Create Staff Account"}
                 </Button>
               </div>
             </div>
@@ -277,7 +279,34 @@ export default function StaffManagementPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
+
+        <Card className="bg-card border-border">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-warning/10 rounded-lg">
+                <Shield className="h-6 w-6 text-warning" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-foreground">{totalAdminCount}</p>
+                <p className="text-sm text-muted-foreground">Total Admins</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-warning/10 rounded-lg">
+                <UserCheck className="h-6 w-6 text-warning" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-foreground">{activeAdminCount}</p>
+                <p className="text-sm text-muted-foreground">Active Admins</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
         <Card className="bg-card border-border">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
@@ -285,7 +314,7 @@ export default function StaffManagementPage() {
                 <Users className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-foreground">{summary.totalStaff || staff.length}</p>
+                <p className="text-2xl font-bold text-foreground">{totalStaffCount}</p>
                 <p className="text-sm text-muted-foreground">Total Staff</p>
               </div>
             </div>
@@ -298,21 +327,8 @@ export default function StaffManagementPage() {
                 <UserCheck className="h-6 w-6 text-success" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-foreground">{activeCount}</p>
+                <p className="text-2xl font-bold text-foreground">{activeStaffCount}</p>
                 <p className="text-sm text-muted-foreground">Active Staff</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-warning/10 rounded-lg">
-                <Shield className="h-6 w-6 text-warning" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{adminCount}</p>
-                <p className="text-sm text-muted-foreground">Admins</p>
               </div>
             </div>
           </CardContent>
@@ -382,11 +398,10 @@ export default function StaffManagementPage() {
                       </div>
                     </td>
                     <td className="py-4 px-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                        member.role === "admin" 
-                          ? "bg-warning/10 text-warning" 
-                          : "bg-muted text-muted-foreground"
-                      }`}>
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${member.role === "admin"
+                        ? "bg-warning/10 text-warning"
+                        : "bg-muted text-muted-foreground"
+                        }`}>
                         <Shield className="h-3 w-3" />
                         {member.role}
                       </span>
@@ -415,11 +430,10 @@ export default function StaffManagementPage() {
                     </td>
                     <td className="py-4 px-4">
                       <span
-                        className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                          member.status === "active"
-                            ? "bg-success/10 text-success"
-                            : "bg-muted text-muted-foreground"
-                        }`}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium ${member.status === "active"
+                          ? "bg-success/10 text-success"
+                          : "bg-muted text-muted-foreground"
+                          }`}
                       >
                         {member.status}
                       </span>

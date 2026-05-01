@@ -10,8 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createExpressCheckIn, getCheckInData } from "@/lib/backend-api"
 import { Save, RotateCcw, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { useSetupOptions } from "@/hooks/use-setup-options"
 
 export default function ExpressCheckInPage() {
+  const titleOptions = useSetupOptions("title")
+  const checkoutPlanOptions = useSetupOptions("checkoutPlan")
   const [rooms, setRooms] = useState<any[]>([]);
   const [roomTypes, setRoomTypes] = useState<any[]>([]);
   const [form, setForm] = useState({
@@ -28,6 +31,12 @@ export default function ExpressCheckInPage() {
 
   const handleChange = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  const renderSetupItems = (options: { data: Array<{ _id: string; value: string }>; loading: boolean }) => {
+    if (options.loading) return <SelectItem value="__loading__" disabled>Loading...</SelectItem>
+    if (!options.data.length) return <SelectItem value="__empty__" disabled>No options configured</SelectItem>
+    return options.data.map((option) => <SelectItem key={option._id} value={option.value}>{option.value}</SelectItem>)
   }
 
   const handleReset = () => {
@@ -63,6 +72,7 @@ export default function ExpressCheckInPage() {
         nights: Number(form.noOfNights),
         checkInDate: form.checkInDate,
         title: form.title,
+        checkoutPlan: form.checkoutPlan,
       };
 
       const res = await createExpressCheckIn(payload);
@@ -95,7 +105,7 @@ export default function ExpressCheckInPage() {
                 <Select value={form.title} onValueChange={v => handleChange("title", v)}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    {["Mr", "Mrs", "Ms", "Dr", "Prof"].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    {renderSetupItems(titleOptions)}
                   </SelectContent>
                 </Select>
               </div>
@@ -151,7 +161,7 @@ export default function ExpressCheckInPage() {
                 <Select value={form.checkoutPlan} onValueChange={v => handleChange("checkoutPlan", v)}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    {["24 Noon", "12 Noon", "6 AM"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {renderSetupItems(checkoutPlanOptions)}
                   </SelectContent>
                 </Select>
               </div>

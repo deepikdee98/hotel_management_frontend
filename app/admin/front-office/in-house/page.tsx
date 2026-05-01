@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,48 +11,112 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Search, Users, MoreHorizontal, User, FileText, CreditCard, LogOut, MessageSquare } from "lucide-react"
-import { getFrontOfficeReservations, getFrontOfficeRooms, getInHouseGuests } from "@/lib/backend-api"
+import { getInHouseGuests } from "@/lib/backend-api"
+
+type InHouseGuest = {
+  id: string
+  reservationId: string
+  folioId: string
+  guestName: string
+  guestEmail: string
+  guestPhone: string
+  roomNumber: string
+  roomType: string
+  checkIn: string
+  checkOut: string
+  status: "checked-in"
+  totalAmount: number
+  paidAmount: number
+  totalNights: number
+  nightsStayed: number
+  balance: number
+}
+
+const normalizeDate = (value: unknown) => {
+  if (!value) return ""
+  const date = new Date(String(value))
+  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString().slice(0, 10)
+}
+
+const getRoomTypeName = (value: any) => {
+  if (!value) return "standard"
+  if (typeof value === "string") return value
+  return String(value.name || value.code || "standard")
+}
+
+const normalizeInHouseGuest = (item: any): InHouseGuest => {
+  const checkIn = normalizeDate(item.checkInDate || item.checkIn)
+  const checkOut = normalizeDate(item.checkOutDate || item.checkOut)
+  const checkInDate = checkIn ? new Date(checkIn) : null
+  const today = new Date()
+  const totalNights = Math.max(1, Number(item.nights || 1))
+  const nightsStayed = checkInDate && !Number.isNaN(checkInDate.getTime())
+    ? Math.max(1, Math.ceil((today.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)))
+    : 0
+  const totalAmount = Number(item.totalAmount ?? (Number(item.planCharges || 0) * totalNights))
+  const paidAmount = Number(item.paidAmount ?? item.advanceAmount ?? 0)
+
+  return {
+    id: String(item.checkinId || item.id || item.folioId || ""),
+    reservationId: String(item.bookingNo || item.bookingId || item.reservationId || ""),
+    folioId: String(item.folioId || item.id || ""),
+    guestName: String(item.guestName || item.name || ""),
+    guestEmail: String(item.email || item.guestEmail || ""),
+    guestPhone: String(item.mobileNo || item.guestPhone || item.phone || ""),
+    roomNumber: String(item.roomNumber || item.room?.roomNumber || ""),
+    roomType: getRoomTypeName(item.roomType || item.type),
+    checkIn,
+    checkOut,
+    status: "checked-in",
+    totalAmount,
+    paidAmount,
+    totalNights,
+    nightsStayed,
+    balance: totalAmount - paidAmount,
+  }
+}
+
+const getGuestStayKey = (guest: InHouseGuest) =>
+  [
+    guest.guestName.trim().toLowerCase(),
+    guest.guestPhone.trim(),
+    guest.roomNumber.trim(),
+    guest.checkIn,
+    guest.checkOut,
+  ].join("|")
+
+const removeDuplicateStays = (guests: InHouseGuest[]) => {
+  const uniqueGuests = new Map<string, InHouseGuest>()
+
+  guests.forEach((guest) => {
+    const key = getGuestStayKey(guest)
+    if (!uniqueGuests.has(key)) {
+      uniqueGuests.set(key, guest)
+    }
+  })
+
+  return Array.from(uniqueGuests.values())
+}
 
 export default function InHouseGuestsPage() {
+  const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
-  const [reservations, setReservations] = useState<Awaited<ReturnType<typeof getFrontOfficeReservations>>>([])
-  const [rooms, setRooms] = useState<Awaited<ReturnType<typeof getFrontOfficeRooms>>>([])
+  const [guests, setGuests] = useState<InHouseGuest[]>([])
+
+  const openCheckInEdit = (guest: InHouseGuest) => {
+    const bookingId = guest.id || guest.reservationId || guest.folioId
+    if (!bookingId) return
+    router.push(`/admin/front-office/reception/check-in?id=${encodeURIComponent(bookingId)}&mode=edit`)
+  }
 
   useEffect(() => {
     const load = async () => {
       try {
-        const [inHouse, reservationData, roomData] = await Promise.all([
-          getInHouseGuests(),
-          getFrontOfficeReservations({ status: "checked-in" }),
-          getFrontOfficeRooms(),
-        ])
-
-        setRooms(roomData)
-        setReservations(reservationData)
-
-        const inHouseGuests = inHouse.data.guests || []
-        if (inHouseGuests.length && !reservationData.length) {
-          setReservations(
-            inHouseGuests.map((item) => ({
-              id: String(item.folioId || ""),
-              reservationId: String(item.bookingNo || item.folioId || ""),
-              guestName: String(item.guestName || ""),
-              guestEmail: "",
-              guestPhone: "",
-              roomId: "",
-              roomNumber: String(item.roomNumber || ""),
-              checkIn: item.checkInDate ? new Date(String(item.checkInDate)).toISOString().slice(0, 10) : "",
-              checkOut: "",
-              status: "checked-in" as const,
-              totalAmount: 0,
-              paidAmount: 0,
-              createdAt: "",
-            }))
-          )
-        }
+        const inHouse = await getInHouseGuests()
+        const normalizedGuests = (inHouse.data.guests || []).map(normalizeInHouseGuest)
+        setGuests(removeDuplicateStays(normalizedGuests))
       } catch {
-        setReservations([])
-        setRooms([])
+        setGuests([])
       }
     }
 
@@ -59,27 +124,11 @@ export default function InHouseGuestsPage() {
   }, [])
 
   // Get all checked-in reservations with room details
-  const inHouseGuests = reservations.filter((reservation) => {
+  const inHouseGuests = guests.filter((guest) => {
     const matchesSearch =
-      reservation.guestName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      reservation.roomNumber.toLowerCase().includes(searchQuery.toLowerCase())
-    return reservation.status === "checked-in" && matchesSearch
-  }).map((reservation) => {
-    const room = rooms.find((r) => r.number === reservation.roomNumber)
-    const checkInDate = new Date(reservation.checkIn)
-    const checkOutDate = new Date(reservation.checkOut)
-    const today = new Date()
-    const totalNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24))
-    const nightsStayed = Math.ceil((today.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24))
-    const balance = reservation.totalAmount - reservation.paidAmount
-
-    return {
-      ...reservation,
-      roomType: room?.type || "standard",
-      totalNights,
-      nightsStayed,
-      balance,
-    }
+      guest.guestName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      guest.roomNumber.toLowerCase().includes(searchQuery.toLowerCase())
+    return matchesSearch
   })
 
   const totalBalance = inHouseGuests.reduce((sum, guest) => sum + guest.balance, 0)
@@ -181,14 +230,27 @@ export default function InHouseGuestsPage() {
                   </TableRow>
                 ) : (
                   inHouseGuests.map((guest) => (
-                    <TableRow key={guest.id}>
+                    <TableRow
+                      key={guest.id}
+                      className="cursor-pointer"
+                      onDoubleClick={() => openCheckInEdit(guest)}
+                    >
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
                             <User className="h-4 w-4 text-primary" />
                           </div>
                           <div>
-                            <p className="font-medium">{guest.guestName}</p>
+                            <button
+                              type="button"
+                              className="font-medium text-left hover:underline"
+                              onDoubleClick={(event) => {
+                                event.stopPropagation()
+                                openCheckInEdit(guest)
+                              }}
+                            >
+                              {guest.guestName}
+                            </button>
                             <p className="text-sm text-muted-foreground">{guest.guestPhone}</p>
                           </div>
                         </div>
@@ -243,7 +305,7 @@ export default function InHouseGuestsPage() {
                               Send Message
                             </DropdownMenuItem>
                             <DropdownMenuItem asChild>
-                              <Link href={`/admin/front-office/check-out?reservation=${guest.id}`}>
+                              <Link href={`/admin/front-office/reception/check-out?room=${guest.roomNumber}`}>
                                 <LogOut className="h-4 w-4 mr-2" />
                                 Check Out
                               </Link>

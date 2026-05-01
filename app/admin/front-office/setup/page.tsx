@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Settings, Plus, Pencil, Trash2, BedDouble, CreditCard, Tags, Building, Layers, ChevronDown, ChevronRight, Loader2 } from "lucide-react"
+import { Check, Settings, Plus, Pencil, Trash2, BedDouble, CreditCard, Tags, Building, Layers, ChevronDown, ChevronRight, Loader2, RotateCcw, X } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import EditDetailsModal from "@/components/common/EditDetailsModal"
 
@@ -32,9 +32,15 @@ import {
   updateSetupServiceCode,
   deleteSetupServiceCode,
   updateSetupHotelConfig,
-  deleteSetupRoomConfig
+  deleteSetupRoomConfig,
+  createSetupOption,
+  deactivateSetupOption,
+  getSetupOptions,
+  updateSetupOption,
+  type SetupOption
 } from "@/lib/backend-api"
 import { useToast } from "@/hooks/use-toast"
+import { invalidateSetupOptions } from "@/hooks/use-setup-options"
 
 interface RoomType {
   _id: string
@@ -58,6 +64,225 @@ interface Floor {
   floorNumber: number
   totalRooms: number
   rooms: FloorRoom[]
+}
+
+const masterDataGroups = {
+  all: [
+    { label: "Title", type: "title", module: "guest" },
+    { label: "Gender", type: "gender", module: "guest" },
+    { label: "Nationality", type: "nationality", module: "guest" },
+    { label: "Country", type: "country", module: "guest" },
+    { label: "Referral", type: "referral", module: "business" },
+    { label: "Purpose", type: "purpose", module: "business" },
+    { label: "Business Source", type: "businessSource", module: "business" },
+    { label: "Market Segment", type: "marketSegment", module: "business" },
+    { label: "Checkout Plan", type: "checkoutPlan", module: "business" },
+    { label: "Guest Classification", type: "guestClassification", module: "guest" },
+    { label: "Guest Type", type: "guestType", module: "guest" },
+    { label: "Payment Modes", type: "paymentMode", module: "payment" },
+    { label: "Ledger Accounts", type: "ledgerAccount", module: "payment" },
+    { label: "ID Proof", type: "idProof", module: "guest" },
+    { label: "Vehicle Type", type: "vehicleType", module: "business" },
+    { label: "Ledger Group", type: "ledgerGroup", module: "business" },
+    { label: "Booking Category", type: "bookingCategory", module: "business" },
+  ],
+} as const
+
+type MasterDataModule = keyof typeof masterDataGroups
+
+function MasterDataPanel({ moduleKey = "all" }: { moduleKey?: MasterDataModule }) {
+  const { toast } = useToast()
+  const types = masterDataGroups[moduleKey]
+  const [type, setType] = useState<string>(types[0].type)
+  const [options, setOptions] = useState<SetupOption[]>([])
+  const [value, setValue] = useState("")
+  const [editingId, setEditingId] = useState("")
+  const [editingValue, setEditingValue] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  const sortedOptions = [...options].sort((a, b) => Number(b.isActive) - Number(a.isActive) || a.value.localeCompare(b.value))
+
+  async function loadOptions(selectedType = type) {
+    setLoading(true)
+    try {
+      setOptions(await getSetupOptions(selectedType, true))
+    } catch (error) {
+      toast({
+        title: "Could not load setup values",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadOptions(type)
+  }, [type])
+
+  async function handleAdd() {
+    const trimmed = value.trim()
+    if (!trimmed) return
+    if (options.some((option) => option.type === type && option.value.toLowerCase() === trimmed.toLowerCase())) {
+      toast({ title: "Duplicate value", description: "This setup value already exists.", variant: "destructive" })
+      return
+    }
+
+    setSaving(true)
+    try {
+      const selectedType = types.find((item) => item.type === type)
+      await createSetupOption({ module: selectedType?.module || moduleKey, type, value: trimmed })
+      setValue("")
+      invalidateSetupOptions(type)
+      await loadOptions()
+    } catch (error) {
+      toast({
+        title: "Could not add value",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleUpdate(option: SetupOption) {
+    const trimmed = editingValue.trim()
+    if (!trimmed) return
+
+    setSaving(true)
+    try {
+      await updateSetupOption(option._id, { value: trimmed })
+      setEditingId("")
+      setEditingValue("")
+      invalidateSetupOptions(type)
+      await loadOptions()
+    } catch (error) {
+      toast({
+        title: "Could not update value",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDeactivate(option: SetupOption) {
+    setSaving(true)
+    try {
+      await deactivateSetupOption(option._id)
+      invalidateSetupOptions(type)
+      await loadOptions()
+    } catch (error) {
+      toast({
+        title: "Could not deactivate value",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleReactivate(option: SetupOption) {
+    setSaving(true)
+    try {
+      await updateSetupOption(option._id, { isActive: true })
+      invalidateSetupOptions(type)
+      await loadOptions()
+    } catch (error) {
+      toast({
+        title: "Could not reactivate value",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-col gap-3 pb-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <CardTitle className="text-lg">Master Data</CardTitle>
+          <CardDescription>Manage active dropdown values used across front-office workflows.</CardDescription>
+        </div>
+        <div className="w-full sm:w-64">
+          <Label className="mb-1.5 block text-xs text-muted-foreground">Type</Label>
+          <Select value={type} onValueChange={setType}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {types.map((item) => (
+                <SelectItem key={item.type} value={item.type}>{item.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input value={value} onChange={(event) => setValue(event.target.value)} placeholder="Add a new value" />
+          <Button onClick={handleAdd} disabled={saving || !value.trim()} className="sm:w-32">
+            <Plus className="mr-2 h-4 w-4" />Add
+          </Button>
+        </div>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Value</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-36 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow><TableCell colSpan={3} className="h-24 text-center text-muted-foreground">Loading values...</TableCell></TableRow>
+              ) : sortedOptions.length === 0 ? (
+                <TableRow><TableCell colSpan={3} className="h-24 text-center text-muted-foreground">No values yet.</TableCell></TableRow>
+              ) : (
+                sortedOptions.map((option) => (
+                  <TableRow key={option._id}>
+                    <TableCell>
+                      {editingId === option._id ? (
+                        <Input value={editingValue} onChange={(event) => setEditingValue(event.target.value)} autoFocus />
+                      ) : (
+                        <span className={option.isActive ? "font-medium" : "text-muted-foreground line-through"}>{option.value}</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={option.isActive ? "default" : "secondary"}>{option.isActive ? "Active" : "Inactive"}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        {editingId === option._id ? (
+                          <>
+                            <Button size="icon" variant="ghost" onClick={() => handleUpdate(option)} disabled={saving}><Check className="h-4 w-4" /></Button>
+                            <Button size="icon" variant="ghost" onClick={() => setEditingId("")}><X className="h-4 w-4" /></Button>
+                          </>
+                        ) : option.isActive ? (
+                          <>
+                            <Button size="icon" variant="ghost" onClick={() => { setEditingId(option._id); setEditingValue(option.value) }}><Pencil className="h-4 w-4" /></Button>
+                            <Button size="icon" variant="ghost" onClick={() => handleDeactivate(option)} disabled={saving}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                          </>
+                        ) : (
+                          <Button size="icon" variant="ghost" onClick={() => handleReactivate(option)} disabled={saving}><RotateCcw className="h-4 w-4" /></Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 export default function FOSetupPage() {
@@ -585,6 +810,7 @@ export default function FOSetupPage() {
           <TabsTrigger value="rate-plans"><CreditCard className="h-4 w-4 mr-1.5" />Rate Plans</TabsTrigger>
           <TabsTrigger value="service-codes"><Tags className="h-4 w-4 mr-1.5" />Service Codes</TabsTrigger>
           <TabsTrigger value="hotel-config"><Building className="h-4 w-4 mr-1.5" />Hotel Config</TabsTrigger>
+          <TabsTrigger value="master-data"><Settings className="h-4 w-4 mr-1.5" />Master Data</TabsTrigger>
         </TabsList>
 
         {/* Room Configuration Tab */}
@@ -953,6 +1179,10 @@ export default function FOSetupPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="master-data" className="mt-3">
+          <MasterDataPanel />
         </TabsContent>
       </Tabs>
 

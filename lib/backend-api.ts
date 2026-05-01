@@ -5,6 +5,17 @@ const TOKEN_STORAGE_KEY = "hotel_manager_tokens"
 
 type JsonRecord = Record<string, unknown>
 
+export interface SetupOption {
+  _id: string
+  hotelId: string
+  module: string
+  type: string
+  value: string
+  isActive: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
 function getStoredAccessToken(): string | null {
   if (typeof window === "undefined") return null
   const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY)
@@ -110,7 +121,7 @@ function mapRoom(raw: JsonRecord): Room {
     roomTypeId: roomTypeId,
     status: toRoomStatus(String(raw.status || "available")),
     hkStatus: raw.hkStatus as any,
-    price: Number(raw.rate || raw.price || 0),
+    price: Number(raw.rate || raw.price || (typeof roomType === "object" && roomType !== null ? roomType.baseRate : 0) || 0),
     amenities: Array.isArray(raw.amenities) ? (raw.amenities as string[]) : [],
     guestName: raw.guestName ? String(raw.guestName) : undefined,
     checkIn: raw.checkIn ? String(raw.checkIn) : undefined,
@@ -337,7 +348,13 @@ export async function getAdminStaff(search?: string, role?: string): Promise<Sta
 }
 
 export async function getAdminStaffSummary() {
-  return apiRequest<{ totalStaff: number; activeStaff: number; admins: number }>("/admin/staff/summary")
+  return apiRequest<{
+    totalStaff: number
+    activeStaff: number
+    totalAdmins: number
+    activeAdmins: number
+    admins: number
+  }>("/admin/staff/summary")
 }
 
 export async function createAdminStaff(payload: JsonRecord) {
@@ -444,10 +461,37 @@ export async function createCheckIn(payload: JsonRecord) {
   })
 }
 
-export async function updateCheckIn(id: string, payload: any) {
+export async function getCheckInById(id: string) {
+  return apiRequest<{ success: boolean; data: JsonRecord }>(`/admin/reception/check-in/${id}`)
+}
+
+export async function getGuestByMobile(mobile: string) {
+  const query = new URLSearchParams({ mobile })
+  return apiRequest<{ success: boolean; exists: boolean; data: JsonRecord | null }>(`/guest/by-mobile?${query.toString()}`)
+}
+
+const STAFF_CHECK_IN_UPDATE_FIELDS = new Set([
+  "guestName",
+  "mobileNo",
+  "mobile",
+  "address",
+  "idProofType",
+  "idProofNumber",
+])
+
+function sanitizeCheckInUpdatePayload(payload: any, role?: string) {
+  if (role !== "staff") return payload
+
+  return Object.fromEntries(
+    Object.entries(payload).filter(([field]) => STAFF_CHECK_IN_UPDATE_FIELDS.has(field))
+  )
+}
+
+export async function updateCheckIn(id: string, payload: any, role?: string) {
+  const body = sanitizeCheckInUpdatePayload(payload, role)
   return apiRequest<JsonRecord>(`/admin/reception/check-in/${id}`, {
     method: "PUT",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   })
 }
 
@@ -706,6 +750,35 @@ export async function sendPromotionNotification(promotionId: string, guestIds?: 
 }
 
 // ==================== ADMIN SETUP APIs ====================
+
+export async function getSetupOptions(type: string, includeInactive = false) {
+  const query = includeInactive ? "?includeInactive=true" : ""
+  const data = await apiRequest<{ success: boolean; data: SetupOption[] }>(`/api/setup/${encodeURIComponent(type)}${query}`)
+  return data.data || []
+}
+
+export async function createSetupOption(payload: { module: string; type: string; value: string }) {
+  const data = await apiRequest<{ success: boolean; data: SetupOption; message?: string }>("/api/setup", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  return data.data
+}
+
+export async function updateSetupOption(id: string, payload: Partial<Pick<SetupOption, "module" | "type" | "value" | "isActive">>) {
+  const data = await apiRequest<{ success: boolean; data: SetupOption; message?: string }>(`/api/setup/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+  return data.data
+}
+
+export async function deactivateSetupOption(id: string) {
+  const data = await apiRequest<{ success: boolean; data: SetupOption; message?: string }>(`/api/setup/${id}/deactivate`, {
+    method: "PATCH",
+  })
+  return data.data
+}
 
 // Room Types
 export async function getSetupRoomTypes() {

@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { CalendarCheck, Search, Plus, MapPin, Users, Clock } from "lucide-react"
+import { useSetupOptions } from "@/hooks/use-setup-options"
 
 const MOCK_EVENTS = [
   { id: 1, name: "Wedding Reception - Sharma Family", venue: "Grand Ballroom", date: "2024-12-25", time: "18:00 - 23:00", pax: 250, contact: "Raj Sharma", phone: "+91 98765 43210", status: "confirmed", type: "Wedding", amount: 350000 },
@@ -21,6 +22,7 @@ const MOCK_EVENTS = [
 ]
 
 export default function EventsPage() {
+  const paymentModeOptions = useSetupOptions("paymentMode")
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [isNewOpen, setIsNewOpen] = useState(false)
@@ -265,11 +267,7 @@ export default function EventsPage() {
                     <Select value={formData.paymentMode} onValueChange={(v) => setFormData({ ...formData, paymentMode: v })}>
                       <SelectTrigger><SelectValue placeholder="Select mode" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="card">Card</SelectItem>
-                        <SelectItem value="upi">UPI</SelectItem>
-                        <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
-                        <SelectItem value="cheque">Cheque</SelectItem>
+                        {paymentModeOptions.loading ? <SelectItem value="__loading__" disabled>Loading...</SelectItem> : paymentModeOptions.data.map(p => <SelectItem key={p._id} value={p.value}>{p.value}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>

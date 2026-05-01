@@ -18,8 +18,12 @@ import { Calendar, Plus, Search, Edit, X, CheckCircle, Clock, User, Phone, Mail,
 import { createFrontOfficeReservation, getFrontOfficeReservations, getFrontOfficeRooms, getSetupRoomTypes, getSetupRatePlans, updateFrontOfficeReservationStatus, updateFrontOfficeReservation } from "@/lib/backend-api"
 import type { Reservation, Room, RoomType } from "@/lib/types"
 import EditDetailsModal from "@/components/common/EditDetailsModal"
+import { useSetupOptions } from "@/hooks/use-setup-options"
 
 export default function ReservationPage() {
+  const paymentModeOptions = useSetupOptions("paymentMode")
+  const idProofOptions = useSetupOptions("idProof")
+  const businessSourceOptions = useSetupOptions("businessSource")
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [isNewReservationOpen, setIsNewReservationOpen] = useState(false)
@@ -37,6 +41,12 @@ export default function ReservationPage() {
   const [ratePlans, setRatePlans] = useState<any[]>([])
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [editData, setEditData] = useState<any>({})
+
+  const renderSetupItems = (options: { data: Array<{ _id: string; value: string }>; loading: boolean }) => {
+    if (options.loading) return <SelectItem value="__loading__" disabled>Loading...</SelectItem>
+    if (!options.data.length) return <SelectItem value="__empty__" disabled>No options configured</SelectItem>
+    return options.data.map((option) => <SelectItem key={option._id} value={option.value}>{option.value}</SelectItem>)
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -467,10 +477,7 @@ export default function ReservationPage() {
                           <SelectValue placeholder="Select ID type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="aadhaar">Aadhaar Card</SelectItem>
-                          <SelectItem value="passport">Passport</SelectItem>
-                          <SelectItem value="driving-license">Driving License</SelectItem>
-                          <SelectItem value="other">Other ID</SelectItem>
+                          {renderSetupItems(idProofOptions)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -508,33 +515,11 @@ export default function ReservationPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="adults">Number of Adults</Label>
-                      <Select value={formData.adults || undefined} onValueChange={(v) => handleFormChange("adults", v)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select adults" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <SelectItem key={n} value={n.toString()}>
-                              {n}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Input id="adults" type="number" min="1" value={formData.adults} onChange={(e) => handleFormChange("adults", e.target.value)} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="children">Number of Children</Label>
-                      <Select value={formData.children || undefined} onValueChange={(v) => handleFormChange("children", v)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select children" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[0, 1, 2, 3, 4].map((n) => (
-                            <SelectItem key={n} value={n.toString()}>
-                              {n}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Input id="children" type="number" min="0" value={formData.children} onChange={(e) => handleFormChange("children", e.target.value)} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="roomType">Room Type *</Label>
@@ -597,11 +582,7 @@ export default function ReservationPage() {
                           <SelectValue placeholder="Select source" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="walk-in">Walk-in</SelectItem>
-                          <SelectItem value="phone">Phone</SelectItem>
-                          <SelectItem value="website">Website</SelectItem>
-                          <SelectItem value="ota">OTA (Booking.com, etc.)</SelectItem>
-                          <SelectItem value="agent">Travel Agent</SelectItem>
+                          {renderSetupItems(businessSourceOptions)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -637,10 +618,7 @@ export default function ReservationPage() {
                           <SelectValue placeholder="Select mode" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="cash">Cash</SelectItem>
-                          <SelectItem value="card">Credit/Debit Card</SelectItem>
-                          <SelectItem value="upi">UPI</SelectItem>
-                          <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
+                          {renderSetupItems(paymentModeOptions)}
                         </SelectContent>
                       </Select>
                     </div>

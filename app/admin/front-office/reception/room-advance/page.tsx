@@ -11,12 +11,15 @@ import { Textarea } from "@/components/ui/textarea"
 import { Save, RotateCcw, X, Printer } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { getCheckedInRooms, createRoomAdvance } from "@/lib/backend-api"
+import { useSetupOptions } from "@/hooks/use-setup-options"
 
 
 
 
 export default function RoomAdvancePage() {
   const [rooms, setRooms] = useState<any[]>([])
+  const paymentModeOptions = useSetupOptions("paymentMode")
+  const ledgerAccountOptions = useSetupOptions("ledgerAccount")
   const [form, setForm] = useState({
     receiptNo: "RCP-" + Date.now().toString().slice(-6),
     date: new Date().toISOString().slice(0, 16),
@@ -164,7 +167,7 @@ export default function RoomAdvancePage() {
                 <Select value={form.paymentMode} onValueChange={v => handleChange("paymentMode", v)}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    {["Cash", "UPI", "Card", "Online", "Bank Transfer", "Other"].map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    {paymentModeOptions.loading ? <SelectItem value="__loading__" disabled>Loading...</SelectItem> : paymentModeOptions.data.map(p => <SelectItem key={p._id} value={p.value}>{p.value}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -175,7 +178,7 @@ export default function RoomAdvancePage() {
                 <Select value={form.ledgerAc} onValueChange={v => handleChange("ledgerAc", v)}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    {["Cash", "HDFC Hotel Account", "SBI Hotel Account", "ICICI Hotel Account"].map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
+                    {ledgerAccountOptions.loading ? <SelectItem value="__loading__" disabled>Loading...</SelectItem> : ledgerAccountOptions.data.map(l => <SelectItem key={l._id} value={l.value}>{l.value}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

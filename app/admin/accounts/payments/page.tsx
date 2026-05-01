@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, Search, Download, ArrowDownLeft, ArrowUpRight } from "lucide-react"
+import { useSetupOptions } from "@/hooks/use-setup-options"
 
 const mockPaymentsOut = [
   { id: "PAY-001", date: "2024-01-15", payee: "City Power Corp", category: "Utilities", description: "Monthly electricity bill", amount: 850.00, mode: "Bank Transfer", reference: "BT-8834", status: "completed" },
@@ -49,12 +50,18 @@ const mockPaymentsIn = [
 ]
 
 const categories = ["Utilities", "Supplies", "Payroll", "Maintenance", "Insurance", "Rent", "Marketing", "Other"]
-const paymentModes = ["Cash", "Bank Transfer", "Cheque", "UPI", "Credit Card"]
-
 export default function PaymentsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false)
   const [isReceivePaymentOpen, setIsReceivePaymentOpen] = useState(false)
+  const paymentModeOptions = useSetupOptions("paymentMode")
+  const paymentModeItems = paymentModeOptions.loading ? (
+    <SelectItem value="__loading__" disabled>Loading...</SelectItem>
+  ) : (
+    paymentModeOptions.data.map((mode) => (
+      <SelectItem key={mode._id} value={mode.value}>{mode.value}</SelectItem>
+    ))
+  )
 
   const totalPaidOut = mockPaymentsOut.reduce((sum, p) => sum + p.amount, 0)
   const totalReceived = mockPaymentsIn.reduce((sum, p) => sum + p.amount, 0)
@@ -114,9 +121,7 @@ export default function PaymentsPage() {
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
-                        {paymentModes.map(mode => (
-                          <SelectItem key={mode} value={mode}>{mode}</SelectItem>
-                        ))}
+                        {paymentModeItems}
                       </SelectContent>
                     </Select>
                   </div>
@@ -184,9 +189,7 @@ export default function PaymentsPage() {
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
-                        {paymentModes.map(mode => (
-                          <SelectItem key={mode} value={mode}>{mode}</SelectItem>
-                        ))}
+                        {paymentModeItems}
                       </SelectContent>
                     </Select>
                   </div>

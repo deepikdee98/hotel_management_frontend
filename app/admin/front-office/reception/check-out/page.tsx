@@ -64,6 +64,16 @@ export default function CheckOutPage() {
     fetchInitialData()
   }, [])
 
+  useEffect(() => {
+    const roomNumber = new URLSearchParams(window.location.search).get("room")
+    if (!roomNumber || loading || !inHouseGuests.length || selectedRoom) return
+
+    const guest = inHouseGuests.find(g => getGuestRoomNumber(g) === roomNumber)
+    if (guest) {
+      handleRoomChange(roomNumber)
+    }
+  }, [loading, inHouseGuests, selectedRoom])
+
   const handleEditCheckIn = () => {
     if (!room) return
     setEditFormData({
@@ -258,15 +268,33 @@ export default function CheckOutPage() {
   ).sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true, sensitivity: "base" }))
 
   // Calculate billing from folioData or fallback to room data
-  const charges = folioData?.charges || []
-  const roomCharges = charges.filter((c: any) => c.category === "room-tariff").reduce((sum: number, c: any) => sum + (c.amount || 0), 0) || (room?.planCharges * room?.nights) || 0
-  const serviceCharges = charges.filter((c: any) => c.category !== "room-tariff").reduce((sum: number, c: any) => sum + (c.amount || 0), 0) || 0
+  const charges = Array.isArray(folioData?.charges) ? folioData.charges : []
+  const roomTypeValue = room?.roomType?.$oid || room?.roomType?._id || room?.roomType || folioData?.room?.roomType || ""
+  const roomTypeName = String(room?.roomType?.name || room?.type || folioData?.room?.roomType || "").toLowerCase()
+  const setupRoomType = roomTypes.find((rt) => {
+    const id = String(rt._id || rt.id || "")
+    const name = String(rt.name || rt.code || "").toLowerCase()
+    return id === String(roomTypeValue) || (!!roomTypeName && name === roomTypeName)
+  })
+  const fallbackNightlyRate = Number(
+    room?.planCharges ||
+    folioData?.room?.rate ||
+    setupRoomType?.baseRate ||
+    setupRoomType?.rate ||
+    0
+  )
+  const roomCharges = charges
+    .filter((c: any) => String(c.category || c.type || "").toLowerCase() === "room-tariff")
+    .reduce((sum: number, c: any) => sum + Number(c.total ?? c.totalAmount ?? c.amount ?? 0), 0) || (fallbackNightlyRate * Math.max(1, Number(room?.nights || folioData?.stay?.nights || 1))) || 0
+  const serviceCharges = charges
+    .filter((c: any) => String(c.category || c.type || "").toLowerCase() !== "room-tariff")
+    .reduce((sum: number, c: any) => sum + Number(c.total ?? c.totalAmount ?? c.amount ?? 0), 0) || 0
 
-  const cgst = folioData?.cgst || 0
-  const sgst = folioData?.sgst || 0
+  const cgst = Number(folioData?.cgst || folioData?.summary?.cgst || 0)
+  const sgst = Number(folioData?.sgst || folioData?.summary?.sgst || 0)
   const totalTax = cgst + sgst
-  const grossTotal = folioData?.summary?.totalCharges || (roomCharges + serviceCharges + totalTax)
-  const advance = folioData?.summary?.totalPayments || room?.advanceAmount || 0
+  const grossTotal = Number(folioData?.summary?.grossTotal || folioData?.summary?.totalCharges || 0) || (roomCharges + serviceCharges + totalTax)
+  const advance = Number(folioData?.summary?.totalPayments || room?.advanceAmount || 0)
   const netPayable = grossTotal - advance
 
   return (

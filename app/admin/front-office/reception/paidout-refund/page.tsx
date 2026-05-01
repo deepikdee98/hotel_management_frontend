@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Banknote, Search, Plus, ArrowUpRight, ArrowDownLeft, Loader2, AlertCircle } from "lucide-react"
 import { getInHouseGuests, createPaidoutRefund, getPaidoutRefundTransactions } from "@/lib/backend-api"
 import { useToast } from "@/hooks/use-toast"
+import { useSetupOptions } from "@/hooks/use-setup-options"
 
 interface Transaction {
   _id: string
@@ -35,6 +36,7 @@ interface InHouseGuest {
 
 export default function PaidoutRefundPage() {
   const { toast } = useToast()
+  const paymentModeOptions = useSetupOptions("paymentMode")
   const [search, setSearch] = useState("")
   const [activeTab, setActiveTab] = useState("all")
   const [isNewOpen, setIsNewOpen] = useState(false)
@@ -270,10 +272,7 @@ export default function PaidoutRefundPage() {
                 <Select value={formData.paymentMode} onValueChange={(v) => setFormData({ ...formData, paymentMode: v })}>
                   <SelectTrigger><SelectValue placeholder="Select mode" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Cash">Cash</SelectItem>
-                    <SelectItem value="Card">Card</SelectItem>
-                    <SelectItem value="UPI">UPI</SelectItem>
-                    <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                    {paymentModeOptions.loading ? <SelectItem value="__loading__" disabled>Loading...</SelectItem> : paymentModeOptions.data.map(p => <SelectItem key={p._id} value={p.value}>{p.value}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

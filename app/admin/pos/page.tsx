@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
+import { useSetupOptions } from "@/hooks/use-setup-options"
 import { createPOSOrder, getInHouseGuests, getPOSItems, getPOSOrders, processPOSPayment } from "@/lib/backend-api"
 import type { POSItem, POSOrder } from "@/lib/types"
 import {
@@ -64,8 +65,6 @@ type InHouseGuest = {
   guestName: string
   roomNumber: string
 }
-
-const PAYMENT_MODES = ["Cash", "Card", "UPI", "Bank Transfer"] as const
 
 function getCategoryIcon(category: string) {
   const normalized = category.toLowerCase()
@@ -108,7 +107,8 @@ export default function POSPage() {
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [cart, setCart] = useState<CartItem[]>([])
   const [selectedRoom, setSelectedRoom] = useState("")
-  const [paymentMode, setPaymentMode] = useState<(typeof PAYMENT_MODES)[number]>("Cash")
+  const [paymentMode, setPaymentMode] = useState("")
+  const paymentModeOptions = useSetupOptions("paymentMode")
   const [menuItems, setMenuItems] = useState<POSItem[]>([])
   const [orders, setOrders] = useState<POSOrder[]>([])
   const [inHouseGuests, setInHouseGuests] = useState<InHouseGuest[]>([])
@@ -381,16 +381,20 @@ export default function POSPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Payment Mode</Label>
-                    <Select value={paymentMode} onValueChange={(value) => setPaymentMode(value as (typeof PAYMENT_MODES)[number])}>
+                    <Select value={paymentMode} onValueChange={setPaymentMode}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select payment mode" />
                       </SelectTrigger>
                       <SelectContent>
-                        {PAYMENT_MODES.map((mode) => (
-                          <SelectItem key={mode} value={mode}>
-                            {mode}
-                          </SelectItem>
-                        ))}
+                        {paymentModeOptions.loading ? (
+                          <SelectItem value="__loading__" disabled>Loading...</SelectItem>
+                        ) : (
+                          paymentModeOptions.data.map((mode) => (
+                            <SelectItem key={mode._id} value={mode.value}>
+                              {mode.value}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>

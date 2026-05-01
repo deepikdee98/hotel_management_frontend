@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Plus, Search, Download, Eye, Printer, Send, CreditCard } from "lucide-react"
+import { useSetupOptions } from "@/hooks/use-setup-options"
 
 const mockInvoices = [
   { id: "INV-001", guestName: "John Smith", room: "101", checkIn: "2024-01-10", checkOut: "2024-01-15", roomCharges: 600.00, services: 150.00, taxes: 112.50, discount: 0, total: 862.50, paid: 862.50, balance: 0, status: "paid" },
@@ -41,6 +42,7 @@ const mockInvoices = [
 ]
 
 export default function InvoicesPage() {
+  const paymentModeOptions = useSetupOptions("paymentMode")
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedInvoice, setSelectedInvoice] = useState<typeof mockInvoices[0] | null>(null)
@@ -299,10 +301,7 @@ export default function InvoicesPage() {
                     <SelectValue placeholder="Select payment mode" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="card">Credit/Debit Card</SelectItem>
-                    <SelectItem value="upi">UPI</SelectItem>
-                    <SelectItem value="bank">Bank Transfer</SelectItem>
+                    {paymentModeOptions.loading ? <SelectItem value="__loading__" disabled>Loading...</SelectItem> : paymentModeOptions.data.map(p => <SelectItem key={p._id} value={p.value}>{p.value}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
