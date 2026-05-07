@@ -25,6 +25,36 @@ export default function NightAuditPage() {
     totalRooms: 0
   })
 
+  const loadStatus = async () => {
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const auditStatusRes = await getNightAuditStatus(today)
+
+      if (auditStatusRes.success && auditStatusRes.data?.report) {
+        setAuditData(auditStatusRes.data.report)
+        const isComplete = ["completed", "completed_with_errors"].includes(auditStatusRes.data.report.status)
+        setAuditComplete(isComplete)
+        if (auditStatusRes.data.report.status === "in_progress") {
+          setIsRunning(true)
+        } else {
+          setIsRunning(false)
+        }
+      }
+    } catch (error) {
+      console.error("Failed to refresh night audit status:", error)
+    }
+  }
+
+  useEffect(() => {
+    let interval: any
+    if (isRunning && !auditComplete) {
+      interval = setInterval(loadStatus, 2000)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [isRunning, auditComplete])
+
   useEffect(() => {
     const loadInitialData = async () => {
       setIsLoading(true)
@@ -59,15 +89,21 @@ export default function NightAuditPage() {
     loadInitialData()
   }, [])
 
-  const auditSteps = [
-    { label: "Post pending room tariffs", status: auditComplete ? "done" : "pending" },
-    { label: "Post pending service charges", status: auditComplete ? "done" : "pending" },
-    { label: "Process no-show reservations", status: auditComplete ? "done" : "pending" },
-    { label: "Update room availability", status: auditComplete ? "done" : "pending" },
-    { label: "Generate daily revenue report", status: auditComplete ? "done" : "pending" },
-    { label: "Reconcile cashier accounts", status: auditComplete ? "done" : "pending" },
-    { label: "Roll business date forward", status: auditComplete ? "done" : "pending" },
+  const defaultSteps = [
+    { label: "Post pending room tariffs", status: "pending" },
+    { label: "Process no-show reservations", status: "pending" },
+    { label: "Update room availability", status: "pending" },
+    { label: "Validate daily transactions", status: "pending" },
+    { label: "Generate daily revenue report", status: "pending" },
+    { label: "Roll business date forward", status: "pending" },
   ]
+
+  const auditSteps = auditData?.steps?.length 
+    ? auditData.steps.map((s: any) => ({
+        label: s.label,
+        status: s.status === "completed" ? "done" : s.status === "in_progress" ? "running" : s.status === "failed" ? "failed" : "pending"
+      }))
+    : defaultSteps.map(s => ({ ...s, status: auditComplete ? "done" : "pending" }))
 
   const handleRunAudit = async () => {
     setIsConfirmOpen(false)
@@ -162,16 +198,22 @@ export default function NightAuditPage() {
                   <span className="text-xs font-mono text-muted-foreground w-6">{String(i + 1).padStart(2, "0")}</span>
                   {step.status === "done" ? (
                     <CheckCircle className="h-5 w-5 text-primary" />
-                  ) : isRunning ? (
+                  ) : step.status === "running" ? (
                     <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  ) : step.status === "failed" ? (
+                    <AlertTriangle className="h-5 w-5 text-destructive" />
                   ) : (
                     <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" />
                   )}
-                  <span className={`flex-1 text-sm ${step.status === "done" ? "text-muted-foreground line-through" : "text-foreground"}`}>
+                  <span className={`flex-1 text-sm ${step.status === "done" ? "text-muted-foreground line-through" : step.status === "failed" ? "text-destructive font-medium" : "text-foreground"}`}>
                     {step.label}
                   </span>
                   {step.status === "done" ? (
                     <Badge className="bg-primary/10 text-primary border-primary/20">Done</Badge>
+                  ) : step.status === "running" ? (
+                    <Badge variant="outline" className="border-primary text-primary animate-pulse">Running</Badge>
+                  ) : step.status === "failed" ? (
+                    <Badge variant="destructive">Failed</Badge>
                   ) : (
                     <Badge variant="outline">Pending</Badge>
                   )}
