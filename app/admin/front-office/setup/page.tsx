@@ -10,14 +10,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Check, Settings, Plus, Pencil, Trash2, BedDouble, CreditCard, Tags, Building, Layers, ChevronDown, ChevronRight, Loader2, RotateCcw, X } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Check, Settings, Plus, Pencil, Trash2, BedDouble, CreditCard, Tags, Building, Layers, ChevronDown, ChevronRight, Loader2, RotateCcw, X, User } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import EditDetailsModal from "@/components/common/EditDetailsModal"
 
 import {
   getSetupRoomTypes,
   getSetupRatePlans,
-  getSetupServiceCodes,
+  getSetupServices,
+  createSetupService,
+  updateSetupService,
+  deleteSetupService,
   getSetupHotelConfig,
   getSetupFloors,
   createSetupFloor,
@@ -28,16 +32,25 @@ import {
   createSetupRatePlan,
   updateSetupRatePlan,
   deleteSetupRatePlan,
-  createSetupServiceCode,
-  updateSetupServiceCode,
-  deleteSetupServiceCode,
   updateSetupHotelConfig,
   deleteSetupRoomConfig,
   createSetupOption,
   deactivateSetupOption,
   getSetupOptions,
   updateSetupOption,
-  type SetupOption
+  type SetupOption,
+  getCompanies,
+  createCompany,
+  updateCompany,
+  deleteCompany,
+  getTravelAgents,
+  createTravelAgent,
+  updateTravelAgent,
+  deleteTravelAgent,
+  cacheCompanyRegistrations,
+  getCachedCompanyRegistrations,
+  type Company,
+  type TravelAgent
 } from "@/lib/backend-api"
 import { useToast } from "@/hooks/use-toast"
 import { invalidateSetupOptions } from "@/hooks/use-setup-options"
@@ -48,6 +61,8 @@ interface RoomType {
   code: string
   baseRate: number
   maxOccupancy: number
+  gstPercentage?: number
+  gstType?: "INCLUSIVE" | "EXCLUSIVE"
   status: string
 }
 
@@ -290,7 +305,7 @@ export default function FOSetupPage() {
   const [loading, setLoading] = useState(true)
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([])
   const [ratePlans, setRatePlans] = useState<any[]>([])
-  const [serviceCodes, setServiceCodes] = useState<any[]>([])
+  const [services, setServices] = useState<any[]>([])
   const [floors, setFloors] = useState<Floor[]>([])
   const [hotelConfig, setHotelConfig] = useState<any>(null)
   const [hotelConfigForm, setHotelConfigForm] = useState<any>({})
@@ -310,22 +325,85 @@ export default function FOSetupPage() {
   const [editForm, setEditForm] = useState<any>({})
   const [selectedRoomType, setSelectedRoomType] = useState<any>(null)
   const [selectedRatePlan, setSelectedRatePlan] = useState<any>(null)
-  const [selectedServiceCode, setSelectedServiceCode] = useState<any>(null)
+  const [selectedService, setSelectedService] = useState<any>(null)
+
+  // Company registration state
+  const [companies, setCompanies] = useState<Company[]>([])
+  const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false)
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
+  const [companyForm, setCompanyForm] = useState({
+    name: "",
+    code: "",
+    contactPerson: "",
+    phone: "",
+    email: "",
+    address: "",
+    gstNumber: "",
+    type: "Company" as "Company" | "Travel Agent" | "OTA",
+    creditAllowed: false,
+    creditLimit: 0,
+    status: true
+  })
+
+  const normalizeRegistration = (item: any, fallbackType: "Company" | "Travel Agent" | "OTA" = "Company", source: "company" | "travelAgent" = "company") => ({
+    ...item,
+    _id: String(item?._id || item?.id || ""),
+    name: String(item?.name || ""),
+    code: String(item?.code || ""),
+    type: item?.type || fallbackType,
+    contactPerson: item?.contactPerson || "",
+    phone: item?.phone || "",
+    email: item?.email || "",
+    address: item?.address || "",
+    gstNumber: item?.gstNumber || "",
+    creditAllowed: Boolean(item?.creditAllowed),
+    creditLimit: Number(item?.creditLimit || 0),
+    status: item?.status !== false,
+    __source: item?.__source || source,
+  })
+
+  const upsertRegistration = (registration: any) => {
+    if (!registration?._id) return
+    setCompanies((prev) => {
+      const existingIndex = prev.findIndex((item) => item._id === registration._id)
+      if (existingIndex === -1) return [...prev, registration]
+      return prev.map((item, index) => index === existingIndex ? registration : item)
+    })
+  }
+
+  const mergeRegistrations = (registrations: any[]) => {
+    setCompanies((prev) => {
+      const merged = new Map(prev.map((item) => [item._id, item]))
+      registrations.forEach((registration) => {
+        if (registration?._id) merged.set(registration._id, registration)
+      })
+      return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name))
+    })
+  }
 
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [rt, rp, sc, fl, hc] = await Promise.all([
-        getSetupRoomTypes(),
-        getSetupRatePlans(),
-        getSetupServiceCodes(),
-        getSetupFloors(),
-        getSetupHotelConfig()
+      const [rt, rp, fl, hc, sv, comp, ta] = await Promise.all([
+        getSetupRoomTypes().catch(() => []),
+        getSetupRatePlans().catch(() => []),
+        getSetupFloors().catch(() => []),
+        getSetupHotelConfig().catch(() => null),
+        getSetupServices().catch(() => []),
+        getCompanies().catch(() => []),
+        getTravelAgents().catch(() => [])
       ])
 
       setRoomTypes(rt as unknown as RoomType[])
       setRatePlans(rp)
-      setServiceCodes(sc)
+      setServices(sv)
+      
+      const allCompanies = [
+        ...(comp || []).map((c: any) => normalizeRegistration(c, c.type || "Company", "company")),
+        ...(ta || []).map((t: any) => normalizeRegistration(t, "Travel Agent", "travelAgent"))
+      ]
+      cacheCompanyRegistrations(allCompanies)
+      mergeRegistrations(allCompanies)
 
       // Map floor data from backend to UI structure
       const mappedFloors: Floor[] = fl.map((f: any) => ({
@@ -359,6 +437,13 @@ export default function FOSetupPage() {
         nightAuditTime: hc?.nightAuditTime || "00:00",
         nightAuditEnabled: hc?.nightAuditEnabled ?? true,
         lastNightAuditAt: hc?.lastNightAuditAt || null,
+        bookingPrefix: hc?.bookingPrefix || "NOV",
+        startNumber: hc?.startNumber ?? 1,
+        digitLength: hc?.digitLength ?? 4,
+        resetFinancialYear: hc?.resetFinancialYear ?? true,
+        currentNumber: hc?.currentNumber ?? 1,
+        currentFinancialYear: hc?.currentFinancialYear || "",
+        financialYearFormat: hc?.financialYearFormat || "YYYY-YY",
       })
     } catch (error: any) {
       toast({
@@ -372,6 +457,7 @@ export default function FOSetupPage() {
   }
 
   useEffect(() => {
+    mergeRegistrations(getCachedCompanyRegistrations().map((item: any) => normalizeRegistration(item, item.type || "Company", item.type === "Travel Agent" ? "travelAgent" : "company")))
     fetchData()
   }, [])
 
@@ -485,6 +571,13 @@ export default function FOSetupPage() {
         dateFormat: hotelConfigForm.dateFormat,
         nightAuditTime: hotelConfigForm.nightAuditTime,
         nightAuditEnabled: hotelConfigForm.nightAuditEnabled,
+        bookingPrefix: hotelConfigForm.bookingPrefix,
+        startNumber: Number(hotelConfigForm.startNumber || 1),
+        digitLength: Number(hotelConfigForm.digitLength || 4),
+        resetFinancialYear: hotelConfigForm.resetFinancialYear,
+        currentNumber: Number(hotelConfigForm.currentNumber || hotelConfigForm.startNumber || 1),
+        currentFinancialYear: hotelConfigForm.currentFinancialYear || null,
+        financialYearFormat: hotelConfigForm.financialYearFormat,
       })
 
       const updatedHotel = (result as any)?.hotel || {
@@ -507,6 +600,13 @@ export default function FOSetupPage() {
         nightAuditTime: updatedHotel.nightAuditTime || hotelConfigForm.nightAuditTime,
         nightAuditEnabled: updatedHotel.nightAuditEnabled ?? hotelConfigForm.nightAuditEnabled,
         lastNightAuditAt: updatedHotel.lastNightAuditAt || hotelConfigForm.lastNightAuditAt || null,
+        bookingPrefix: updatedHotel.bookingPrefix || hotelConfigForm.bookingPrefix || "NOV",
+        startNumber: updatedHotel.startNumber ?? hotelConfigForm.startNumber ?? 1,
+        digitLength: updatedHotel.digitLength ?? hotelConfigForm.digitLength ?? 4,
+        resetFinancialYear: updatedHotel.resetFinancialYear ?? hotelConfigForm.resetFinancialYear ?? true,
+        currentNumber: updatedHotel.currentNumber ?? hotelConfigForm.currentNumber ?? 1,
+        currentFinancialYear: updatedHotel.currentFinancialYear || hotelConfigForm.currentFinancialYear || "",
+        financialYearFormat: updatedHotel.financialYearFormat || hotelConfigForm.financialYearFormat || "YYYY-YY",
       })
 
       toast({
@@ -523,6 +623,7 @@ export default function FOSetupPage() {
   }
 
   const totalRooms = floors.reduce((sum, f) => sum + f.totalRooms, 0)
+  const bookingPreview = `${String(hotelConfigForm.bookingPrefix || "NOV").trim().toUpperCase() || "NOV"}-${String(Number(hotelConfigForm.currentNumber || hotelConfigForm.startNumber || 1)).padStart(Number(hotelConfigForm.digitLength || 4), "0")}`
 
 
   if (loading) {
@@ -550,6 +651,8 @@ export default function FOSetupPage() {
         code: genericForm.code,
         baseRate: Number(genericForm.baseRate),
         maxOccupancy: Number(genericForm.maxOccupancy),
+        gstPercentage: Number(genericForm.gstPercentage) || 0,
+        gstType: genericForm.gstType || "EXCLUSIVE",
       });
 
       toast({
@@ -636,6 +739,8 @@ export default function FOSetupPage() {
         code: editForm.code,
         baseRate: Number(editForm.baseRate),
         maxOccupancy: Number(editForm.maxOccupancy),
+        gstPercentage: Number(editForm.gstPercentage) || 0,
+        gstType: editForm.gstType || "EXCLUSIVE",
         status: editForm.status || "active",
       })
 
@@ -707,28 +812,31 @@ export default function FOSetupPage() {
     }
   }
 
-  const handleCreateServiceCode = async () => {
-    if (!genericForm.name || !genericForm.code || !genericForm.category) {
+  const handleCreateService = async () => {
+    if (!genericForm.name || !genericForm.code || genericForm.defaultPrice == null) {
       toast({
         title: "Error",
-        description: "Name, Code and Category are required",
+        description: "Name, Code and Price are required",
         variant: "destructive",
       });
       return;
     }
 
     try {
-      await createSetupServiceCode({
-        serviceName: genericForm.name,
+      await createSetupService({
+        name: genericForm.name,
         code: genericForm.code,
-        category: genericForm.category,
-        defaultRate: Number(genericForm.rate) || 0,
-        gst: Number(genericForm.gstPercent) || 0,
+        category: genericForm.category || "Other",
+        defaultPrice: Number(genericForm.defaultPrice),
+        chargeType: genericForm.chargeType || "PER_STAY",
+        gstApplicable: !!genericForm.gstApplicable,
+        gstPercentage: Number(genericForm.gstPercentage || 0),
+        isFood: !!genericForm.isFood,
       })
 
       toast({
         title: "Success",
-        description: "Service code created successfully",
+        description: "Service created successfully",
       });
 
       setIsAddOpen(false);
@@ -744,23 +852,27 @@ export default function FOSetupPage() {
     }
   };
 
-  const handleUpdateServiceCode = async () => {
+  const handleUpdateService = async () => {
     try {
-      await updateSetupServiceCode(selectedServiceCode._id, {
-        serviceName: editForm.name,
+      await updateSetupService(selectedService._id, {
+        name: editForm.name,
         code: editForm.code,
-        category: editForm.category,
-        defaultRate: Number(editForm.rate) || 0,
-        gst: Number(editForm.gstPercent) || 0,
+        category: editForm.category || "Other",
+        defaultPrice: Number(editForm.defaultPrice),
+        chargeType: editForm.chargeType,
+        gstApplicable: !!editForm.gstApplicable,
+        gstPercentage: Number(editForm.gstPercentage || 0),
+        isFood: !!editForm.isFood,
+        status: editForm.status || "active",
       })
 
       toast({
         title: "Updated",
-        description: "Service code updated successfully",
+        description: "Service updated successfully",
       })
 
       setIsEditOpen(false)
-      setSelectedServiceCode(null)
+      setSelectedService(null)
       fetchData()
 
     } catch (error: any) {
@@ -772,21 +884,128 @@ export default function FOSetupPage() {
     }
   }
 
-  const handleDeleteServiceCode = async (id: string) => {
-    const confirmDelete = confirm("Are you sure you want to delete this service code?")
+  const handleDeleteService = async (id: string) => {
+    const confirmDelete = confirm("Are you sure you want to delete this service?")
 
     if (!confirmDelete) return
 
     try {
-      await deleteSetupServiceCode(id)
+      await deleteSetupService(id)
 
       toast({
         title: "Deleted",
-        description: "Service code deleted successfully",
+        description: "Service deleted successfully",
       })
 
       fetchData()
 
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Company handlers
+  const handleEditCompany = (company: Company) => {
+    setSelectedCompany(company)
+    setCompanyForm({
+      name: company.name,
+      code: company.code,
+      contactPerson: company.contactPerson || "",
+      phone: company.phone || "",
+      email: company.email || "",
+      address: company.address || "",
+      gstNumber: company.gstNumber || "",
+      type: (company as any).type || "Company",
+      creditAllowed: company.creditAllowed,
+      creditLimit: company.creditLimit,
+      status: company.status
+    })
+    setIsCompanyModalOpen(true)
+  }
+
+  const handleDeleteCompany = async (id: string) => {
+    const confirmDelete = confirm("Are you sure you want to delete this company?")
+    if (!confirmDelete) return
+
+    try {
+      const company = companies.find((item) => item._id === id)
+      if ((company as any)?.__source === "travelAgent") {
+        await deleteTravelAgent(id)
+      } else {
+        await deleteCompany(id)
+      }
+      toast({
+        title: "Deleted",
+        description: "Registration deleted successfully",
+      })
+      setCompanies((prev) => prev.filter((item) => item._id !== id))
+      fetchData()
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleSaveCompany = async () => {
+    try {
+      if (!companyForm.name.trim() || !companyForm.code.trim()) {
+        toast({
+          title: "Error",
+          description: "Name and code are required",
+          variant: "destructive",
+        })
+        return
+      }
+
+      let savedRegistration: any = null
+      if (selectedCompany) {
+        savedRegistration = (selectedCompany as any).__source === "travelAgent"
+          ? normalizeRegistration(await updateTravelAgent(selectedCompany._id, companyForm), "Travel Agent", "travelAgent")
+          : normalizeRegistration(await updateCompany(selectedCompany._id, companyForm), companyForm.type, "company")
+        toast({
+          title: "Updated",
+          description: "Registration updated successfully",
+        })
+      } else {
+        savedRegistration = companyForm.type === "Travel Agent"
+          ? normalizeRegistration(await createTravelAgent(companyForm), "Travel Agent", "travelAgent")
+          : normalizeRegistration(await createCompany(companyForm), companyForm.type, "company")
+        if (!savedRegistration._id) {
+          savedRegistration = normalizeRegistration(
+            { ...companyForm, _id: `local-${companyForm.type}-${companyForm.code}` },
+            companyForm.type,
+            companyForm.type === "Travel Agent" ? "travelAgent" : "company"
+          )
+        }
+        toast({
+          title: "Created",
+          description: "Company created successfully",
+        })
+      }
+      cacheCompanyRegistrations([savedRegistration])
+      upsertRegistration(savedRegistration)
+      setIsCompanyModalOpen(false)
+      setSelectedCompany(null)
+      setCompanyForm({
+        name: "",
+        code: "",
+        contactPerson: "",
+        phone: "",
+        email: "",
+        address: "",
+        gstNumber: "",
+        type: "Company",
+        creditAllowed: false,
+        creditLimit: 0,
+        status: true
+      })
     } catch (error: any) {
       toast({
         title: "Error",
@@ -808,7 +1027,8 @@ export default function FOSetupPage() {
           <TabsTrigger value="room-config"><Layers className="h-4 w-4 mr-1.5" />Room Configuration</TabsTrigger>
           <TabsTrigger value="room-types"><BedDouble className="h-4 w-4 mr-1.5" />Room Types</TabsTrigger>
           <TabsTrigger value="rate-plans"><CreditCard className="h-4 w-4 mr-1.5" />Rate Plans</TabsTrigger>
-          <TabsTrigger value="service-codes"><Tags className="h-4 w-4 mr-1.5" />Service Codes</TabsTrigger>
+          <TabsTrigger value="service-codes"><Tags className="h-4 w-4 mr-1.5" />Services</TabsTrigger>
+          <TabsTrigger value="companies"><Building className="h-4 w-4 mr-1.5" />Company Registration</TabsTrigger>
           <TabsTrigger value="hotel-config"><Building className="h-4 w-4 mr-1.5" />Hotel Config</TabsTrigger>
           <TabsTrigger value="master-data"><Settings className="h-4 w-4 mr-1.5" />Master Data</TabsTrigger>
         </TabsList>
@@ -945,6 +1165,7 @@ export default function FOSetupPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Code</TableHead>
                     <TableHead>Base Rate</TableHead>
+                    <TableHead>GST</TableHead>
                     <TableHead>Max Occupancy</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -956,6 +1177,16 @@ export default function FOSetupPage() {
                       <TableCell className="font-medium">{rt.name}</TableCell>
                       <TableCell><Badge variant="secondary">{rt.code}</Badge></TableCell>
                       <TableCell>Rs. {rt.baseRate.toLocaleString()}</TableCell>
+                      <TableCell>
+                        {rt.gstPercentage ? (
+                          <div className="flex flex-col">
+                            <span className="text-xs font-medium">{rt.gstPercentage}%</span>
+                            <span className="text-[10px] text-muted-foreground uppercase">{rt.gstType}</span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">No GST</span>
+                        )}
+                      </TableCell>
                       <TableCell>{rt.maxOccupancy}</TableCell>
                       <TableCell><Badge className="bg-primary/10 text-primary border-primary/20">{rt.status || "Active"}</Badge></TableCell>
                       <TableCell className="text-right">
@@ -967,6 +1198,8 @@ export default function FOSetupPage() {
                               code: rt.code,
                               baseRate: rt.baseRate,
                               maxOccupancy: rt.maxOccupancy,
+                              gstPercentage: rt.gstPercentage || 0,
+                              gstType: rt.gstType || "EXCLUSIVE",
                               status: rt.status || "active",
                             })
                             setIsEditOpen(true)
@@ -1037,12 +1270,15 @@ export default function FOSetupPage() {
         </TabsContent>
 
         {/* Service Codes Tab */}
-        <TabsContent value="service-codes" className="mt-3">
+        <TabsContent value="service-codes" className="mt-3 space-y-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <CardTitle className="text-lg">Service Codes</CardTitle>
-              <Button size="sm" onClick={() => { setAddType("service-code"); setIsAddOpen(true) }}>
-                <Plus className="h-3.5 w-3.5 mr-1.5" />Add Service Code
+              <div>
+                <CardTitle className="text-lg">Services</CardTitle>
+                <CardDescription>Master list of unified services available for guest billing</CardDescription>
+              </div>
+              <Button size="sm" onClick={() => { setAddType("service"); setIsAddOpen(true) }}>
+                <Plus className="h-3.5 w-3.5 mr-1.5" />Add Service
               </Button>
             </CardHeader>
             <CardContent>
@@ -1052,39 +1288,168 @@ export default function FOSetupPage() {
                     <TableHead>Code</TableHead>
                     <TableHead>Service Name</TableHead>
                     <TableHead>Category</TableHead>
-                    <TableHead>Default Rate</TableHead>
-                    <TableHead>GST %</TableHead>
+                    <TableHead>Default Price</TableHead>
+                    <TableHead>Charge Type</TableHead>
+                    <TableHead>GST</TableHead>
+                    <TableHead>Food Service</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {serviceCodes.map((sc) => (
-                    <TableRow key={sc._id}>
-                      <TableCell><Badge variant="secondary">{sc.code}</Badge></TableCell>
-                      <TableCell className="font-medium">{sc.serviceName}</TableCell>
-                      <TableCell>{sc.category}</TableCell>
-                      <TableCell>{sc.defaultRate}</TableCell>
-                      <TableCell>{sc.gst}%</TableCell>
+                  {services.map((s) => (
+                    <TableRow key={s._id}>
+                      <TableCell><Badge variant="secondary">{s.code}</Badge></TableCell>
+                      <TableCell className="font-medium">{s.name}</TableCell>
+                      <TableCell>{s.category || "Other"}</TableCell>
+                      <TableCell>Rs. {s.defaultPrice}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px]">
+                          {s.chargeType === "PER_DAY" ? "Per Day" : "Per Stay"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {s.gstPercentage > 0 ? (
+                          <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px]">
+                            {s.gstPercentage}%
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-[10px]">No GST</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {s.isFood ? (
+                          <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-[10px]">YES</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-[10px]">NO</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell><Badge className="bg-primary/10 text-primary border-primary/20">{s.status || "Active"}</Badge></TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button size="sm" variant="ghost" onClick={() => {
-                            setSelectedServiceCode(sc)
+                            setSelectedService(s)
                             setEditForm({
-                              name: sc.serviceName,
-                              code: sc.code,
-                              category: sc.category,
-                              rate: sc.defaultRate,
-                              gstPercent: sc.gst,
+                              name: s.name,
+                              code: s.code,
+                              defaultPrice: s.defaultPrice,
+                              chargeType: s.chargeType || "PER_STAY",
+                              gstPercentage: s.gstPercentage || 0,
+                              gstApplicable: !!s.gstApplicable,
+                              isFood: !!s.isFood,
+                              status: s.status || "active",
                             })
                             setIsEditOpen(true)
                           }}><Pencil className="h-3.5 w-3.5" /></Button>
-                          <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDeleteServiceCode(sc._id)}>
+                          <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDeleteService(s._id)}>
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </TableCell>
                     </TableRow>
                   ))}
+                  {services.length === 0 && (
+                    <TableRow><TableCell colSpan={7} className="text-center py-4 text-muted-foreground">No global services configured</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Company Registration Tab */}
+        <TabsContent value="companies" className="mt-3">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="text-lg">Company Registration</CardTitle>
+                <CardDescription>Manage companies, travel agents, and OTAs for bookings</CardDescription>
+              </div>
+              <Button size="sm" onClick={() => {
+                setSelectedCompany(null);
+                setCompanyForm({
+                  name: "",
+                  code: "",
+                  contactPerson: "",
+                  phone: "",
+                  email: "",
+                  address: "",
+                  gstNumber: "",
+                  type: "Company",
+                  creditAllowed: false,
+                  creditLimit: 0,
+                  status: true
+                });
+                setIsCompanyModalOpen(true);
+              }}>
+                <Plus className="h-3.5 w-3.5 mr-1.5" />Add Registration
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Code</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead>GST Number</TableHead>
+                    <TableHead>Credit</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {companies.map((company) => (
+                    <TableRow key={company._id}>
+                      <TableCell>
+                        <Badge variant="outline" className={
+                          company.type === "Company" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                          company.type === "Travel Agent" ? "bg-purple-50 text-purple-700 border-purple-200" :
+                          "bg-orange-50 text-orange-700 border-orange-200"
+                        }>
+                          {company.type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell><Badge variant="secondary">{company.code}</Badge></TableCell>
+                      <TableCell className="font-medium">{company.name}</TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          {company.contactPerson && <div>{company.contactPerson}</div>}
+                          {company.phone && <div className="text-muted-foreground">{company.phone}</div>}
+                          {company.email && <div className="text-muted-foreground">{company.email}</div>}
+                        </div>
+                      </TableCell>
+                      <TableCell>{company.gstNumber || "-"}</TableCell>
+                      <TableCell>
+                        {company.creditAllowed ? (
+                          <Badge className="bg-green-100 text-green-700 border-green-200">
+                            Rs. {company.creditLimit.toLocaleString()}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">No Credit</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={company.status ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 border-red-200"}>
+                          {company.status ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => handleEditCompany(company)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDeleteCompany(company._id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {companies.length === 0 && (
+                    <TableRow><TableCell colSpan={8} className="text-center py-4 text-muted-foreground">No registrations configured</TableCell></TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -1093,7 +1458,7 @@ export default function FOSetupPage() {
 
         {/* Hotel Config Tab */}
         <TabsContent value="hotel-config" className="mt-3">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Hotel Details</CardTitle>
@@ -1176,6 +1541,89 @@ export default function FOSetupPage() {
                   Last night audit: {hotelConfigForm.lastNightAuditAt ? new Date(hotelConfigForm.lastNightAuditAt).toLocaleString() : "Not run yet"}
                 </div>
                 <Button className="w-full" onClick={handleSaveHotelConfig}>Save Settings</Button>
+              </CardContent>
+            </Card>
+            <Card className="xl:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-lg">Booking Number Settings</CardTitle>
+                <CardDescription>Configure the readable booking sequence used for new reservations and check-ins.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Prefix</Label>
+                    <Input
+                      value={hotelConfigForm.bookingPrefix || ""}
+                      onChange={(e) => setHotelConfigForm({ ...hotelConfigForm, bookingPrefix: e.target.value.toUpperCase() })}
+                      placeholder="NOV"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Start Number</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={hotelConfigForm.startNumber ?? 1}
+                      onChange={(e) => setHotelConfigForm({ ...hotelConfigForm, startNumber: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Digit Length</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={hotelConfigForm.digitLength ?? 4}
+                      onChange={(e) => setHotelConfigForm({ ...hotelConfigForm, digitLength: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Current Running Number</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={hotelConfigForm.currentNumber ?? 1}
+                      onChange={(e) => setHotelConfigForm({ ...hotelConfigForm, currentNumber: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Financial Year Format</Label>
+                    <Select
+                      value={hotelConfigForm.financialYearFormat || "YYYY-YY"}
+                      onValueChange={(val) => setHotelConfigForm({ ...hotelConfigForm, financialYearFormat: val })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="YYYY-YY">2026-27</SelectItem>
+                        <SelectItem value="YYYY-YYYY">2026-2027</SelectItem>
+                        <SelectItem value="YY-YY">26-27</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Current Financial Year</Label>
+                    <Input
+                      value={hotelConfigForm.currentFinancialYear || ""}
+                      onChange={(e) => setHotelConfigForm({ ...hotelConfigForm, currentFinancialYear: e.target.value })}
+                      placeholder="Auto on first booking"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={hotelConfigForm.resetFinancialYear !== false}
+                      onCheckedChange={(checked) => setHotelConfigForm({ ...hotelConfigForm, resetFinancialYear: checked })}
+                    />
+                    <Label>Reset Every Financial Year</Label>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Preview: </span>
+                    <span className="font-semibold">{bookingPreview}</span>
+                  </div>
+                </div>
+                <Button className="w-full" onClick={handleSaveHotelConfig}>Save Booking Number Settings</Button>
               </CardContent>
             </Card>
           </div>
@@ -1283,7 +1731,7 @@ export default function FOSetupPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {addType === "room-type" ? "Add Room Type" : addType === "rate-plan" ? "Add Rate Plan" : "Add Service Code"}
+              {addType === "room-type" ? "Add Room Type" : addType === "rate-plan" ? "Add Rate Plan" : addType === "service" ? "Add Service" : "Add Service Code"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -1295,33 +1743,128 @@ export default function FOSetupPage() {
                 }
               /></div>
               <div className="space-y-2"><Label>Code</Label><Input
-                placeholder="3-letter code"
-                maxLength={3}
+                placeholder="Code"
                 value={genericForm.code || ""}
                 onChange={(e) =>
                   setGenericForm({ ...genericForm, code: e.target.value.toUpperCase() })
                 }
               /></div>
             </div>
+            {addType === "service" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Category</Label>
+                    <Select
+                      value={genericForm.category || "Other"}
+                      onValueChange={(val) => setGenericForm({ ...genericForm, category: val })}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Accommodation">Accommodation</SelectItem>
+                        <SelectItem value="Food & Beverage">Food & Beverage</SelectItem>
+                        <SelectItem value="Laundry">Laundry</SelectItem>
+                        <SelectItem value="Transport">Transport</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Default Price</Label>
+                    <Input
+                      type="number"
+                      placeholder="0.00"
+                      value={genericForm.defaultPrice || ""}
+                      onChange={(e) => setGenericForm({ ...genericForm, defaultPrice: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Charge Type</Label>
+                    <Select
+                      value={genericForm.chargeType || "PER_STAY"}
+                      onValueChange={(val) => setGenericForm({ ...genericForm, chargeType: val })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PER_STAY">Per Stay</SelectItem>
+                        <SelectItem value="PER_DAY">Per Day</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>GST %</Label>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={genericForm.gstPercentage || ""}
+                      onChange={(e) => setGenericForm({ ...genericForm, gstPercentage: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center space-x-2 pt-6">
+                    <Switch
+                      id="is-food"
+                      checked={genericForm.isFood || false}
+                      onCheckedChange={(val) => setGenericForm({ ...genericForm, isFood: val })}
+                    />
+                    <Label htmlFor="is-food">Food Service</Label>
+                  </div>
+                  <div className="flex items-center space-x-2 pt-6">
+                    <Switch
+                      id="gst-applicable"
+                      checked={genericForm.gstApplicable || false}
+                      onCheckedChange={(val) => setGenericForm({ ...genericForm, gstApplicable: val })}
+                    />
+                    <Label htmlFor="gst-applicable">GST Applicable</Label>
+                  </div>
+                </div>
+              </div>
+            )}
             {addType === "room-type" && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>Base Rate</Label><Input
-                  type="number"
-                  placeholder="0.00"
-                  value={genericForm.baseRate || ""}
-                  onChange={(e) =>
-                    setGenericForm({ ...genericForm, baseRate: e.target.value })
-                  }
-                /></div>
-                <div className="space-y-2"><Label>Max Occupancy</Label><Input
-                  type="number"
-                  placeholder="2"
-                  value={genericForm.maxOccupancy || ""}
-                  onChange={(e) =>
-                    setGenericForm({ ...genericForm, maxOccupancy: e.target.value })
-                  }
-                /></div>
-
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2"><Label>Base Rate</Label><Input
+                    type="number"
+                    placeholder="0.00"
+                    value={genericForm.baseRate || ""}
+                    onChange={(e) =>
+                      setGenericForm({ ...genericForm, baseRate: e.target.value })
+                    }
+                  /></div>
+                  <div className="space-y-2"><Label>Max Occupancy</Label><Input
+                    type="number"
+                    placeholder="2"
+                    value={genericForm.maxOccupancy || ""}
+                    onChange={(e) =>
+                      setGenericForm({ ...genericForm, maxOccupancy: e.target.value })
+                    }
+                  /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2"><Label>GST %</Label><Input
+                    type="number"
+                    placeholder="0"
+                    value={genericForm.gstPercentage || ""}
+                    onChange={(e) =>
+                      setGenericForm({ ...genericForm, gstPercentage: e.target.value })
+                    }
+                  /></div>
+                  <div className="space-y-2"><Label>GST Type</Label>
+                    <Select
+                      value={genericForm.gstType || "EXCLUSIVE"}
+                      onValueChange={(val) => setGenericForm({ ...genericForm, gstType: val })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="EXCLUSIVE">Exclusive</SelectItem>
+                        <SelectItem value="INCLUSIVE">Inclusive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
             )}
             {addType === "rate-plan" && (
@@ -1336,46 +1879,6 @@ export default function FOSetupPage() {
                 />
               </div>
             )}
-            {addType === "service-code" && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Category</Label>
-                  <Select
-                    value={genericForm.category || ""}
-                    onValueChange={(val) => setGenericForm({ ...genericForm, category: val })}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Accommodation">Accommodation</SelectItem>
-                      <SelectItem value="Food & Beverage">Food & Beverage</SelectItem>
-                      <SelectItem value="Laundry">Laundry</SelectItem>
-                      <SelectItem value="Transport">Transport</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Default Rate</Label>
-                    <Input
-                      type="number"
-                      placeholder="0.00"
-                      value={genericForm.rate || ""}
-                      onChange={(e) => setGenericForm({ ...genericForm, rate: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>GST %</Label>
-                    <Input
-                      type="number"
-                      placeholder="18"
-                      value={genericForm.gstPercent || ""}
-                      onChange={(e) => setGenericForm({ ...genericForm, gstPercent: e.target.value })}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
@@ -1384,7 +1887,7 @@ export default function FOSetupPage() {
                 ? handleCreateRoomType
                 : addType === "rate-plan"
                   ? handleCreateRatePlan
-                  : handleCreateServiceCode
+                  : handleCreateService
             }>Save</Button>
           </DialogFooter>
         </DialogContent>
@@ -1396,10 +1899,9 @@ export default function FOSetupPage() {
           if (!open) {
             setSelectedRoomType(null)
             setSelectedRatePlan(null)
-            setSelectedServiceCode(null)
           }
         }}
-        title={selectedRoomType ? "Edit Room Type" : selectedRatePlan ? "Edit Rate Plan" : "Edit Service Code"}
+        title={selectedRoomType ? "Edit Room Type" : selectedRatePlan ? "Edit Rate Plan" : selectedService ? "Edit Service" : "Edit Item"}
         formData={editForm}
         setFormData={setEditForm}
         fields={
@@ -1409,6 +1911,7 @@ export default function FOSetupPage() {
               { name: "code", label: "Code" },
               { name: "baseRate", label: "Base Rate", type: "number" },
               { name: "maxOccupancy", label: "Max Occupancy", type: "number" },
+              { name: "gstPercentage", label: "GST %", type: "number" },
             ]
             : selectedRatePlan
               ? [
@@ -1416,38 +1919,223 @@ export default function FOSetupPage() {
                 { name: "code", label: "Code" },
                 { name: "description", label: "Description" },
               ]
-              : [
-                { name: "name", label: "Name" },
-                { name: "code", label: "Code" },
-                { name: "category", label: "Category" },
-                { name: "rate", label: "Rate", type: "number" },
-                { name: "gstPercent", label: "GST %", type: "number" },
-              ]
+              : selectedService
+                ? [
+                  { name: "name", label: "Name" },
+                  { name: "code", label: "Code" },
+                  { name: "defaultPrice", label: "Default Price", type: "number" },
+                  { name: "gstPercentage", label: "GST %", type: "number" },
+                ]
+                : []
         }
         onSubmit={
           selectedRoomType
             ? handleUpdateRoomType
             : selectedRatePlan
               ? handleUpdateRatePlan
-              : handleUpdateServiceCode
+              : handleUpdateService
         }
       >
-        {(selectedRoomType || selectedRatePlan) && (
+        {(selectedRoomType || selectedRatePlan || selectedService) && (
           <div className="space-y-4 pt-4">
-            <Label>Status</Label>
-            <Select
-              value={editForm.status || "active"}
-              onValueChange={(value) => setEditForm({ ...editForm, status: value })}
-            >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
+            {selectedService && (
+              <>
+                <div className="space-y-2">
+                  <Label>Charge Type</Label>
+                  <Select
+                    value={editForm.chargeType || "PER_STAY"}
+                    onValueChange={(val) => setEditForm({ ...editForm, chargeType: val })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PER_STAY">Per Stay</SelectItem>
+                      <SelectItem value="PER_DAY">Per Day</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="edit-is-food"
+                    checked={editForm.isFood || false}
+                    onCheckedChange={(val) => setEditForm({ ...editForm, isFood: val })}
+                  />
+                  <Label htmlFor="edit-is-food">Food Service</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="edit-gst-applicable"
+                    checked={editForm.gstApplicable || false}
+                    onCheckedChange={(val) => setEditForm({ ...editForm, gstApplicable: val })}
+                  />
+                  <Label htmlFor="edit-gst-applicable">GST Applicable</Label>
+                </div>
+              </>
+            )}
+            {selectedRoomType && (
+              <div className="space-y-2">
+                <Label>GST Type</Label>
+                <Select
+                  value={editForm.gstType || "EXCLUSIVE"}
+                  onValueChange={(value) => setEditForm({ ...editForm, gstType: value })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EXCLUSIVE">Exclusive</SelectItem>
+                    <SelectItem value="INCLUSIVE">Inclusive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select
+                value={editForm.status || "active"}
+                onValueChange={(value) => setEditForm({ ...editForm, status: value })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         )}
       </EditDetailsModal>
+
+      {/* Company Modal */}
+      <Dialog open={isCompanyModalOpen} onOpenChange={setIsCompanyModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{selectedCompany ? "Edit Registration" : "Add Registration"}</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="registration-type">Type *</Label>
+              <Select
+                value={companyForm.type}
+                onValueChange={(val: any) => setCompanyForm({ ...companyForm, type: val })}
+              >
+                <SelectTrigger id="registration-type">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Company">Company</SelectItem>
+                  <SelectItem value="Travel Agent">Travel Agent</SelectItem>
+                  <SelectItem value="OTA">OTA</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="company-name">Name *</Label>
+              <Input
+                id="company-name"
+                value={companyForm.name}
+                onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })}
+                placeholder="Enter name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="company-code">Code *</Label>
+              <Input
+                id="company-code"
+                value={companyForm.code}
+                onChange={(e) => setCompanyForm({ ...companyForm, code: e.target.value.toUpperCase() })}
+                placeholder="Enter company code"
+                maxLength={10}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="contact-person">Contact Person</Label>
+              <Input
+                id="contact-person"
+                value={companyForm.contactPerson}
+                onChange={(e) => setCompanyForm({ ...companyForm, contactPerson: e.target.value })}
+                placeholder="Enter contact person name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone</Label>
+              <Input
+                id="phone"
+                value={companyForm.phone}
+                onChange={(e) => setCompanyForm({ ...companyForm, phone: e.target.value })}
+                placeholder="Enter phone number"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                value={companyForm.email}
+                onChange={(e) => setCompanyForm({ ...companyForm, email: e.target.value })}
+                placeholder="Enter email address"
+                type="email"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gst-number">GST Number</Label>
+              <Input
+                id="gst-number"
+                value={companyForm.gstNumber}
+                onChange={(e) => setCompanyForm({ ...companyForm, gstNumber: e.target.value })}
+                placeholder="Enter GST number"
+              />
+            </div>
+            <div className="space-y-2 col-span-2">
+              <Label htmlFor="address">Address</Label>
+              <Input
+                id="address"
+                value={companyForm.address}
+                onChange={(e) => setCompanyForm({ ...companyForm, address: e.target.value })}
+                placeholder="Enter company address"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Credit Allowed</Label>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  checked={companyForm.creditAllowed}
+                  onCheckedChange={(val) => setCompanyForm({ ...companyForm, creditAllowed: val })}
+                />
+                <Label>{companyForm.creditAllowed ? "Yes" : "No"}</Label>
+              </div>
+            </div>
+            {companyForm.creditAllowed && (
+              <div className="space-y-2">
+                <Label htmlFor="credit-limit">Credit Limit (Rs.)</Label>
+                <Input
+                  id="credit-limit"
+                  type="number"
+                  value={companyForm.creditLimit}
+                  onChange={(e) => setCompanyForm({ ...companyForm, creditLimit: Number(e.target.value) })}
+                  placeholder="Enter credit limit"
+                  min="0"
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  checked={companyForm.status}
+                  onCheckedChange={(val) => setCompanyForm({ ...companyForm, status: val })}
+                />
+                <Label>{companyForm.status ? "Active" : "Inactive"}</Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCompanyModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveCompany}>
+              {selectedCompany ? "Update" : "Create"} Company
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   )
 }

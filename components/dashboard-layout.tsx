@@ -24,12 +24,12 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
 
   const routeModule =
     pathname.startsWith("/admin/front-office") ? "front-office" :
-    pathname.startsWith("/admin/pos") ? "point-of-sale" :
-    pathname.startsWith("/admin/housekeeping") ? "housekeeping" :
-    pathname.startsWith("/admin/accounts") ? "accounts" :
-    pathname.startsWith("/admin/inventory") ? "inventory" :
-    pathname.startsWith("/admin/reports") ? "reports" :
-    undefined
+      pathname.startsWith("/admin/pos") ? "point-of-sale" :
+        pathname.startsWith("/admin/housekeeping") ? "housekeeping" :
+          pathname.startsWith("/admin/accounts") ? "accounts" :
+            pathname.startsWith("/admin/inventory") ? "inventory" :
+              pathname.startsWith("/admin/reports") ? "reports" :
+                undefined
 
   const moduleToCheck = requiredModule || routeModule
   const subscriptionStatus = normalizeSubscriptionStatus(subscriptionInfo?.status)
@@ -72,8 +72,8 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
   return (
     <div className="min-h-screen bg-background">
       <DashboardSidebar role={user?.role || "staff"} />
-      <div className="ml-64 min-h-screen">
-        <main className="p-4">
+      <div className="ml-60 min-h-screen">
+        <main className="p-6">
           {subscriptionStatus === "WARNING" && subscriptionInfo?.message && (
             <div className="mb-4 flex items-start gap-3 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 shadow-sm">
               <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -9,16 +10,25 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
-import { DoorOpen, Printer, Pencil, CalendarClock, CreditCard, Loader2, Star, CheckCircle2, X } from "lucide-react"
-import { getInHouseGuests, getFolioDetails, createCheckOut, getSetupRoomTypes, getSetupRatePlans, updateCheckIn } from "@/lib/backend-api"
+import { DoorOpen, Printer, Pencil, Loader2, Star, CheckCircle2, X } from "lucide-react"
+import { getInHouseGuests, getFolioDetails, createCheckOut, getSetupRoomTypes, getSetupRatePlans, getSetupOptions } from "@/lib/backend-api"
 import { toast } from "sonner"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
-import EditDetailsModal from "@/components/common/EditDetailsModal"
 
 export default function CheckOutPage() {
+  const router = useRouter()
+  const GST_PERCENT = 12
+  const toNum = (value: any) => {
+    const numericValue = Number(value)
+    return Number.isFinite(numericValue) ? numericValue : 0
+  }
+  const toNonNegativeNum = (value: any) => Math.max(0, toNum(value))
+  const money = (value: number) => `₹${toNum(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const roundMoney = (value: number) => Math.round(toNum(value) * 100) / 100
+  const moneyEquals = (a: number, b: number) => Math.round(toNum(a) * 100) === Math.round(toNum(b) * 100)
   const [selectedRoom, setSelectedRoom] = useState("")
-  const [billingType, setBillingType] = useState("complete")
+  const [billingType, setBillingType] = useState("full")
   const [inHouseGuests, setInHouseGuests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [folioData, setFolioData] = useState<any>(null)
@@ -41,6 +51,22 @@ export default function CheckOutPage() {
     return String(guest?.folioNumber ?? guest?.folio?.folioNumber ?? "").trim()
   }
 
+  const isPaxGuest = (guest: any) => {
+    return String(guest?.guestType || guest?.type || "").toLowerCase().includes("pax") || Boolean(guest?.isPax)
+  }
+
+  const buildSplitRowsForRoom = (roomNumber: string) => {
+    const roomGuests = inHouseGuests
+      .filter((guest) => getGuestRoomNumber(guest) === String(roomNumber).trim())
+      .sort((a, b) => Number(isPaxGuest(a)) - Number(isPaxGuest(b)))
+
+    const names = Array.from(
+      new Set(roomGuests.map(getGuestDisplayName).filter(Boolean))
+    )
+
+    return (names.length ? names : ["Guest 1"]).map((name) => ({ name, amount: 0, mode: "cash" }))
+  }
+
   // Extra checkout fields
   const [keyCardsReturned, setKeyCardsReturned] = useState(1)
   const [minibarChecked, setMinibarChecked] = useState(true)
@@ -49,16 +75,19 @@ export default function CheckOutPage() {
   const [damageCharges, setDamageCharges] = useState(0)
   const [rating, setRating] = useState(5)
   const [comments, setComments] = useState("")
-  const [invoiceRequired, setInvoiceRequired] = useState(true)
-  const [emailInvoice, setEmailInvoice] = useState(true)
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [editFormData, setEditFormData] = useState({
-    guestName: "",
-    mobileNo: "",
-    email: "",
-    address: "",
-    gstNumber: ""
-  })
+  const [paymentMode, setPaymentMode] = useState("cash")
+  const [amountPaid, setAmountPaid] = useState(0)
+  const [discount, setDiscount] = useState(0)
+  const [extraManualCharges, setExtraManualCharges] = useState(0)
+  const [lateCheckoutHours, setLateCheckoutHours] = useState(0)
+  const [lateCheckoutCharges, setLateCheckoutCharges] = useState(0)
+  const [roomStatus, setRoomStatus] = useState("dirty")
+  const [splitAllocations, setSplitAllocations] = useState([{ name: "Guest 1", amount: 0, mode: "cash" }])
+  const [companyOptions, setCompanyOptions] = useState<any[]>([])
+  const [companyId, setCompanyId] = useState("")
+  const [companyName, setCompanyName] = useState("")
+  const [companyGstin, setCompanyGstin] = useState("")
+  const [companyBillingAddress, setCompanyBillingAddress] = useState("")
 
   useEffect(() => {
     fetchInitialData()
@@ -76,38 +105,48 @@ export default function CheckOutPage() {
 
   const handleEditCheckIn = () => {
     if (!room) return
-    setEditFormData({
-      guestName: room.guestName || room.name || "",
-      mobileNo: room.mobileNo || "",
-      email: room.email || "",
-      address: room.address || "",
-      gstNumber: room.gstNumber || ""
-    })
-    setIsEditModalOpen(true)
+    const bookingId = room.id || room.reservationId || room.folioId
+    if (!bookingId) return
+    router.push(`/admin/front-office/reception/check-in?id=${encodeURIComponent(String(bookingId))}&mode=edit`)
   }
 
-  const handleUpdateCheckIn = async () => {
-    if (!room) return
-    try {
-      const response = await updateCheckIn(room.checkinId || room.id, editFormData)
-      if (response.success) {
-        toast.success("Check-in details updated")
-        setIsEditModalOpen(false)
-        fetchInHouseGuests() // Refresh data
-      }
-    } catch (error: any) {
-      console.error("Update failed:", error)
-      toast.error(error.message || "Failed to update details")
-    }
+  const addSplitPayer = () => {
+    setSplitAllocations((prev) => [...prev, { name: `Guest ${prev.length + 1}`, amount: 0, mode: "cash" }])
+  }
+
+  const removeSplitPayer = (index: number) => {
+    setSplitAllocations((prev) => (prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== index)))
+  }
+
+  const updateSplitPayer = (index: number, key: "name" | "amount" | "mode", value: string | number) => {
+    setSplitAllocations((prev) => prev.map((row, idx) => (idx === index ? { ...row, [key]: value } : row)))
+  }
+
+  const isSplitBillingValid = () => {
+    if (billingType !== "split") return true
+    if (splitAllocations.length === 0) return false
+    const hasInvalidRow = splitAllocations.some((row) => !row.name?.trim() || toNonNegativeNum(row.amount) <= 0 || !row.mode)
+    if (hasInvalidRow) return false
+    return moneyEquals(totalSplit, finalAmount)
+  }
+
+  const handleCompanyChange = (value: string) => {
+    setCompanyId(value)
+    const selected = companyOptions.find((item) => String(item._id || item.id || item.value || "") === value)
+    if (!selected) return
+    setCompanyName(String(selected.value || selected.name || ""))
+    setCompanyGstin(String(selected.gstin || selected.taxId || ""))
+    setCompanyBillingAddress(String(selected.address || selected.billingAddress || ""))
   }
 
   async function fetchInitialData() {
     setLoading(true)
     try {
-      const [guestsRes, roomTypesRes, ratePlansRes] = await Promise.all([
+      const [guestsRes, roomTypesRes, ratePlansRes, companyRes] = await Promise.all([
         getInHouseGuests(),
         getSetupRoomTypes(),
-        getSetupRatePlans()
+        getSetupRatePlans(),
+        getSetupOptions("company").catch(() => [])
       ])
 
       if (guestsRes.success) {
@@ -115,6 +154,7 @@ export default function CheckOutPage() {
       }
       setRoomTypes(roomTypesRes)
       setRatePlans(ratePlansRes)
+      setCompanyOptions(Array.isArray(companyRes) ? companyRes : [])
     } catch (error) {
       console.error("Failed to fetch initial data:", error)
       toast.error("Failed to load initial data")
@@ -139,6 +179,7 @@ export default function CheckOutPage() {
     setShowSuccess(false)
     setSelectedRoom(roomNumber)
     setFolioData(null)
+    setSplitAllocations(buildSplitRowsForRoom(roomNumber))
     const guest = inHouseGuests.find(g => getGuestRoomNumber(g) === String(roomNumber).trim())
     if (guest && (guest.folioId || guest.id)) {
       setFetchingFolio(true)
@@ -158,6 +199,26 @@ export default function CheckOutPage() {
 
   const handleCheckout = async () => {
     if (!selectedRoom || !folioData) return
+    if (!minibarChecked) {
+      toast.error("Please confirm minibar check before checkout")
+      return
+    }
+    if (!roomInspected) {
+      toast.error("Please complete room inspection before checkout")
+      return
+    }
+    if (billingType === "full" && balance > 0.001) {
+      toast.error("Payment incomplete. Please collect full amount before checkout")
+      return
+    }
+    if (billingType === "split" && !isSplitBillingValid()) {
+      toast.error("Split allocation must equal final payable amount")
+      return
+    }
+    if (billingType === "company" && (!companyId || !companyName)) {
+      toast.error("Please select company details for company billing")
+      return
+    }
 
     setProcessingCheckout(true)
     try {
@@ -168,19 +229,55 @@ export default function CheckOutPage() {
       }
       const payload = {
         folioId: guest.folioId || guest.id,
+        billingType,
         actualCheckOutTime: new Date().toISOString(),
-        settlementComplete: true,
-        keyCardsReturned,
-        minibarChecked,
-        minibarCharges,
-        roomInspected,
-        damageCharges,
+
+        splitBilling:
+          billingType === "split"
+            ? splitAllocations.map((row) => ({
+              name: row.name,
+              amount: toNonNegativeNum(row.amount),
+              mode: row.mode,
+            }))
+            : undefined,
+
+        companyBilling:
+          billingType === "company"
+            ? {
+              companyId,
+              companyName,
+              gstin: companyGstin,
+              billingAddress: companyBillingAddress,
+            }
+            : undefined,
+
+        payment:
+          billingType === "full"
+            ? {
+              mode: paymentMode,
+              amountPaid,
+            }
+            : undefined,
+
+        validations: {
+          minibarChecked,
+          roomInspected,
+          keyCardsReturned,
+        },
+
+        adjustments: {
+          minibarCharges,
+          damageCharges,
+          lateCheckoutCharges,
+          extraManualCharges,
+          discount,
+        },
+
+        roomStatusAfterCheckout: roomStatus,
         guestFeedback: {
           rating,
-          comments,
+          comment: comments,
         },
-        invoiceRequired,
-        emailInvoice,
       }
 
       const response = await createCheckOut(payload)
@@ -190,13 +287,26 @@ export default function CheckOutPage() {
         setShowSuccess(true)
 
         // Reset and refresh
-        // setSelectedRoom("")
-        // setFolioData(null)
+        setSelectedRoom("")
+        setFolioData(null)
         setKeyCardsReturned(1)
         setMinibarChecked(true)
         setMinibarCharges(0)
         setRoomInspected(true)
         setDamageCharges(0)
+        setDiscount(0)
+        setExtraManualCharges(0)
+        setLateCheckoutHours(0)
+        setLateCheckoutCharges(0)
+        setPaymentMode("cash")
+        setAmountPaid(0)
+        setRoomStatus("dirty")
+        setSplitAllocations([{ name: "Guest 1", amount: 0, mode: "cash" }])
+        setBillingType("full")
+        setCompanyId("")
+        setCompanyName("")
+        setCompanyGstin("")
+        setCompanyBillingAddress("")
         setRating(5)
         setComments("")
 
@@ -246,29 +356,39 @@ export default function CheckOutPage() {
     }
   }
 
-  const room = inHouseGuests.find(g => getGuestRoomNumber(g) === String(selectedRoom).trim())
+  const selectedRoomGuests = useMemo(
+    () => inHouseGuests.filter(g => getGuestRoomNumber(g) === String(selectedRoom).trim()),
+    [inHouseGuests, selectedRoom]
+  )
+  const room = selectedRoomGuests.find((guest) => !isPaxGuest(guest)) || selectedRoomGuests[0]
   const roomOptions = Array.from(
     new Map(
       inHouseGuests
         .map((guest) => {
           const roomNumber = getGuestRoomNumber(guest)
           if (!roomNumber) return null
+          const roomGuests = inHouseGuests.filter(g => getGuestRoomNumber(g) === roomNumber)
+          const primaryGuest = roomGuests.find((g) => !isPaxGuest(g)) || guest
+          const payerNames = Array.from(new Set(roomGuests.map(getGuestDisplayName).filter(Boolean)))
 
           return [
             roomNumber,
             {
               roomNumber,
-              guestName: getGuestDisplayName(guest),
-              folioNumber: getGuestFolioNumber(guest),
+              guestName: getGuestDisplayName(primaryGuest),
+              folioNumber: getGuestFolioNumber(primaryGuest),
+              payerCount: payerNames.length,
             },
           ] as const
         })
-        .filter((entry): entry is readonly [string, { roomNumber: string; guestName: string; folioNumber: string }] => Boolean(entry))
+        .filter((entry): entry is readonly [string, { roomNumber: string; guestName: string; folioNumber: string; payerCount: number }] => Boolean(entry))
     ).values()
   ).sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true, sensitivity: "base" }))
 
   // Calculate billing from folioData or fallback to room data
   const charges = Array.isArray(folioData?.charges) ? folioData.charges : []
+  const payments = Array.isArray(folioData?.payments) ? folioData.payments : []
+
   const roomTypeValue = room?.roomType?.$oid || room?.roomType?._id || room?.roomType || folioData?.room?.roomType || ""
   const roomTypeName = String(room?.roomType?.name || room?.type || folioData?.room?.roomType || "").toLowerCase()
   const setupRoomType = roomTypes.find((rt) => {
@@ -290,12 +410,35 @@ export default function CheckOutPage() {
     .filter((c: any) => String(c.category || c.type || "").toLowerCase() !== "room-tariff")
     .reduce((sum: number, c: any) => sum + Number(c.total ?? c.totalAmount ?? c.amount ?? 0), 0) || 0
 
-  const cgst = Number(folioData?.cgst || folioData?.summary?.cgst || 0)
-  const sgst = Number(folioData?.sgst || folioData?.summary?.sgst || 0)
-  const totalTax = cgst + sgst
-  const grossTotal = Number(folioData?.summary?.grossTotal || folioData?.summary?.totalCharges || 0) || (roomCharges + serviceCharges + totalTax)
-  const advance = Number(folioData?.summary?.totalPayments || room?.advanceAmount || 0)
+  const providedCgst = Number(folioData?.cgst || folioData?.summary?.cgst || 0)
+  const providedSgst = Number(folioData?.sgst || folioData?.summary?.sgst || 0)
+  const computedTax = ((roomCharges + serviceCharges) * GST_PERCENT) / 100
+  const totalTax = providedCgst + providedSgst || computedTax
+  const cgst = providedCgst || totalTax / 2
+  const sgst = providedSgst || totalTax / 2
+  const grossTotal = roomCharges + serviceCharges + totalTax
+  const advance = payments.reduce((sum: number, p: any) => sum + toNum(p.amount), 0) || Number(room?.advanceAmount || 0)
   const netPayable = grossTotal - advance
+  const folioNetPayable = Math.max(0, roundMoney(netPayable))
+
+  const extraCharges =
+    minibarCharges +
+    damageCharges +
+    lateCheckoutCharges +
+    extraManualCharges
+
+  const finalAmount = Math.max(0, roundMoney(folioNetPayable + extraCharges - discount))
+  const totalSplit = roundMoney(splitAllocations.reduce((sum, row) => sum + toNonNegativeNum(row.amount), 0))
+  const balance = billingType === "full" ? roundMoney(finalAmount - toNonNegativeNum(amountPaid)) : 0
+  const refund = billingType === "full" && toNonNegativeNum(amountPaid) > finalAmount ? roundMoney(toNonNegativeNum(amountPaid) - finalAmount) : 0
+  const remainingSplitBalance = roundMoney(finalAmount - totalSplit)
+  const splitHasAllocationMismatch = billingType === "split" && !moneyEquals(totalSplit, finalAmount)
+
+  useEffect(() => {
+    if (billingType === "full" && finalAmount > 0 && (amountPaid === 0 || amountPaid === null)) {
+      setAmountPaid(finalAmount)
+    }
+  }, [finalAmount, billingType, amountPaid])
 
   return (
     <DashboardLayout requiredRole={["admin", "staff"]}>
@@ -363,9 +506,9 @@ export default function CheckOutPage() {
                   <Select value={billingType} onValueChange={setBillingType}>
                     <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="complete">Complete Billing</SelectItem>
-                      <SelectItem value="room">Room Billing</SelectItem>
+                      <SelectItem value="full">Full Billing</SelectItem>
                       <SelectItem value="split">Split Billing</SelectItem>
+                      <SelectItem value="company">Company Billing</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -374,7 +517,7 @@ export default function CheckOutPage() {
                     <div className="flex justify-between text-xs"><span className="text-muted-foreground">Room:</span><span className="font-medium text-foreground">{getGuestRoomNumber(room) || "N/A"}</span></div>
                     <div className="flex justify-between text-xs"><span className="text-muted-foreground">Guest:</span><span className="font-medium text-foreground">{room.guestName || room.name}</span></div>
                     <div className="flex justify-between text-xs"><span className="text-muted-foreground">Folio:</span><span className="text-foreground">{folioData?.folioNumber || room.folioNumber || "N/A"}</span></div>
-                    <div className="flex justify-between text-xs"><span className="text-muted-foreground">Booking:</span><span className="text-foreground">{room.bookingNo || room.bookingId || room.reservationId || "N/A"}</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-muted-foreground">Booking:</span><span className="text-foreground">{room.bookingNumber || room.bookingNo || room.bookingId || room.reservationId || "N/A"}</span></div>
                     <div className="flex justify-between text-xs"><span className="text-muted-foreground">Check-In:</span><span className="text-foreground">{room.checkInDate || room.checkIn}</span></div>
                     <div className="flex justify-between text-xs"><span className="text-muted-foreground">Check-Out:</span><span className="text-foreground">{room.checkOutDate || room.checkOut || "N/A"}</span></div>
                     <div className="flex justify-between text-xs">
@@ -399,176 +542,374 @@ export default function CheckOutPage() {
                 )}
                 <div className="flex flex-col gap-2 pt-2">
                   <Button variant="outline" size="sm" className="gap-1.5 text-xs justify-start" onClick={handleEditCheckIn}><Pencil className="h-3 w-3" /> Check-in Details Update</Button>
-                  <Button variant="outline" size="sm" className="gap-1.5 text-xs justify-start"><CalendarClock className="h-3 w-3" /> Change Date (F2)</Button>
-                  <Button variant="outline" size="sm" className="gap-1.5 text-xs justify-start"><CreditCard className="h-3 w-3" /> Change Tariff (F1)</Button>
                 </div>
               </CardContent>
             </Card>
 
             {/* Billing Summary */}
-            <Card className="lg:col-span-2">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Billing Summary</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {fetchingFolio ? (
-                  <div className="flex h-32 items-center justify-center">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                  </div>
-                ) : folioData ? (
-                  <div className="space-y-6">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-xs">Description</TableHead>
-                          <TableHead className="text-xs text-right">Amount</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell className="text-xs">Room Charges ({room?.nights || 0} nights)</TableCell>
-                          <TableCell className="text-xs text-right">{roomCharges.toFixed(2)}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="text-xs">Other Services (Laundry, Minibar)</TableCell>
-                          <TableCell className="text-xs text-right">{serviceCharges.toFixed(2)}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="text-xs text-muted-foreground">CGST</TableCell>
-                          <TableCell className="text-xs text-right text-muted-foreground">{cgst.toFixed(2)}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="text-xs text-muted-foreground">SGST</TableCell>
-                          <TableCell className="text-xs text-right text-muted-foreground">{sgst.toFixed(2)}</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                    <Separator />
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs"><span>Gross Total</span><span className="font-medium">{grossTotal.toFixed(2)}</span></div>
-                      <div className="flex justify-between text-xs text-green-600"><span>Advance Paid</span><span>-{advance.toFixed(2)}</span></div>
+            <div className="lg:col-span-2 space-y-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Billing Summary</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {fetchingFolio ? (
+                    <div className="flex h-32 items-center justify-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    </div>
+                  ) : folioData ? (
+                    <div className="space-y-6">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">Description</TableHead>
+                            <TableHead className="text-xs text-right">Amount</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          <TableRow>
+                            <TableCell className="text-xs">Room Charges ({room?.nights || 0} nights)</TableCell>
+                            <TableCell className="text-xs text-right">{money(roomCharges)}</TableCell>
+                          </TableRow>
+                          <TableRow>
+                            <TableCell className="text-xs">Other Services (Laundry, Minibar)</TableCell>
+                            <TableCell className="text-xs text-right">{money(serviceCharges)}</TableCell>
+                          </TableRow>
+                          <TableRow>
+                            <TableCell className="text-xs text-muted-foreground">CGST</TableCell>
+                            <TableCell className="text-xs text-right text-muted-foreground">{money(cgst)}</TableCell>
+                          </TableRow>
+                          <TableRow>
+                            <TableCell className="text-xs text-muted-foreground">SGST</TableCell>
+                            <TableCell className="text-xs text-right text-muted-foreground">{money(sgst)}</TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
                       <Separator />
-                      <div className="flex justify-between text-sm font-bold"><span>Net Payable</span><span className="text-primary">{netPayable.toFixed(2)}</span></div>
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-xs"><span>Gross Total</span><span className="font-medium">{money(grossTotal)}</span></div>
+                        <div className="flex justify-between text-xs text-green-600"><span>Advance Paid</span><span>-{money(advance)}</span></div>
+                        <Separator />
+                        <div className="flex justify-between text-sm font-bold"><span>Net Payable</span><span className="text-primary">{money(folioNetPayable)}</span></div>
+                      </div>
+
+                      <Separator />
+
+                      <div className="grid grid-cols-2 gap-4 pt-2">
+                        <div className="space-y-3">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox id="minibar" checked={minibarChecked} onCheckedChange={(v) => setMinibarChecked(!!v)} />
+                            <Label htmlFor="minibar" className="text-xs">Minibar Checked</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox id="inspected" checked={roomInspected} onCheckedChange={(v) => setRoomInspected(!!v)} />
+                            <Label htmlFor="inspected" className="text-xs">Room Inspected</Label>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground uppercase">Key Cards Returned</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              className="h-7 text-xs"
+                              value={isNaN(keyCardsReturned) ? "" : keyCardsReturned}
+                              onChange={(e) => setKeyCardsReturned(Math.max(0, parseInt(e.target.value) || 0))}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground uppercase">Minibar Charges</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="h-7 text-xs"
+                              value={isNaN(minibarCharges) ? "" : minibarCharges}
+                              onChange={(e) => setMinibarCharges(toNonNegativeNum(e.target.value))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground uppercase">Damage Charges</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="h-7 text-xs"
+                              value={isNaN(damageCharges) ? "" : damageCharges}
+                              onChange={(e) => setDamageCharges(toNonNegativeNum(e.target.value))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground uppercase">Late Checkout Hours</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="h-7 text-xs"
+                              value={lateCheckoutHours}
+                              onChange={(e) => setLateCheckoutHours(toNonNegativeNum(e.target.value))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground uppercase">Late Checkout Charges</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="h-7 text-xs"
+                              value={lateCheckoutCharges}
+                              onChange={(e) => setLateCheckoutCharges(toNonNegativeNum(e.target.value))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground uppercase">Manual Extra Charges</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="h-7 text-xs"
+                              value={extraManualCharges}
+                              onChange={(e) => setExtraManualCharges(toNonNegativeNum(e.target.value))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground uppercase">Discount</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="h-7 text-xs"
+                              value={discount}
+                              onChange={(e) => setDiscount(toNonNegativeNum(e.target.value))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      {billingType === "full" && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground uppercase">Payment Mode</Label>
+                            <Select value={paymentMode} onValueChange={setPaymentMode}>
+                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="cash">Cash</SelectItem>
+                                <SelectItem value="upi">UPI</SelectItem>
+                                <SelectItem value="card">Card</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground uppercase">Amount Paid</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="h-8 text-xs"
+                              value={amountPaid}
+                              onChange={(e) => setAmountPaid(toNonNegativeNum(e.target.value))}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {billingType === "split" && (
+                        <div className="space-y-3 border rounded-md p-3">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-semibold">Split Billing Allocations</Label>
+                            <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={addSplitPayer}>
+                              Add Payer
+                            </Button>
+                          </div>
+                          {splitAllocations.map((row, index) => (
+                            <div key={index} className="grid grid-cols-12 gap-2 items-end">
+                              <div className="col-span-5 space-y-1">
+                                <Label className="text-[10px] text-muted-foreground uppercase">Payer Name</Label>
+                                <Input
+                                  className="h-8 text-xs"
+                                  value={row.name}
+                                  onChange={(e) => updateSplitPayer(index, "name", e.target.value)}
+                                />
+                              </div>
+                              <div className="col-span-3 space-y-1">
+                                <Label className="text-[10px] text-muted-foreground uppercase">Amount</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  className="h-8 text-xs"
+                                  value={row.amount === 0 ? "" : row.amount}
+                                  onChange={(e) => {
+                                    updateSplitPayer(index, "amount", toNonNegativeNum(e.target.value))
+                                  }}
+                                />
+                              </div>
+                              <div className="col-span-3 space-y-1">
+                                <Label className="text-[10px] text-muted-foreground uppercase">Mode</Label>
+                                <Select value={row.mode} onValueChange={(value) => updateSplitPayer(index, "mode", value)}>
+                                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="cash">Cash</SelectItem>
+                                    <SelectItem value="upi">UPI</SelectItem>
+                                    <SelectItem value="card">Card</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="col-span-1">
+                                <Button type="button" size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => removeSplitPayer(index)}>
+                                  <X className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                          <div className="text-xs flex flex-col gap-1 pt-2">
+                            <div className="flex justify-between">
+                              <span>Total Split</span>
+                              <span className={moneyEquals(totalSplit, finalAmount) ? "text-green-600 font-semibold" : "text-destructive font-semibold"}>
+                                {money(totalSplit)}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Remaining Balance</span>
+                              <span className={moneyEquals(remainingSplitBalance, 0) ? "text-muted-foreground font-semibold" : "text-destructive font-semibold"}>
+                                {money(remainingSplitBalance)}
+                              </span>
+                            </div>
+                            {splitHasAllocationMismatch && (
+                              <div className="text-destructive text-[10px] text-right font-medium">
+                                Split allocation must equal final payable amount
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {billingType === "company" && (
+                        <div className="grid grid-cols-2 gap-4 border rounded-md p-3">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground uppercase">Company Name</Label>
+                            <Select value={companyId} onValueChange={handleCompanyChange}>
+                              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select company" /></SelectTrigger>
+                              <SelectContent>
+                                {companyOptions.length > 0 ? (
+                                  companyOptions.map((item: any) => {
+                                    const optionValue = String(item._id || item.id || item.value || "")
+                                    const optionLabel = String(item.value || item.name || optionValue)
+                                    return <SelectItem key={optionValue} value={optionValue}>{optionLabel}</SelectItem>
+                                  })
+                                ) : (
+                                  <SelectItem value="no-company" disabled>No companies configured</SelectItem>
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] text-muted-foreground uppercase">Company GSTIN</Label>
+                            <Input className="h-8 text-xs" value={companyGstin} onChange={(e) => setCompanyGstin(e.target.value)} />
+                          </div>
+                          <div className="col-span-2 space-y-1">
+                            <Label className="text-[10px] text-muted-foreground uppercase">Billing Address</Label>
+                            <Textarea className="text-xs min-h-16" value={companyBillingAddress} onChange={(e) => setCompanyBillingAddress(e.target.value)} />
+                          </div>
+                          <p className="col-span-2 text-xs text-amber-600 font-medium">Guest payment is ₹0. This folio will be marked Pending to Company.</p>
+                        </div>
+                      )}
+
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground uppercase">Room Status After Checkout</Label>
+                        <Select value={roomStatus} onValueChange={setRoomStatus}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="dirty">Dirty</SelectItem>
+                            <SelectItem value="clean">Clean</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5 border rounded-md p-3">
+                        <div className="flex justify-between text-xs">
+                          <span>Final Amount</span>
+                          <span className="font-semibold">{money(finalAmount)}</span>
+                        </div>
+                        {billingType === "full" && (
+                          <>
+                            <div className="flex justify-between text-xs">
+                              <span>Balance</span>
+                              <span className={`font-semibold ${balance > 0 ? "text-destructive" : "text-muted-foreground"}`}>{money(Math.max(0, balance))}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span>Refund</span>
+                              <span className={`font-semibold ${refund > 0 ? "text-green-600" : "text-muted-foreground"}`}>{money(refund)}</span>
+                            </div>
+                          </>
+                        )}
+                        {billingType === "split" && (
+                          <>
+                            <div className="flex justify-between text-xs">
+                              <span>Split Allocation Total</span>
+                              <span className={`font-semibold ${moneyEquals(totalSplit, finalAmount) ? "text-green-600" : "text-destructive"}`}>{money(totalSplit)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span>Remaining Balance</span>
+                              <span className={`font-semibold ${moneyEquals(remainingSplitBalance, 0) ? "text-muted-foreground" : "text-destructive"}`}>{money(remainingSplitBalance)}</span>
+                            </div>
+                          </>
+                        )}
+                        {billingType === "company" && (
+                          <div className="flex justify-between text-xs">
+                            <span>Payment Status</span>
+                            <span className="font-semibold text-amber-600">Pending to Company</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-2 pt-2">
+                        <Label className="text-xs">Guest Feedback</Label>
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map((s) => (
+                            <Star
+                              key={s}
+                              className={`h-4 w-4 cursor-pointer ${s <= rating ? "fill-warning text-warning" : "text-muted-foreground"}`}
+                              onClick={() => setRating(s)}
+                            />
+                          ))}
+                        </div>
+                        <Textarea
+                          placeholder="Comments..."
+                          className="text-xs h-16"
+                          value={comments}
+                          onChange={(e) => setComments(e.target.value)}
+                        />
+                      </div>
                     </div>
-
-                    <Separator />
-
-                    <div className="grid grid-cols-2 gap-4 pt-2">
-                      <div className="space-y-3">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox id="minibar" checked={minibarChecked} onCheckedChange={(v) => setMinibarChecked(!!v)} />
-                          <Label htmlFor="minibar" className="text-xs">Minibar Checked</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox id="inspected" checked={roomInspected} onCheckedChange={(v) => setRoomInspected(!!v)} />
-                          <Label htmlFor="inspected" className="text-xs">Room Inspected</Label>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-[10px] text-muted-foreground uppercase">Key Cards Returned</Label>
-                          <Input
-                            type="number"
-                            className="h-7 text-xs"
-                            value={keyCardsReturned}
-                            onChange={(e) => setKeyCardsReturned(parseInt(e.target.value))}
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-3">
-                        <div className="space-y-1">
-                          <Label className="text-[10px] text-muted-foreground uppercase">Minibar Charges</Label>
-                          <Input
-                            type="number"
-                            className="h-7 text-xs"
-                            value={minibarCharges}
-                            onChange={(e) => setMinibarCharges(parseFloat(e.target.value))}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-[10px] text-muted-foreground uppercase">Damage Charges</Label>
-                          <Input
-                            type="number"
-                            className="h-7 text-xs"
-                            value={damageCharges}
-                            onChange={(e) => setDamageCharges(parseFloat(e.target.value))}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 pt-2">
-                      <Label className="text-xs">Guest Feedback</Label>
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4, 5].map((s) => (
-                          <Star
-                            key={s}
-                            className={`h-4 w-4 cursor-pointer ${s <= rating ? "fill-warning text-warning" : "text-muted-foreground"}`}
-                            onClick={() => setRating(s)}
-                          />
-                        ))}
-                      </div>
-                      <Textarea
-                        placeholder="Comments..."
-                        className="text-xs h-16"
-                        value={comments}
-                        onChange={(e) => setComments(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="flex items-center gap-4 pt-2">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox id="invoice" checked={invoiceRequired} onCheckedChange={(v) => setInvoiceRequired(!!v)} />
-                        <Label htmlFor="invoice" className="text-xs">Invoice Required</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox id="email" checked={emailInvoice} onCheckedChange={(v) => setEmailInvoice(!!v)} />
-                        <Label htmlFor="email" className="text-xs">Email Invoice</Label>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground text-center py-12">Select a room to view billing details</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {selectedRoom && folioData && (
-          <div className="flex items-center gap-2 justify-end">
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={handlePrint}>
-              <Printer className="h-3.5 w-3.5" /> Print Payment Statement (F3)
-            </Button>
-            {billingType === "split" && (
-              <Button variant="outline" size="sm" className="gap-1.5"><Printer className="h-3.5 w-3.5" /> Split Print (F5)</Button>
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-12">Select a room to view billing details</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+            {selectedRoom && folioData && (
+              <div className="flex items-center gap-2 justify-end">
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={handlePrint}>
+                  <Printer className="h-3.5 w-3.5" /> Print Payment Statement (F3)
+                </Button>
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleCheckout}
+                  disabled={processingCheckout || !isSplitBillingValid()}
+                >
+                  {processingCheckout ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DoorOpen className="h-3.5 w-3.5" />}
+                  Checkout (F10)
+                </Button>
+              </div>
             )}
-            <Button
-              size="sm"
-              className="gap-1.5"
-              onClick={handleCheckout}
-              disabled={processingCheckout}
-            >
-              {processingCheckout ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DoorOpen className="h-3.5 w-3.5" />}
-              Checkout (F10)
-            </Button>
           </div>
         )}
-      </div>
 
-      <EditDetailsModal
-        open={isEditModalOpen}
-        onOpenChange={setIsEditModalOpen}
-        title="Update Guest Details"
-        formData={editFormData}
-        setFormData={setEditFormData}
-        onSubmit={handleUpdateCheckIn}
-        fields={[
-          { name: "guestName", label: "Guest Name" },
-          { name: "mobileNo", label: "Mobile Number" },
-          { name: "email", label: "Email Address" },
-          { name: "address", label: "Address" },
-          { name: "gstNumber", label: "GST Number" },
-        ]}
-      />
+      </div>
     </DashboardLayout>
   )
 }

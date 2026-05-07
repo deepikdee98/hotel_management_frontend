@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Search, UserCheck, Clock, Key, CreditCard, Upload, ArrowRight } from "lucide-react"
-import { createCheckIn, getFrontOfficeReservations, getFrontOfficeRooms } from "@/lib/backend-api"
+import { createCheckIn, getBookingNumberPreview, getFrontOfficeReservations, getFrontOfficeRooms } from "@/lib/backend-api"
 import type { Reservation } from "@/lib/types"
 
 export default function CheckInPage() {
@@ -21,6 +21,22 @@ export default function CheckInPage() {
   const [rooms, setRooms] = useState<Awaited<ReturnType<typeof getFrontOfficeRooms>>>([])
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null)
   const [isCheckInDialogOpen, setIsCheckInDialogOpen] = useState(false)
+  const [bookingPreview, setBookingPreview] = useState("Loading...")
+
+  useEffect(() => {
+    let cancelled = false
+    getBookingNumberPreview()
+      .then((preview) => {
+        if (!cancelled) setBookingPreview(preview)
+      })
+      .catch(() => {
+        if (!cancelled) setBookingPreview("Pending")
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     const load = async () => {
@@ -80,7 +96,7 @@ export default function CheckInPage() {
     try {
       await createCheckIn({
         reservationId: selectedReservation.id,
-        bookingNo: selectedReservation.id,
+        bookingNo: selectedReservation.bookingNumber || selectedReservation.reservationId || selectedReservation.id,
         guestName: selectedReservation.guestName,
         mobileNo: selectedReservation.guestPhone,
         email: selectedReservation.guestEmail,
@@ -115,9 +131,12 @@ export default function CheckInPage() {
     <DashboardLayout requiredRole={["admin", "staff"]}>
       <div className="space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Guest Check-In</h1>
-          <p className="text-muted-foreground">Process guest arrivals and complete check-in formalities</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Guest Check-In</h1>
+            <p className="text-muted-foreground">Process guest arrivals and complete check-in formalities</p>
+          </div>
+          <Badge variant="outline" className="w-fit text-xs font-semibold">Booking ID: {bookingPreview}</Badge>
         </div>
 
         {/* Stats Cards */}
@@ -249,7 +268,12 @@ export default function CheckInPage() {
         <Dialog open={isCheckInDialogOpen} onOpenChange={setIsCheckInDialogOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Complete Check-In</DialogTitle>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <DialogTitle>Complete Check-In</DialogTitle>
+                <Badge variant="outline" className="w-fit text-xs font-semibold">
+                  Booking ID: {selectedReservation?.bookingNumber || bookingPreview}
+                </Badge>
+              </div>
               <DialogDescription>
                 Processing check-in for {selectedReservation?.guestName} - Reservation #{selectedReservation?.id}
               </DialogDescription>

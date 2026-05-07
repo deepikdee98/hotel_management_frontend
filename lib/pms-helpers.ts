@@ -56,21 +56,30 @@ export const calculateCheckoutDateTime = (
 
 /**
  * Calculates net amount based on PMS logic
- * netAmount = (planCharge - discount) + foodCharge
+ * netAmount = (planCharge + roomGst + foodCharge + foodGst) - discount
+ * If isInclusive is true, roomGst is already part of planCharge.
  */
 export const calculateNetAmount = (
   planCharge: number | string,
   foodCharge: number | string,
-  discount: number | string
+  discount: number | string,
+  roomGst: number | string = 0,
+  foodGst: number | string = 0,
+  isInclusive: boolean = false
 ): number => {
   const pCharge = Number(planCharge) || 0;
   const fCharge = Number(foodCharge) || 0;
   const disc = Number(discount) || 0;
+  const rGst = Number(roomGst) || 0;
+  const fGst = Number(foodGst) || 0;
 
   // Validation: Discount applies ONLY to planCharge
   const effectiveDiscount = Math.min(disc, pCharge);
   
-  const netAmount = (pCharge - effectiveDiscount) + fCharge;
+  // If inclusive, pCharge already contains rGst
+  const baseRoomTotal = isInclusive ? pCharge : (pCharge + rGst);
+  
+  const netAmount = (baseRoomTotal + fCharge + fGst) - effectiveDiscount;
   
   return Math.max(0, netAmount);
 };

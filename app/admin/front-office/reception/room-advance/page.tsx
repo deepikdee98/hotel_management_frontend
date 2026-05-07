@@ -10,14 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Save, RotateCcw, X, Printer } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { getCheckedInRooms, createRoomAdvance } from "@/lib/backend-api"
+import { getCheckedInRooms, createRoomAdvance, getRoomGuests } from "@/lib/backend-api"
 import { useSetupOptions } from "@/hooks/use-setup-options"
-
-
-
 
 export default function RoomAdvancePage() {
   const [rooms, setRooms] = useState<any[]>([])
+  const [guests, setGuests] = useState<any[]>([])
+  const [isLoadingGuests, setIsLoadingGuests] = useState(false)
   const paymentModeOptions = useSetupOptions("paymentMode")
   const ledgerAccountOptions = useSetupOptions("ledgerAccount")
   const [form, setForm] = useState({
@@ -25,6 +24,7 @@ export default function RoomAdvancePage() {
     date: new Date().toISOString().slice(0, 16),
     roomNo: "",
     bookingNo: "",
+    guestId: "",
     guestName: "",
     advanceAmount: "",
     paymentMode: "",
@@ -37,19 +37,26 @@ export default function RoomAdvancePage() {
   useEffect(() => {
     const loadRooms = async () => {
       try {
-        const data = await getCheckedInRooms()
+        const data = await getCheckedInRooms("checked-in")
 
-        const formatted = data.map((c: any) => ({
-          id: c.roomId || c.roomNumber?._id,
-          roomNo: c.roomNumber?.roomNumber || c.roomNumber,
-          guest: c.guestName,
-          booking: c.bookingNo || c._id
-        }))
+        const formatted = data
+          .filter((c: any) => c.guestType !== "PAX") // Usually advance is on main guest
+          .map((c: any) => ({
+            id: c.roomId || c.roomNumber?._id,
+            roomNo: c.roomNumber?.roomNumber || c.roomNumber,
+            guest: c.guestName,
+            booking: c.bookingNo || c._id
+          }))
 
-        // Deduplicate rooms by ID to avoid duplicate key warnings
-        const uniqueRooms = Array.from(
-          new Map(formatted.map(r => [r.id, r])).values()
-        )
+        // Deduplicate rooms by ID, keeping the newest one
+        const uniqueRooms: any[] = []
+        const seen = new Set()
+        formatted.forEach(r => {
+          if (r.id && !seen.has(r.id)) {
+            uniqueRooms.push(r)
+            seen.add(r.id)
+          }
+        })
 
         setRooms(uniqueRooms)
       } catch (err) {
@@ -60,8 +67,7 @@ export default function RoomAdvancePage() {
     loadRooms()
   }, [])
 
-  const handleChange = (field: string, value: string) => {
-    setForm(prev => ({ ...prev, [field]: value }))
+  const handleChange = async (field: string, value: string) => {
     if (field === "roomNo") {
       const room = rooms.find(r => r.id === value)
 
@@ -70,24 +76,62 @@ export default function RoomAdvancePage() {
           ...prev,
           roomNo: value,
           bookingNo: room.booking,
-          guestName: room.guest
+          guestName: room.guest,
+          guestId: ""
         }))
+
+        // Fetch all guests (Main + Companions) for this room
+        setIsLoadingGuests(true)
+        try {
+          const res = await getRoomGuests(value)
+          setGuests(res.data)
+          
+          // Default to Main guest
+          const mainGuest = res.data.find((g: any) => g.type === "Main")
+          if (mainGuest) {
+            const compositeId = `${mainGuest.id}|${mainGuest.name}`
+            setForm(prev => ({ 
+              ...prev, 
+              guestId: compositeId, 
+              guestName: mainGuest.name 
+            }))
+          }
+        } catch (err) {
+          console.error("Failed to load guests", err)
+        } finally {
+          setIsLoadingGuests(false)
+        }
       }
+    } else if (field === "guestId") {
+      // Handle composite value id|name for unique selection
+      const [id, name] = value.split("|")
+      const guest = guests.find(g => g.id === id && g.name === name)
+      if (guest) {
+        setForm(prev => ({ ...prev, guestId: value, guestName: name }))
+      }
+    } else {
+      setForm(prev => ({ ...prev, [field]: value }))
     }
-    if (field === "paymentMode" && value === "Cash") {
-      setForm(prev => ({ ...prev, paymentMode: value, ledgerAc: "Cash" }))
+
+    if (field === "paymentMode" && (value === "Cash" || value === "Card")) {
+      const ledgerValue = value === "Cash" ? "Cash Account" : "HDFC Hotel Account"
+      setForm(prev => ({ ...prev, paymentMode: value, ledgerAc: ledgerValue }))
     }
   }
 
   const handleSave = async () => {
     try {
-      if (!form.roomNo || !form.advanceAmount || !form.paymentMode || !form.ledgerAc) {
+      if (!form.roomNo || !form.guestId || !form.advanceAmount || !form.paymentMode || !form.ledgerAc) {
         alert("Please fill all required fields")
         return
       }
 
+      const actualGuestId = form.guestId.includes("|") ? form.guestId.split("|")[0] : form.guestId
+
       await createRoomAdvance({
         roomNumber: form.roomNo,
+        guestId: actualGuestId,
+        guestName: form.guestName,
         advanceAmount: Number(form.advanceAmount),
         paymentMode: form.paymentMode,
         ledgerAccount: form.ledgerAc,
@@ -109,9 +153,10 @@ export default function RoomAdvancePage() {
     setForm({
       receiptNo: "RCP-" + Date.now().toString().slice(-6),
       date: new Date().toISOString().slice(0, 16),
-      roomNo: "", bookingNo: "", guestName: "", advanceAmount: "",
+      roomNo: "", bookingNo: "", guestName: "", guestId: "", advanceAmount: "",
       paymentMode: "", ledgerAc: "", panNo: "", remark: "", noOfPrint: "1",
     })
+    setGuests([])
   }
 
   return (
@@ -149,8 +194,19 @@ export default function RoomAdvancePage() {
                 <Input className="h-8 text-xs bg-muted" value={form.bookingNo} readOnly />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Guest Name</Label>
-                <Input className="h-8 text-xs bg-muted" value={form.guestName} readOnly />
+                <Label className="text-xs">Guest Name <span className="text-destructive">*</span></Label>
+                <Select value={form.guestId} onValueChange={v => handleChange("guestId", v)} disabled={!form.roomNo || isLoadingGuests}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder={isLoadingGuests ? "Loading..." : "Select Guest"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {guests.map((g, index) => (
+                      <SelectItem key={`${g.id}-${g.name}-${index}`} value={`${g.id}|${g.name}`}>
+                        {g.name} ({g.type})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

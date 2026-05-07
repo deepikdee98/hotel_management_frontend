@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Calendar, Plus, Search, Edit, X, CheckCircle, Clock, User, Phone, Mail, CreditCard, Bed } from "lucide-react"
-import { createFrontOfficeReservation, getFrontOfficeReservations, getFrontOfficeRooms, getSetupRoomTypes, getSetupRatePlans, updateFrontOfficeReservationStatus, updateFrontOfficeReservation } from "@/lib/backend-api"
+import { createFrontOfficeReservation, getBookingNumberPreview, getFrontOfficeReservations, getFrontOfficeRooms, getSetupRoomTypes, getSetupRatePlans, updateFrontOfficeReservationStatus, updateFrontOfficeReservation } from "@/lib/backend-api"
 import type { Reservation, Room, RoomType } from "@/lib/types"
 import EditDetailsModal from "@/components/common/EditDetailsModal"
 import { useSetupOptions } from "@/hooks/use-setup-options"
@@ -28,6 +28,22 @@ export default function ReservationPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [isNewReservationOpen, setIsNewReservationOpen] = useState(false)
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null)
+  const [bookingPreview, setBookingPreview] = useState("Loading...")
+
+  useEffect(() => {
+    let cancelled = false
+    getBookingNumberPreview()
+      .then((preview) => {
+        if (!cancelled) setBookingPreview(preview)
+      })
+      .catch(() => {
+        if (!cancelled) setBookingPreview("Pending")
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (isNewReservationOpen) {
@@ -60,6 +76,7 @@ export default function ReservationPage() {
         const formatted = reservationData.map((r: Reservation) => ({
           id: r.id,
           reservationId: r.reservationId,
+          bookingNumber: r.bookingNumber,
           guestName: r.guestName,
           guestPhone: r.guestPhone,
           guestEmail: r.guestEmail,
@@ -255,6 +272,7 @@ export default function ReservationPage() {
         const formatted = refreshed.map((r: Reservation) => ({
           id: r.id,
           reservationId: r.reservationId,
+          bookingNumber: r.bookingNumber,
           guestName: r.guestName,
           guestPhone: r.guestPhone,
           guestEmail: r.guestEmail,
@@ -365,7 +383,8 @@ export default function ReservationPage() {
       const refreshed = await getFrontOfficeReservations()
       const formatted = refreshed.map((r: Reservation) => ({
         id: r.id,
-        reservationId: r.id,
+        reservationId: r.reservationId,
+        bookingNumber: r.bookingNumber,
         guestName: r.guestName,
         guestPhone: r.guestPhone,
         guestEmail: r.guestEmail,
@@ -412,6 +431,7 @@ export default function ReservationPage() {
             <h1 className="text-2xl font-bold text-foreground">Reservations</h1>
             <p className="text-muted-foreground">Create and manage hotel bookings</p>
           </div>
+          <Badge variant="outline" className="w-fit text-xs font-semibold">Booking ID: {bookingPreview}</Badge>
           <Dialog open={isNewReservationOpen} onOpenChange={setIsNewReservationOpen}>
             <DialogTrigger asChild>
               <Button className="gap-2">
@@ -421,7 +441,10 @@ export default function ReservationPage() {
             </DialogTrigger>
             <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Create New Reservation</DialogTitle>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <DialogTitle>Create New Reservation</DialogTitle>
+                  <Badge variant="outline" className="w-fit text-xs font-semibold">Booking ID: {bookingPreview}</Badge>
+                </div>
                 <DialogDescription>Fill in the guest and booking details</DialogDescription>
               </DialogHeader>
               <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabType)} className="mt-4">
@@ -726,7 +749,7 @@ export default function ReservationPage() {
               <TableBody>
                 {filteredReservations.map((reservation) => (
                   <TableRow key={reservation.id}>
-                    <TableCell className="font-medium">{reservation.registerNo || reservation.reservationId || "N/A"}</TableCell>
+                    <TableCell className="font-medium">{reservation.bookingNumber || reservation.registerNo || reservation.reservationId || "N/A"}</TableCell>
                     <TableCell>
                       <div>
                         <p className="font-medium">{reservation.guestName}</p>

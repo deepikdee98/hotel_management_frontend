@@ -142,6 +142,54 @@ export interface Staff {
   lastLogin?: string
 }
 
+// Company entity
+export interface Company {
+  _id: string
+  hotelId: string
+  name: string
+  code: string
+  contactPerson?: string
+  phone?: string
+  email?: string
+  address?: string
+  gstNumber?: string
+  type: "Company" | "Travel Agent" | "OTA"
+  creditAllowed: boolean
+  creditLimit: number
+  status: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
+// Travel Agent entity
+export interface TravelAgent {
+  _id: string
+  hotelId: string
+  name: string
+  code: string
+  contactPerson?: string
+  phone?: string
+  email?: string
+  address?: string
+  gstNumber?: string
+  creditAllowed: boolean
+  creditLimit: number
+  status: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface Service {
+  _id: string
+  name: string
+  category?: string
+  defaultPrice: number
+  chargeType: string
+  isFood?: boolean
+  gstApplicable?: boolean
+  gstPercentage?: number
+}
+
 // User entity (for auth)
 export interface User {
   id: string
@@ -168,6 +216,8 @@ export interface Room {
   status: RoomStatus
   hkStatus?: "clean" | "dirty" | "cleaning" | "inspected" | "out-of-order"
   price: number
+  gstPercentage?: number
+  gstType?: "INCLUSIVE" | "EXCLUSIVE"
   amenities: string[]
   guestName?: string
   checkIn?: string
@@ -198,6 +248,7 @@ export interface HousekeepingTask {
 export interface Reservation {
   id: string
   reservationId: string
+  bookingNumber?: string
   guestName: string
   guestEmail: string
   guestPhone: string
@@ -216,6 +267,11 @@ export interface Reservation {
   paymentMode?: string
   ratePlan?: string
   bookingSource?: string
+  referredByType?: string
+  referredById?: string
+  referredByName?: string
+  stayType?: string
+  amount?: number
   createdAt: string
 }
 
@@ -315,6 +371,18 @@ export interface GRCardData {
   noOfPax: number
   guestType?: string
   idProof: string
+  nationality?: string
+  address?: string
+  email?: string
+  mobileNo?: string
+  company?: string
+  dob?: string
+  arrivalFrom?: string
+  departureTo?: string
+  purposeOfVisit?: string
+  adultMale?: number
+  adultFemale?: number
+  children?: number
   hotel?: {
     name: string
     address: string

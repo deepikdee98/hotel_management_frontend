@@ -1,9 +1,10 @@
-import type { Guest, Hotel, Reservation, Room, Staff, GRCardData, Folio, HousekeepingTask, InventoryItem, POSItem, POSOrder } from "@/lib/types"
+import type { Guest, Hotel, Reservation, Room, Staff, Company, TravelAgent, GRCardData, Folio, HousekeepingTask, InventoryItem, POSItem, POSOrder, Service } from "@/lib/types"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"
 const TOKEN_STORAGE_KEY = "hotel_manager_tokens"
 
 type JsonRecord = Record<string, unknown>
+const REGISTRATION_CACHE_KEY = "front_office_company_registrations"
 
 export interface SetupOption {
   _id: string
@@ -122,6 +123,8 @@ function mapRoom(raw: JsonRecord): Room {
     status: toRoomStatus(String(raw.status || "available")),
     hkStatus: raw.hkStatus as any,
     price: Number(raw.rate || raw.price || (typeof roomType === "object" && roomType !== null ? roomType.baseRate : 0) || 0),
+    gstPercentage: typeof roomType === "object" && roomType !== null ? Number(roomType.gstPercentage || 0) : 0,
+    gstType: (typeof roomType === "object" && roomType !== null ? (roomType.gstType as any) : "EXCLUSIVE") || "EXCLUSIVE",
     amenities: Array.isArray(raw.amenities) ? (raw.amenities as string[]) : [],
     guestName: raw.guestName ? String(raw.guestName) : undefined,
     checkIn: raw.checkIn ? String(raw.checkIn) : undefined,
@@ -209,7 +212,8 @@ function mapReservation(raw: JsonRecord): Reservation {
 
   return {
     id: String(raw._id || raw.id || raw.reservationId || ""),
-    reservationId: String(raw.reservationId || raw.bookingNo || raw.id || raw._id || ""),
+    reservationId: String(raw.bookingNumber || raw.reservationId || raw.bookingNo || raw.id || raw._id || ""),
+    bookingNumber: raw.bookingNumber ? String(raw.bookingNumber) : undefined,
     guestName: String(raw.guestName || ""),
     guestEmail: String(raw.email || raw.guestEmail || ""),
     guestPhone: String(raw.phone || raw.guestPhone || ""),
@@ -228,6 +232,11 @@ function mapReservation(raw: JsonRecord): Reservation {
     paymentMode: paymentMode || undefined,
     ratePlan: getRatePlanId(raw.ratePlan || raw.planType),
     bookingSource: bookingSource || undefined,
+    referredByType: raw.referredByType ? String(raw.referredByType) : undefined,
+    referredById: raw.referredById ? String(raw.referredById) : undefined,
+    referredByName: raw.referredByName ? String(raw.referredByName) : undefined,
+    stayType: raw.stayType ? String(raw.stayType) : undefined,
+    amount: raw.amount ? Number(raw.amount) : undefined,
     createdAt: raw.createdAt ? new Date(String(raw.createdAt)).toISOString().slice(0, 10) : "",
   }
 }
@@ -383,6 +392,10 @@ export async function getFrontOfficeRooms(params?: { search?: string; status?: s
   return Array.isArray(data.data?.rooms) ? data.data.rooms.map(mapRoom) : []
 }
 
+export async function getRoomGuests(roomId: string) {
+  return apiRequest<{ success: boolean; data: Array<{ id: string; name: string; type: "Main" | "Companion" }> }>(`/front-office/rooms/${roomId}/guests`)
+}
+
 export async function updateFrontOfficeRoomStatus(roomId: string, status: Room["status"]) {
   return apiRequest<JsonRecord>(`/front-office/rooms/${roomId}/status`, {
     method: "PATCH",
@@ -454,6 +467,11 @@ export async function getCheckInData() {
   return { rooms, ratePlans, roomTypes }
 }
 
+export async function getBookingNumberPreview() {
+  const data = await apiRequest<{ success: boolean; preview: string }>("/api/v1/front-office/booking-number/preview")
+  return data.preview || "Pending"
+}
+
 export async function createCheckIn(payload: JsonRecord) {
   return apiRequest<JsonRecord>("/admin/reception/check-in", {
     method: "POST",
@@ -495,6 +513,12 @@ export async function updateCheckIn(id: string, payload: any, role?: string) {
   })
 }
 
+export async function removeLinkedCheckInRoom(id: string) {
+  return apiRequest<JsonRecord>(`/admin/reception/check-in/${id}/linked-room`, {
+    method: "DELETE",
+  })
+}
+
 export async function createExpressCheckIn(payload: any) {
   return apiRequest("/front-office/check-in/express", {
     method: "POST",
@@ -518,6 +542,29 @@ export async function createCheckOut(payload: any) {
     method: "POST",
     body: JSON.stringify(payload),
   })
+}
+
+export async function downloadCheckoutInvoice(invoiceId: string) {
+  const token = getStoredAccessToken()
+  const response = await fetch(`${API_BASE_URL}/front-office/check-out/invoices/${invoiceId}/download`, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  })
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(text || "Failed to download invoice")
+  }
+  const blob = await response.blob()
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = `invoice-${invoiceId}.pdf`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
 }
 
 export async function getGRCard(roomId: string): Promise<GRCardData> {
@@ -841,11 +888,9 @@ export async function deleteSetupRatePlan(id: string) {
   })
 }
 
-// Service Codes
+// Service Codes (legacy alias to unified services)
 export async function getSetupServiceCodes() {
-  const data = await apiRequest<JsonRecord[] | { success: boolean; data: { serviceCodes: JsonRecord[] } }>("/admin/setup/service-codes")
-  if (Array.isArray(data)) return data
-  return data.data?.serviceCodes || []
+  return getSetupServices()
 }
 
 export async function createSetupServiceCode(payload: JsonRecord) {
@@ -866,6 +911,59 @@ export async function deleteSetupServiceCode(id: string) {
   return apiRequest<JsonRecord>(`/admin/setup/service-codes/${id}`, {
     method: "DELETE",
   })
+}
+
+// Services
+function mapService(raw: JsonRecord): Service {
+  return {
+    _id: String(raw._id || raw.id || ""),
+    name: String(raw.name || ""),
+    category: raw.category ? String(raw.category) : undefined,
+    defaultPrice: Number(raw.defaultPrice || raw.price || 0),
+    chargeType: String(raw.chargeType || ""),
+    isFood: Boolean(raw.isFood),
+    gstApplicable: Boolean(raw.gstApplicable),
+    gstPercentage: raw.gstPercentage ? Number(raw.gstPercentage) : undefined,
+  }
+}
+
+export async function getSetupServices(): Promise<Service[]> {
+  const data = await apiRequest<JsonRecord[] | { success: boolean; data: { services: JsonRecord[] } }>("/admin/setup/services")
+  const services = Array.isArray(data) ? data : (data.data?.services || (data as any)?.services || [])
+  return services.map(mapService)
+}
+
+export async function createSetupService(payload: JsonRecord) {
+  return apiRequest<JsonRecord>("/admin/setup/services", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateSetupService(id: string, payload: JsonRecord) {
+  return apiRequest<JsonRecord>(`/admin/setup/services/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteSetupService(id: string) {
+  return apiRequest<JsonRecord>(`/admin/setup/services/${id}`, {
+    method: "DELETE",
+  })
+}
+
+// Referrals
+export async function getReferrals(type?: string) {
+  const params = new URLSearchParams()
+  if (type) params.set("type", type)
+  return apiRequest<any[]>(`/api/referrals${params.toString() ? `?${params.toString()}` : ""}`)
+}
+
+export async function getLookupGuests(search?: string) {
+  const params = new URLSearchParams()
+  if (search) params.set("search", search)
+  return apiRequest<any[]>(`/admin/lookups/guests${params.toString() ? `?${params.toString()}` : ""}`)
 }
 
 // Hotel Config
@@ -911,8 +1009,9 @@ export async function createSetupRoomConfig(floorId: string, payload: { roomType
 }
 
 // Check-Ins & In-House Guests
-export async function getCheckedInRooms() {
-  const res = await apiRequest<{ success: boolean; data: any[] }>("/admin/reception/check-in")
+export async function getCheckedInRooms(status?: string) {
+  const url = status ? `/admin/reception/check-in?status=${status}` : "/admin/reception/check-in"
+  const res = await apiRequest<{ success: boolean; data: any[] }>(url)
   return res.data
 }
 
@@ -1358,4 +1457,119 @@ export async function processPOSPayment(id: string, payload: { amount: number; p
   })
 }
 
-export { mapGuest, mapHotel, mapReservation, mapRoom, mapStaff }
+// ==================== COMPANY APIs ====================
+
+function unwrapListResponse(data: any, keys: string[] = []) {
+  if (Array.isArray(data)) return data
+  if (!data || typeof data !== "object") return []
+  if (Array.isArray(data.data)) return data.data
+  for (const key of keys) {
+    if (Array.isArray(data[key])) return data[key]
+    if (data.data && Array.isArray(data.data[key])) return data.data[key]
+  }
+  return []
+}
+
+function unwrapItemResponse(data: any, keys: string[] = []) {
+  if (!data || typeof data !== "object") return data
+  for (const key of keys) {
+    if (data[key] && typeof data[key] === "object") return data[key]
+    if (data.data?.[key] && typeof data.data[key] === "object") return data.data[key]
+  }
+  return data.data && typeof data.data === "object" ? data.data : data
+}
+
+function getCachedRegistrations() {
+  if (typeof window === "undefined") return []
+  try {
+    const cached = JSON.parse(localStorage.getItem(REGISTRATION_CACHE_KEY) || "[]")
+    return Array.isArray(cached) ? cached : []
+  } catch {
+    return []
+  }
+}
+
+export function cacheCompanyRegistrations(registrations: any[]) {
+  if (typeof window === "undefined") return
+  const merged = new Map(getCachedRegistrations().map((item: any) => [String(item._id || item.id || item.code), item]))
+  registrations.forEach((registration) => {
+    const key = String(registration?._id || registration?.id || registration?.code || "")
+    if (key) merged.set(key, registration)
+  })
+  localStorage.setItem(REGISTRATION_CACHE_KEY, JSON.stringify(Array.from(merged.values())))
+}
+
+export function getCachedCompanyRegistrations(type?: string) {
+  const cached = getCachedRegistrations()
+  return type ? cached.filter((item: any) => item.type === type) : cached
+}
+
+export async function getCompanies() {
+  const data = await apiRequest<any>("/api/companies")
+  const companies = unwrapListResponse(data, ["companies", "company"])
+  if (companies.length) cacheCompanyRegistrations(companies)
+  return companies.length ? companies : getCachedCompanyRegistrations().filter((item: any) => item.type !== "Travel Agent")
+}
+
+export async function createCompany(payload: JsonRecord) {
+  const data = await apiRequest<any>("/api/companies", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  const company = unwrapItemResponse(data, ["company"])
+  cacheCompanyRegistrations([company])
+  return company
+}
+
+export async function updateCompany(id: string, payload: JsonRecord) {
+  const data = await apiRequest<any>(`/api/companies/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+  const company = unwrapItemResponse(data, ["company"])
+  cacheCompanyRegistrations([company])
+  return company
+}
+
+export async function deleteCompany(id: string) {
+  return apiRequest<any>(`/api/companies/${id}`, {
+    method: "DELETE",
+  })
+}
+
+// ==================== TRAVEL AGENT APIs ====================
+
+export async function getTravelAgents() {
+  const data = await apiRequest<any>("/api/travel-agents")
+  const travelAgents = unwrapListResponse(data, ["travelAgents", "travelAgent"]).map((item: any) => ({ ...item, type: "Travel Agent" }))
+  if (travelAgents.length) cacheCompanyRegistrations(travelAgents)
+  return travelAgents.length ? travelAgents : getCachedCompanyRegistrations("Travel Agent")
+}
+
+export async function createTravelAgent(payload: JsonRecord) {
+  const data = await apiRequest<any>("/api/travel-agents", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  const travelAgent = { ...unwrapItemResponse(data, ["travelAgent"]), type: "Travel Agent" }
+  cacheCompanyRegistrations([travelAgent])
+  return travelAgent
+}
+
+export async function updateTravelAgent(id: string, payload: JsonRecord) {
+  const data = await apiRequest<any>(`/api/travel-agents/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+  const travelAgent = { ...unwrapItemResponse(data, ["travelAgent"]), type: "Travel Agent" }
+  cacheCompanyRegistrations([travelAgent])
+  return travelAgent
+}
+
+export async function deleteTravelAgent(id: string) {
+  return apiRequest<{ success: boolean; message: string }>(`/api/travel-agents/${id}`, {
+    method: "DELETE",
+  })
+}
+
+export { mapGuest, mapHotel, mapReservation, mapRoom, mapStaff, type Company, type TravelAgent }

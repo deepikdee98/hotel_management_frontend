@@ -73,13 +73,14 @@ const SUPER_ADMIN_NAV: NavItem[] = [
 const HOTEL_NAV: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { label: "Staff", href: "/admin/staff", icon: Users, roles: ["admin"] },
-  { 
-    label: "Front Office", 
-    href: "/admin/front-office", 
-    icon: BedDouble, 
+  {
+    label: "Front Office",
+    href: "/admin/front-office",
+    icon: BedDouble,
     module: "front-office",
     subItems: [
-      { label: "Reception", href: "/admin/front-office/reception", icon: ConciergeBell,
+      {
+        label: "Reception", href: "/admin/front-office/reception", icon: ConciergeBell,
         subItems: [
           { label: "Check-In", href: "/admin/front-office/reception/check-in", icon: LogIn },
           { label: "Express Check-In", href: "/admin/front-office/reception/express-check-in", icon: Zap },
@@ -112,10 +113,10 @@ const HOTEL_NAV: NavItem[] = [
   },
   { label: "Point of Sale", href: "/admin/pos", icon: CreditCard, module: "point-of-sale" },
   { label: "Housekeeping", href: "/admin/housekeeping", icon: Sparkles, module: "housekeeping" },
-  { 
-    label: "Accounts", 
-    href: "/admin/accounts", 
-    icon: Calculator, 
+  {
+    label: "Accounts",
+    href: "/admin/accounts",
+    icon: Calculator,
     module: "accounts",
     subItems: [
       { label: "Dashboard", href: "/admin/accounts", icon: LayoutDashboard },
@@ -161,7 +162,7 @@ export function DashboardSidebar({ role }: DashboardSidebarProps) {
   const navItems = getNavItems(role).filter((item) => {
     // Check role access if defined
     if (item.roles && !item.roles.includes(role)) return false
-    
+
     // Check module access if defined
     if (!item.module) return true
     return hasAccess(item.module)
@@ -176,7 +177,7 @@ export function DashboardSidebar({ role }: DashboardSidebarProps) {
     <aside
       className={cn(
         "fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300",
-        collapsed ? "w-16" : "w-64"
+        collapsed ? "w-16" : "w-60"
       )}
     >
       <div className="flex h-full flex-col">

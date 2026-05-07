@@ -58,7 +58,7 @@ const normalizeInHouseGuest = (item: any): InHouseGuest => {
 
   return {
     id: String(item.checkinId || item.id || item.folioId || ""),
-    reservationId: String(item.bookingNo || item.bookingId || item.reservationId || ""),
+    reservationId: String(item.bookingNumber || item.bookingNo || item.bookingId || item.reservationId || ""),
     folioId: String(item.folioId || item.id || ""),
     guestName: String(item.guestName || item.name || ""),
     guestEmail: String(item.email || item.guestEmail || ""),
