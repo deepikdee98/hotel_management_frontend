@@ -335,8 +335,13 @@ export default function UnifiedDashboard() {
         {/* Side Panel: Room Status & Staff */}
         <div className="space-y-6">
           <Card className="bg-card border-border">
-            <CardHeader className="pb-3">
+            <CardHeader className="flex items-center justify-between pb-3 gap-3">
               <CardTitle className="text-lg">Room Status</CardTitle>
+              <Link href="/admin/front-office/room-dashboard">
+                <Button variant="outline" size="sm">
+                  View Room Dashboard
+                </Button>
+              </Link>
             </CardHeader>
             <CardContent className="space-y-4">
               {[

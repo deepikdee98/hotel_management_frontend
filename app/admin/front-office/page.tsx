@@ -387,6 +387,19 @@ export default function AdminFrontOfficePage() {
                   className="w-full justify-between bg-transparent border-border hover:bg-muted"
                   asChild
                 >
+                  <Link href="/admin/front-office/room-dashboard">
+                    <span className="flex items-center gap-2">
+                      <BedDouble className="h-4 w-4" />
+                      Room Dashboard
+                    </span>
+                    <ArrowUpRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-between bg-transparent border-border hover:bg-muted"
+                  asChild
+                >
                   <Link href="/admin/front-office/rooms">
                     <span className="flex items-center gap-2">
                       <BedDouble className="h-4 w-4" />

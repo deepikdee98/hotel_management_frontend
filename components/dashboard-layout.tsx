@@ -72,7 +72,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
   return (
     <div className="min-h-screen bg-background">
       <DashboardSidebar role={user?.role || "staff"} />
-      <div className="ml-60 min-h-screen">
+      <div className="ml-[15rem] min-h-screen">
         <main className="p-6">
           {subscriptionStatus === "WARNING" && subscriptionInfo?.message && (
             <div className="mb-4 flex items-start gap-3 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 shadow-sm">

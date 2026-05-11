@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -32,6 +31,11 @@ const REPORT_CATEGORIES = {
     { id: "monthly-occupancy", name: "Monthly Occupancy Summary", description: "Month-wise occupancy statistics" },
     { id: "room-availability", name: "Room Availability Report", description: "Available rooms by type and floor" },
     { id: "forecast", name: "Occupancy Forecast", description: "Predicted occupancy for upcoming days" },
+    { id: "room-forecasting", name: "Room Forecasting Report", description: "Future room bookings and occupancy trends" },
+    { id: "room-occupied-monthly", name: "Room Occupied Monthly Report", description: "Monthly overview of occupied rooms" },
+    { id: "room-monthly-sheet", name: "Room Monthly Report Sheet", description: "Monthly room activity sheet" },
+    { id: "room-rate-variant", name: "Room Rate Variant Report", description: "Room rate changes over date and guest types" },
+    { id: "flash-report", name: "Flash Report", description: "Snapshot of daily key statistics" },
   ],
   guest: [
     { id: "guest-list", name: "In-House Guest List", description: "Currently staying guests with details" },
@@ -40,6 +44,8 @@ const REPORT_CATEGORIES = {
     { id: "guest-history", name: "Guest History Report", description: "Past stay records of guests" },
     { id: "vip-guests", name: "VIP Guest Report", description: "List of VIP guests with preferences" },
     { id: "nationality-wise", name: "Nationality Wise Report", description: "Guest distribution by nationality" },
+    { id: "guest-id", name: "Guest ID Report", description: "Guest IDs for legal and record purposes" },
+    { id: "police-report", name: "Police Report", description: "Guest details formatted for police submission" },
   ],
   revenue: [
     { id: "daily-revenue", name: "Daily Revenue Report", description: "Day-wise revenue breakdown" },
@@ -48,6 +54,9 @@ const REPORT_CATEGORIES = {
     { id: "outstanding", name: "Outstanding Report", description: "Pending payments and dues" },
     { id: "advance", name: "Advance Collection Report", description: "Advance payments received" },
     { id: "refund", name: "Refund Report", description: "Refunds processed" },
+    { id: "mis-report", name: "MIS Report", description: "High-level summary of occupancy and revenue" },
+    { id: "daily-business", name: "Daily Business Report", description: "Revenue and tax breakdown for the day" },
+    { id: "payment-collection-register", name: "Payment Collection Register", description: "Payments by guest, mode, and department" },
   ],
   operational: [
     { id: "checkin", name: "Check-In Report", description: "Guest check-ins for selected period" },
@@ -64,6 +73,13 @@ const REPORT_CATEGORIES = {
     { id: "shift-report", name: "Shift Handover Report", description: "Shift-wise activity summary" },
     { id: "void-transactions", name: "Void Transactions", description: "Voided/cancelled transactions" },
     { id: "user-activity", name: "User Activity Log", description: "Staff activity audit trail" },
+    { id: "post-to-all", name: "Post to All", description: "Post room and service charges for selected date" },
+    { id: "pre-audit", name: "Pre Audit Report", description: "Review room stays and charges before final audit" },
+    { id: "night-audit-collection", name: "Night Audit Collection Report", description: "Daily room rent, services and tax collection" },
+    { id: "mis-summary", name: "MIS Summary", description: "Short version of the MIS report" },
+    { id: "night-audit-collection-summary", name: "Night Audit Collection Summary", description: "Simplified night audit collection summary" },
+    { id: "daily-business-summary", name: "Daily Business Summary", description: "Summary totals per department" },
+    { id: "payment-collection-summary", name: "Payment Collection Summary", description: "Collections by payment type and department" },
   ],
 }
 
@@ -306,9 +322,9 @@ export default function FOReportsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-[1680px] mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Front Office Reports</h1>
           <p className="text-muted-foreground">Generate and export operational reports</p>
@@ -321,54 +337,55 @@ export default function FOReportsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
         {/* Report Selection Panel */}
-        <div className="col-span-3">
+        <div className="col-span-1 xl:col-span-3">
           <Card className="h-full">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Report Categories</CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
-              <Tabs value={activeCategory} onValueChange={setActiveCategory} orientation="vertical" className="w-full">
-                <TabsList className="flex flex-col h-auto w-full bg-transparent p-2 gap-1">
-                  <TabsTrigger value="occupancy" className="w-full justify-start gap-2 px-3">
-                    <BedDouble className="h-4 w-4" />
-                    Occupancy
-                  </TabsTrigger>
-                  <TabsTrigger value="guest" className="w-full justify-start gap-2 px-3">
-                    <Users className="h-4 w-4" />
-                    Guest
-                  </TabsTrigger>
-                  <TabsTrigger value="revenue" className="w-full justify-start gap-2 px-3">
-                    <DollarSign className="h-4 w-4" />
-                    Revenue
-                  </TabsTrigger>
-                  <TabsTrigger value="operational" className="w-full justify-start gap-2 px-3">
-                    <Clock className="h-4 w-4" />
-                    Operational
-                  </TabsTrigger>
-                  <TabsTrigger value="audit" className="w-full justify-start gap-2 px-3">
-                    <FileText className="h-4 w-4" />
-                    Audit
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
+            <CardContent className="p-0 flex min-h-0 flex-col h-full">
+              <div className="space-y-2 p-2">
+                {[
+                  { id: "occupancy", label: "Occupancy", icon: BedDouble },
+                  { id: "guest", label: "Guest", icon: Users },
+                  { id: "revenue", label: "Revenue", icon: DollarSign },
+                  { id: "operational", label: "Operational", icon: Clock },
+                  { id: "audit", label: "Audit", icon: FileText },
+                ].map((category) => {
+                  const Icon = category.icon
+                  return (
+                    <button
+                      key={category.id}
+                      type="button"
+                      onClick={() => setActiveCategory(category.id)}
+                      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                        activeCategory === category.id
+                          ? "bg-primary text-primary-foreground"
+                          : "text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {category.label}
+                    </button>
+                  )
+                })}
+              </div>
 
-              <div className="p-2 border-t max-h-64 overflow-y-auto">
+              <div className="mt-2 p-2 border-t min-h-[280px] overflow-y-auto space-y-2">
                 {REPORT_CATEGORIES[activeCategory as keyof typeof REPORT_CATEGORIES].map((report) => (
                   <button
                     key={report.id}
+                    type="button"
                     onClick={() => setSelectedReport(report.id)}
-                    className={`w-full text-left p-2 rounded-md text-sm transition-colors ${
+                    className={`w-full text-left rounded-lg border px-3 py-3 text-sm transition-colors ${
                       selectedReport === report.id
-                        ? "bg-primary text-primary-foreground"
-                        : "hover:bg-muted"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-transparent hover:border-border hover:bg-muted"
                     }`}
                   >
-                    <p className="font-medium">{report.name}</p>
-                    <p className={`text-xs ${selectedReport === report.id ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                      {report.description}
-                    </p>
+                    <p className="font-semibold">{report.name}</p>
+                    <p className="text-xs text-muted-foreground">{report.description}</p>
                   </button>
                 ))}
               </div>
@@ -377,18 +394,18 @@ export default function FOReportsPage() {
         </div>
 
         {/* Report Content */}
-        <div className="col-span-9 space-y-4">
+        <div className="col-span-1 xl:col-span-8 space-y-4">
           {/* Filters */}
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-end gap-4 flex-wrap">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 items-end">
                 <div className="space-y-1">
                   <Label className="text-xs">From Date</Label>
                   <Input
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-36"
+                    className="w-full"
                   />
                 </div>
                 <div className="space-y-1">
@@ -397,13 +414,13 @@ export default function FOReportsPage() {
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="w-36"
+                    className="w-full"
                   />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Room Type</Label>
                   <Select value={roomType} onValueChange={setRoomType}>
-                    <SelectTrigger className="w-36">
+                    <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -418,7 +435,7 @@ export default function FOReportsPage() {
                 <div className="space-y-1">
                   <Label className="text-xs">Floor</Label>
                   <Select value={floor} onValueChange={setFloor}>
-                    <SelectTrigger className="w-36">
+                    <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -431,18 +448,20 @@ export default function FOReportsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button onClick={handleGenerateReport} disabled={!selectedReport}>
-                  <Filter className="h-4 w-4 mr-2" />
-                  Generate
-                </Button>
-                <Button variant="outline" disabled={!selectedReport}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
-                </Button>
-                <Button variant="outline" disabled={!selectedReport}>
-                  <Printer className="h-4 w-4 mr-2" />
-                  Print
-                </Button>
+                <div className="xl:col-span-4 flex flex-wrap items-center justify-end gap-2">
+                  <Button onClick={handleGenerateReport} disabled={!selectedReport} className="min-w-[120px]">
+                    <Filter className="h-4 w-4 mr-2" />
+                    Generate
+                  </Button>
+                  <Button variant="outline" disabled={!selectedReport} className="min-w-[120px]">
+                    <Download className="h-4 w-4 mr-2" />
+                    Export
+                  </Button>
+                  <Button variant="outline" disabled={!selectedReport} className="min-w-[120px]">
+                    <Printer className="h-4 w-4 mr-2" />
+                    Print
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

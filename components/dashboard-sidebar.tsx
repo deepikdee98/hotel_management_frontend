@@ -103,6 +103,7 @@ const HOTEL_NAV: NavItem[] = [
         ]
       },
       { label: "Reservation", href: "/admin/front-office/reservation", icon: CalendarCheck },
+      { label: "Room Dashboard", href: "/admin/front-office/room-dashboard", icon: BedDouble },
       { label: "Day End Process", href: "/admin/front-office/day-end", icon: Moon },
       { label: "Lookups", href: "/admin/front-office/lookups", icon: Search },
       { label: "Reports", href: "/admin/front-office/reports", icon: BarChart },
