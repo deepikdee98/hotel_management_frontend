@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -302,7 +303,10 @@ function MasterDataPanel({ moduleKey = "all" }: { moduleKey?: MasterDataModule }
 
 export default function FOSetupPage() {
   const { toast } = useToast()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState("room-config")
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([])
   const [ratePlans, setRatePlans] = useState<any[]>([])
   const [services, setServices] = useState<any[]>([])
@@ -326,6 +330,22 @@ export default function FOSetupPage() {
   const [selectedRoomType, setSelectedRoomType] = useState<any>(null)
   const [selectedRatePlan, setSelectedRatePlan] = useState<any>(null)
   const [selectedService, setSelectedService] = useState<any>(null)
+
+  useEffect(() => {
+    const tab = searchParams.get("tab")
+    const add = searchParams.get("add")
+
+    if (tab) {
+      setActiveTab(tab)
+    }
+
+    if (tab === "service-codes" && add === "service") {
+      setAddType("service")
+      setGenericForm({ category: "Other", chargeType: "PER_STAY", gstPercentage: "0" })
+      setIsAddOpen(true)
+      router.replace("/admin/front-office/setup?tab=service-codes", { scroll: false })
+    }
+  }, [router, searchParams])
 
   // Company registration state
   const [companies, setCompanies] = useState<Company[]>([])
@@ -1022,7 +1042,7 @@ export default function FOSetupPage() {
         <p className="text-sm text-muted-foreground">Configure room types, floor-wise rooms, rate plans, and other settings</p>
       </div>
 
-      <Tabs defaultValue="room-config" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList>
           <TabsTrigger value="room-config"><Layers className="h-4 w-4 mr-1.5" />Room Configuration</TabsTrigger>
           <TabsTrigger value="room-types"><BedDouble className="h-4 w-4 mr-1.5" />Room Types</TabsTrigger>

@@ -13,7 +13,7 @@ export function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { login } = useAuth()
-  const [email, setEmail] = useState("")
+  const [identifier, setIdentifier] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
@@ -38,7 +38,7 @@ export function LoginForm() {
     setError("");
 
     try {
-      const res = await login(email, password);
+      const res = await login(identifier, password);
 
       if (res?.accessToken) {
         const role = String(res.role || "").toLowerCase();
@@ -89,13 +89,13 @@ export function LoginForm() {
               {/* Credentials */}
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="identifier">Username or Email</Label>
                   <Input
-                    id="email"
-                    type="email"
-                    placeholder="Enter your email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    id="identifier"
+                    type="text"
+                    placeholder="Enter username or email"
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
                     required
                     className="bg-background"
                   />

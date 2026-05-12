@@ -66,10 +66,12 @@ export default function StaffManagementPage() {
   const [selectedModules, setSelectedModules] = useState<ModuleType[]>([])
   const [formData, setFormData] = useState({
     name: "",
+    username: "",
     email: "",
     role: "staff" as "admin" | "staff",
     password: "",
   })
+  const isUsernameValid = /^[a-zA-Z0-9_]{4,}$/.test(formData.username)
 
   useEffect(() => {
     const load = async () => {
@@ -92,6 +94,7 @@ export default function StaffManagementPage() {
 
   const filteredStaff = staff.filter((s) => {
     const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) ||
+      (s.username || "").toLowerCase().includes(search.toLowerCase()) ||
       s.email.toLowerCase().includes(search.toLowerCase())
     const matchesRole = roleFilter === "all" || s.role === roleFilter
     return matchesSearch && matchesRole
@@ -110,7 +113,8 @@ export default function StaffManagementPage() {
   const handleAddStaff = async () => {
     try {
       await createAdminStaff({
-        username: formData.name,
+        name: formData.name,
+        username: formData.username,
         email: formData.email,
         password: formData.password,
         role: formData.role === "admin" ? "hoteladmin" : "staff",
@@ -126,7 +130,7 @@ export default function StaffManagementPage() {
     }
 
     setIsAddDialogOpen(false)
-    setFormData({ name: "", email: "", role: "staff", password: "" })
+    setFormData({ name: "", username: "", email: "", role: "staff", password: "" })
     setSelectedModules([])
   }
 
@@ -198,6 +202,16 @@ export default function StaffManagementPage() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="username">Username *</Label>
+                  <Input
+                    id="username"
+                    value={formData.username}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    placeholder="Enter username"
+                  />
+                  <p className="text-xs text-muted-foreground">Username will be used for login.</p>
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
@@ -205,6 +219,16 @@ export default function StaffManagementPage() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="john@hotel.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Initial Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="Enter password"
                   />
                 </div>
                 <div className="space-y-2">
@@ -221,16 +245,6 @@ export default function StaffManagementPage() {
                       <SelectItem value="staff">Staff</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Initial Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="Enter password"
-                  />
                 </div>
               </div>
 
@@ -268,7 +282,7 @@ export default function StaffManagementPage() {
                 </Button>
                 <Button
                   onClick={handleAddStaff}
-                  disabled={!formData.name || !formData.email || !formData.password || selectedModules.length === 0}
+                  disabled={!formData.name || !isUsernameValid || !formData.email || !formData.password || selectedModules.length === 0}
                 >
                   {formData.role === "admin" ? "Create Admin Account" : "Create Staff Account"}
                 </Button>
@@ -390,6 +404,11 @@ export default function StaffManagementPage() {
                         </div>
                         <div>
                           <p className="font-medium text-foreground">{member.name}</p>
+                          {member.username && (
+                            <div className="text-sm text-muted-foreground">
+                              <span>{member.username}</span>
+                            </div>
+                          )}
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
                             <Mail className="h-3 w-3" />
                             <span>{member.email}</span>

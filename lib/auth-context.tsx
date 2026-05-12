@@ -9,7 +9,7 @@ interface AuthContextType {
   subscriptionInfo: SubscriptionInfo | null
   isAuthenticated: boolean
   isLoading: boolean
-  login: (email: string, password: string) => Promise<any>
+  login: (identifier: string, password: string) => Promise<any>
   logout: (message?: string) => void
   hasAccess: (module: ModuleType) => boolean
 }
@@ -337,14 +337,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [logout])
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (identifier: string, password: string) => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ identifier, password }),
       })
 
       const payload = await response.json()

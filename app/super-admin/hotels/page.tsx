@@ -69,10 +69,12 @@ export default function HotelsPage() {
     country: "",
     phone: "",
     email: "",
+    adminUsername: "",
     password: "",
     confirmPassword: "",
     roomCount: "",
   })
+  const isAdminUsernameValid = /^[a-zA-Z0-9_]{4,}$/.test(formData.adminUsername)
 
   useEffect(() => {
     loadHotels()
@@ -117,6 +119,7 @@ export default function HotelsPage() {
         country: formData.country,
         totalRooms: parseInt(formData.roomCount) || 0,
         modules: selectedModules,
+        adminUsername: formData.adminUsername,
         adminPassword: formData.password,
         confirmPassword: formData.confirmPassword,
       })
@@ -131,6 +134,7 @@ export default function HotelsPage() {
         country: "",
         phone: "",
         email: "",
+        adminUsername: "",
         password: "",
         confirmPassword: "",
         roomCount: "",
@@ -290,6 +294,15 @@ export default function HotelsPage() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="adminUsername">Admin Username</Label>
+                  <Input
+                    id="adminUsername"
+                    value={formData.adminUsername}
+                    onChange={(e) => setFormData({ ...formData, adminUsername: e.target.value })}
+                    placeholder="Enter admin username"
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
@@ -395,7 +408,7 @@ export default function HotelsPage() {
                 <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleAddHotel} disabled={!formData.name || !formData.email || !formData.password || formData.password !== formData.confirmPassword || selectedModules.length === 0}>
+                <Button onClick={handleAddHotel} disabled={!formData.name || !isAdminUsernameValid || !formData.email || !formData.password || formData.password !== formData.confirmPassword || selectedModules.length === 0}>
                   Register Hotel
                 </Button>
               </div>

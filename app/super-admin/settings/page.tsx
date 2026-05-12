@@ -218,7 +218,7 @@ export default function SettingsPage() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Full Name</Label>
+                    <Label htmlFor="name">Username</Label>
                     <Input
                       id="name"
                       value={profileForm.username}

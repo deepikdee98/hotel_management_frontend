@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -15,6 +16,7 @@ import { addService, getServices, deleteService, updateService, getInHouseGuests
 import EditDetailsModal from "@/components/common/EditDetailsModal"
 
 export default function PostServicesPage() {
+  const router = useRouter()
   const [services, setServices] = useState<any[]>([])
   const [rooms, setRooms] = useState<any[]>([])
   const [serviceCodes, setServiceCodes] = useState<any[]>([])
@@ -63,9 +65,9 @@ export default function PostServicesPage() {
     setForm(prev => ({
       ...prev,
       serviceId: id,
-      serviceName: svc ? svc.serviceName : "",
-      amount: svc ? String(svc.defaultRate || svc.amount || "0") : "0",
-      gst: svc ? Number(svc.gst || 0) : 0
+      serviceName: svc ? String(svc.serviceName || svc.name || "") : "",
+      amount: svc ? String(svc.defaultRate || svc.defaultPrice || svc.amount || "0") : "0",
+      gst: svc ? Number(svc.gst ?? svc.gstPercentage ?? 0) : 0
     }))
   }
 
@@ -128,7 +130,7 @@ export default function PostServicesPage() {
 
     const roomVal = typeof s.room === 'object' ? (s.room?._id || s.room?.id) : s.room;
 
-    const svc = serviceCodes.find(sc => sc.serviceName === s.serviceName);
+    const svc = serviceCodes.find(sc => (sc.serviceName || sc.name) === s.serviceName);
 
     setForm({
       serviceId: svc?._id || svc?.id || "",
@@ -190,7 +192,16 @@ export default function PostServicesPage() {
                 <Select value={form.serviceId} onValueChange={handleServiceSelect}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    {serviceCodes.map(s => <SelectItem key={s._id || s.id} value={s._id || s.id}>{s.serviceName} - {s.gst}%</SelectItem>)}
+                    {serviceCodes.map(s => {
+                      const serviceName = s.serviceName || s.name || "Unnamed Service"
+                      const serviceCode = s.code ? `${s.code} - ` : ""
+                      const gst = Number(s.gst ?? s.gstPercentage ?? 0)
+                      return (
+                        <SelectItem key={s._id || s.id} value={s._id || s.id}>
+                          {serviceCode}{serviceName} - {gst}%
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -247,7 +258,14 @@ export default function PostServicesPage() {
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-sm">Posted Services</CardTitle>
-            <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={handleReset}><Plus className="h-3 w-3" /> New Other Service</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => router.push("/admin/front-office/setup?tab=service-codes&add=service")}
+            >
+              <Plus className="h-3 w-3" /> New Other Service
+            </Button>
           </CardHeader>
           <CardContent>
             <Table>

@@ -133,6 +133,7 @@ export interface Hotel {
 export interface Staff {
   id: string
   name: string
+  username?: string
   email: string
   role: "admin" | "staff"
   hotelId: string
@@ -182,12 +183,14 @@ export interface TravelAgent {
 export interface Service {
   _id: string
   name: string
+  code?: string
   category?: string
   defaultPrice: number
   chargeType: string
   isFood?: boolean
   gstApplicable?: boolean
   gstPercentage?: number
+  status?: "active" | "inactive"
 }
 
 // User entity (for auth)
@@ -220,6 +223,7 @@ export interface Room {
   gstType?: "INCLUSIVE" | "EXCLUSIVE"
   amenities: string[]
   guestName?: string
+  checkinId?: string
   checkIn?: string
   checkOut?: string
 }
@@ -371,6 +375,13 @@ export interface GRCardData {
   noOfPax: number
   guestType?: string
   idProof: string
+  idProofType?: string
+  idProofNumber?: string
+  passportNo?: string
+  visaDetails?: string
+  noOfNights?: number
+  totalPax?: number
+  netAmount?: number
   nationality?: string
   address?: string
   email?: string

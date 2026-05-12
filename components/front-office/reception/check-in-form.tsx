@@ -20,7 +20,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Camera, Upload, UserCircle, Save, RotateCcw, X, FileText, Plus, Trash2, Loader2, Search, Pencil, LogOut } from "lucide-react"
+import { Camera, Upload, UserCircle, Save, RotateCcw, X, FileText, Printer, Plus, Trash2, Loader2, Search, Pencil, LogOut } from "lucide-react"
 import {
   createCheckIn,
   getFrontOfficeRooms,
@@ -38,12 +38,13 @@ import {
   getBookingNumberPreview,
   removeLinkedCheckInRoom
 } from "@/lib/backend-api"
+import { saveGRCardPrintData } from "@/lib/gr-card-utils"
 import { useToast } from "@/hooks/use-toast"
 import { useSetupOptions } from "@/hooks/use-setup-options"
 import { useAuth } from "@/lib/auth-context"
 import { cn } from "@/lib/utils"
 import type { Room, Service } from "@/lib/types"
-import { calculateCheckoutDateTime, calculateNetAmount, type CheckoutPlanMetadata } from "@/lib/pms-helpers"
+import { calculateCheckoutDateTime, type CheckoutPlanMetadata } from "@/lib/pms-helpers"
 
 interface CheckInFormProps {
   mode?: "check-in" | "pax"
@@ -246,6 +247,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
     companyInfoIfscCode: "",
     companyInfoCreditLimit: "",
     companyInfoBookingCategory: "",
+    planTypeLabel: "",
     mainCheckin: "",
   })
 
@@ -362,24 +364,44 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
 
   useEffect(() => {
     const fetchData = async () => {
-      try {
-        const [roomsData, plansData, servicesData, roomTypesData] = await Promise.all([
-          getFrontOfficeRooms(),
-          getSetupRatePlans(),
-          getSetupServices(),
-          getSetupRoomTypes()
-        ])
-        setRooms(roomsData)
-        setRatePlans(plansData)
-        setAvailableServices(servicesData)
-        setRoomTypes(roomTypesData)
+      const [roomsResult, plansResult, servicesResult, roomTypesResult] = await Promise.allSettled([
+        getFrontOfficeRooms(),
+        getSetupRatePlans(),
+        getSetupServices(),
+        getSetupRoomTypes()
+      ])
 
-        if (mode === "pax") {
+      if (roomsResult.status === "fulfilled") {
+        setRooms(roomsResult.value)
+      } else {
+        console.error("Failed to fetch rooms:", roomsResult.reason)
+      }
+
+      if (plansResult.status === "fulfilled") {
+        setRatePlans(plansResult.value)
+      } else {
+        console.error("Failed to fetch rate plans:", plansResult.reason)
+      }
+
+      if (servicesResult.status === "fulfilled") {
+        setAvailableServices(servicesResult.value)
+      } else {
+        console.error("Failed to fetch services:", servicesResult.reason)
+      }
+
+      if (roomTypesResult.status === "fulfilled") {
+        setRoomTypes(roomTypesResult.value)
+      } else {
+        console.error("Failed to fetch room types:", roomTypesResult.reason)
+      }
+
+      if (mode === "pax") {
+        try {
           const inHouseData = await getInHouseGuests();
           setInHouseGuests(inHouseData.data.guests);
+        } catch (error) {
+          console.error("Failed to fetch in-house guests:", error)
         }
-      } catch (error) {
-        console.error("Failed to fetch data:", error)
       }
     }
     fetchData()
@@ -573,6 +595,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
       companyInfoIfscCode: String(booking.companyInfo?.ifscCode || ""),
       companyInfoCreditLimit: String(booking.companyInfo?.creditLimit || ""),
       companyInfoBookingCategory: String(booking.companyInfo?.bookingCategory || ""),
+      planTypeLabel: String(booking.planType?.name || booking.planTypeLabel || ""),
       mainCheckin: booking.mainCheckin || "",
     }
 
@@ -605,6 +628,10 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
           const noOfNights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
 
           const selectedType = roomTypes.find(rt => rt.name === resolvedRoomType || rt.code === resolvedRoomType || rt._id === matchingRoom?.roomTypeId);
+          const plan = ratePlans.find((p, index) => {
+            const planValue = p._id ?? p.id ?? p.code ?? `${p.name ?? "plan"}-${index}`
+            return planValue === (reservation.ratePlan || "")
+          })
 
           return {
             ...prev,
@@ -631,6 +658,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
             planCharges: reservation.totalAmount?.toString() || "",
             paymentMode: reservation.paymentMode || "",
             planType: reservation.ratePlan || "",
+            planTypeLabel: plan?.name || reservation.ratePlan || "",
             businessSource: reservation.bookingSource || "",
             paxAdultMale: reservation.adults?.toString() || "1",
             paxChildren: reservation.children?.toString() || "0",
@@ -708,11 +736,29 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
       setForm(prev => {
         const originalPlanCharge = Number(prev.planCharges || prev.planCharge || 0)
         const editedPlanCharge = Number(value || 0)
-        const autoDiscount = Math.max(0, originalPlanCharge - editedPlanCharge)
+        const autoDiscountPercent = originalPlanCharge > 0 && editedPlanCharge < originalPlanCharge
+          ? ((originalPlanCharge - editedPlanCharge) / originalPlanCharge) * 100
+          : 0
         return {
           ...prev,
           planCharge: value,
-          discount: autoDiscount.toString(),
+          discount: autoDiscountPercent.toFixed(2),
+        }
+      })
+    }
+
+    if (field === "discount") {
+      setForm(prev => {
+        const originalPlanCharge = Number(prev.planCharges || prev.planCharge || 0)
+        const discountPercent = Math.min(100, Math.max(0, Number(value || 0)))
+        const discountedPlanCharge = originalPlanCharge > 0
+          ? originalPlanCharge - (originalPlanCharge * discountPercent / 100)
+          : Number(prev.planCharge || 0)
+
+        return {
+          ...prev,
+          discount: value,
+          planCharge: discountedPlanCharge.toFixed(2),
         }
       })
     }
@@ -825,6 +871,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
             roomNo: selected.roomNumber,
             roomType: roomTypeName,
             planType: selected.planType?.code || selected.planType || "",
+            planTypeLabel: selected.planType?.name || selected.planTypeLabel || selected.planType || "",
             planCharge: String(selected.planCharges || selected.planCharge || "0"),
             foodCharge: String(selected.foodCharges || selected.foodCharge || "0"),
             checkoutPlan: selected.checkoutPlan || "",
@@ -871,16 +918,15 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
         if (foodService && planCode !== "EP") {
           foodCharge = foodService.defaultPrice.toString()
         }
-        setForm(prev => ({ ...prev, planType: value, foodCharge }))
+        setForm(prev => ({ ...prev, planType: value, foodCharge, planTypeLabel: plan.name || "" }))
       }
     }
   }
 
   useEffect(() => {
     const roomGstPercent = Number(form.gstPercentage) || 0
-    const planCharge = Number(form.planCharge) || 0
+    const roomCharge = Math.max(0, Number(form.planCharge) || 0)
     const foodCharge = Number(form.foodCharge) || 0
-    const discount = Number(form.discount) || 0
 
     // Find Food Service to get its GST settings
     const foodService = availableServices.find(s =>
@@ -895,24 +941,21 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
       foodGstAmount = (foodCharge * (foodService.gstPercentage || 0)) / 100
     }
 
-    const effectiveDiscount = Math.min(discount, planCharge)
-    const roomChargeAfterDiscount = planCharge - effectiveDiscount
-
     const isInclusive = form.gstType === "INCLUSIVE" || gstInclusive
     let roomGstAmount = 0
     if (roomGstPercent > 0) {
       if (isInclusive) {
-        roomGstAmount = roomChargeAfterDiscount - roomChargeAfterDiscount / (1 + roomGstPercent / 100)
+        roomGstAmount = roomCharge - roomCharge / (1 + roomGstPercent / 100)
       } else {
-        roomGstAmount = roomChargeAfterDiscount * (roomGstPercent / 100)
+        roomGstAmount = roomCharge * (roomGstPercent / 100)
       }
     }
 
     const totalGst = roomGstAmount + foodGstAmount
-    const net = calculateNetAmount(planCharge, foodCharge, discount, roomGstAmount, foodGstAmount, isInclusive)
+    const net = (isInclusive ? roomCharge : roomCharge + roomGstAmount) + foodCharge + foodGstAmount
 
     const formattedGst = totalGst.toFixed(2)
-    const formattedNet = net.toString()
+    const formattedNet = net.toFixed(2)
 
     if (form.gstAmount !== formattedGst || form.netAmount !== formattedNet) {
       setForm(prev => ({
@@ -921,7 +964,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
         netAmount: formattedNet
       }))
     }
-  }, [form.planCharge, form.foodCharge, form.discount, form.gstPercentage, form.gstType, gstInclusive, availableServices, form.gstAmount, form.netAmount]);
+  }, [form.planCharge, form.planCharges, form.foodCharge, form.gstPercentage, form.gstType, gstInclusive, availableServices, form.discount, form.gstAmount, form.netAmount]);
 
 
 
@@ -1012,6 +1055,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
       companyInfoIfscCode: "",
       companyInfoCreditLimit: "",
       companyInfoBookingCategory: "",
+      planTypeLabel: "",
       mainCheckin: "",
     })
     setGuestPhoto(null)
@@ -1027,6 +1071,16 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
     setMultiRoomContext(null)
     setShowAddMorePop(false)
     setIsAddingLinkedRoom(false)
+  }
+
+  const handlePrintGRCard = () => {
+    saveGRCardPrintData({
+      ...form,
+      roomNo: form.roomNo || "",
+      roomNumber: form.roomNo || "",
+      planTypeLabel: form.planTypeLabel || form.planType || "",
+    })
+    router.push("/admin/front-office/reception/gr-card")
   }
 
   const buildUpdatePayload = () => ({
@@ -1137,7 +1191,8 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
     if (mode !== "pax") {
       if (form.planCharge && Number(form.planCharge) <= 0) errors.planCharge = "Plan Charge must be greater than 0"
       if (form.foodCharge && (Number(form.foodCharge) < 0 || Number.isNaN(Number(form.foodCharge)))) errors.foodCharge = "Food Charge must be greater than or equal to 0"
-      if (Number(form.discount || 0) > Number(form.planCharge || 0)) errors.discount = "Discount must not exceed Plan Charge"
+      if (Number(form.discount || 0) < 0) errors.discount = "Discount % must not be negative"
+      if (Number(form.discount || 0) > 100) errors.discount = "Discount % must not exceed 100"
       if (Number(form.netAmount || 0) < 0) errors.netAmount = "Net Amount must not be negative"
       if (form.paxAdultMale && (Number(form.paxAdultMale) < 1 || Number.isNaN(Number(form.paxAdultMale)))) errors.paxAdultMale = "Adult Male must be at least 1"
     }
@@ -1211,8 +1266,8 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
       } else {
         toast({
           title: "Success",
-          description: allRooms.length > 1 
-            ? `Successfully checked-in ${allRooms.length} rooms.` 
+          description: allRooms.length > 1
+            ? `Successfully checked-in ${allRooms.length} rooms.`
             : "Guest checked-in successfully.",
         })
         setPendingRooms([])
@@ -1260,6 +1315,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
       roomNo: "",
       roomType: "",
       planType: "",
+      planTypeLabel: "",
       planCharge: "0",
       foodCharge: "0",
       planCharges: "0",
@@ -1426,10 +1482,19 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
 
   const uniqueRoomTypes = Array.from(
     new Map(
-      rooms.map((room) => [
-        room.type,
-        { id: room.type, name: room.type }
-      ])
+      [
+        ...roomTypes.map((roomType) => {
+          const name = String(roomType.name || roomType.code || roomType._id || "")
+          return [
+            name,
+            { id: name, name }
+          ] as const
+        }),
+        ...rooms.map((room) => [
+          room.type,
+          { id: room.type, name: room.type }
+        ] as const)
+      ].filter(([id]) => Boolean(id))
     ).values()
   );
 
@@ -1611,207 +1676,199 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
                     </div>
                   </div>
 
-                  <div className="flex-1">
-                    <div className="grid grid-cols-4 gap-4">
-                      {/* Row 1 */}
-                      <FormField label="Title" required>
-                        <Select value={form.title} onValueChange={v => handleChange("title", v)} disabled={isFieldDisabled("title")}>
-                          <SelectTrigger className={errorClass("title")}><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>{renderSetupItems(titleOptions)}</SelectContent>
-                        </Select>
-                        {fieldError("title") && <p className="mt-1 text-xs text-destructive">{fieldError("title")}</p>}
-                      </FormField>
-                      <FormField label="Guest Name" required className="col-span-3">
-                        <Input className={errorClass("guestName")} value={form.guestName} onChange={e => handleChange("guestName", e.target.value)} placeholder="Full name" disabled={isFieldDisabled("guestName")} />
-                        {fieldError("guestName") && <p className="mt-1 text-xs text-destructive">{fieldError("guestName")}</p>}
-                      </FormField>
-
-                      {/* Row 2 */}
-                      <FormField label="Mobile No" required className="col-span-2">
-                        <Input className={errorClass("mobile")} value={form.mobile} onChange={e => handleChange("mobile", e.target.value)} placeholder="+91 9876543210 (Enter to auto-fill)" disabled={isFieldDisabled("mobile")} />
-                        {(mobileLookupStatus !== "idle" || fieldError("mobile")) && (
-                          <div className="mt-1">
-                            {mobileLookupStatus === "loading" && <p className="text-xs text-muted-foreground">Checking existing guest...</p>}
-                            {mobileLookupStatus === "found" && existingGuest && !loadedGuestId && (
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-medium text-amber-600">Existing guest detected</p>
-                                <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowGuestDialog(true)}>Load Details</Button>
-                              </div>
-                            )}
-                            {mobileLookupStatus === "found" && loadedGuestId && <p className="text-xs font-medium text-green-600">Existing guest loaded</p>}
-                            {mobileLookupStatus === "not-found" && !fieldError("mobile") && <p className="text-xs font-medium text-green-600">New guest</p>}
-                            {mobileLookupStatus === "error" && !fieldError("mobile") && <p className="text-xs text-destructive">Error checking mobile.</p>}
-                            {fieldError("mobile") && <p className="text-xs text-destructive">{fieldError("mobile")}</p>}
-                          </div>
-                        )}
-                      </FormField>
-                      <FormField label="Email" className="col-span-2">
-                        <Input type="email" value={form.email} onChange={e => handleChange("email", e.target.value)} placeholder="guest@email.com" disabled={isFieldDisabled("email")} />
-                      </FormField>
-
-                      {/* Row 3 */}
-                      <FormField label="Date of Birth">
-                        <Input type="date" value={form.dob} onChange={e => handleChange("dob", e.target.value)} disabled={isFieldDisabled("dob")} />
-                      </FormField>
-                      <FormField label="Gender">
-                        <Select value={form.gender} onValueChange={v => handleChange("gender", v)} disabled={isFieldDisabled("gender")}>
-                          <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>{renderSetupItems(genderOptions)}</SelectContent>
-                        </Select>
-                      </FormField>
-                      <FormField label="Nationality">
-                        <Select value={form.nationality} onValueChange={v => handleChange("nationality", v)} disabled={isFieldDisabled("nationality")}>
-                          <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>{renderSetupItems(nationalityOptions)}</SelectContent>
-                        </Select>
-                      </FormField>
-                      <FormField label="Guest Classification" required>
-                        <Select value={form.guestClassification} onValueChange={v => handleChange("guestClassification", v)}>
-                          <SelectTrigger className={errorClass("guestClassification")}><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>{renderSetupItems(guestClassificationOptions)}</SelectContent>
-                        </Select>
-                      </FormField>
-
-                      {/* Row 4 */}
-                      <FormField label="Address" className="col-span-2">
-                        <Input value={form.address} onChange={e => handleChange("address", e.target.value)} placeholder="Street address" disabled={isFieldDisabled("address")} />
-                      </FormField>
-                      <FormField label="City">
-                        <Input value={form.city} onChange={e => handleChange("city", e.target.value)} placeholder="City" disabled={isFieldDisabled("city")} />
-                      </FormField>
-                      <FormField label="ZIP Code">
-                        <Input value={form.zip} onChange={e => handleChange("zip", e.target.value)} placeholder="ZIP" disabled={isFieldDisabled("zip")} />
-                      </FormField>
-
-                      {/* Row 5 */}
-                      <FormField label="State">
-                        <Input value={form.state} onChange={e => handleChange("state", e.target.value)} placeholder="State" disabled={isFieldDisabled("state")} />
-                      </FormField>
-                      <FormField label="Country">
-                        <Select value={form.country} onValueChange={v => handleChange("country", v)} disabled={isFieldDisabled("country")}>
-                          <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>{renderSetupItems(countryOptions)}</SelectContent>
-                        </Select>
-                      </FormField>
-                      <FormField label="Company" className="col-span-2">
-                        <Input value={form.company} onChange={e => handleChange("company", e.target.value)} placeholder="Company name" />
-                      </FormField>
-
-                      {/* Row 6 */}
-                      <FormField label="GST IN">
-                        <Input value={form.gstIn} onChange={e => handleChange("gstIn", e.target.value)} placeholder="GST Number" disabled={isFieldDisabled("gstIn")} />
-                      </FormField>
-                      <FormField label="Arrival From">
-                        <Input value={form.arrivalFrom} onChange={e => handleChange("arrivalFrom", e.target.value)} placeholder="Origin city" />
-                      </FormField>
-                      <FormField label="Departure To">
-                        <Input value={form.departureTo} onChange={e => handleChange("departureTo", e.target.value)} placeholder="Destination" />
-                      </FormField>
-                      <FormField label="Purpose of Visit">
-                        <Select value={form.purposeOfVisit} onValueChange={v => handleChange("purposeOfVisit", v)}>
-                          <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>{renderSetupItems(purposeOfVisitOptions)}</SelectContent>
-                        </Select>
-                      </FormField>
-
-                      {/* Row 7 */}
-                      <FormField label="Referred By" required>
-                        <Select value={form.referredByType} onValueChange={v => handleChange("referredByType", v)}>
-                          <SelectTrigger className={errorClass("referredByType")}><SelectValue placeholder="Select Source" /></SelectTrigger>
-                          <SelectContent>
-                            {["Walk-in", "Travel Agent", "Company", "OTA", "Member", "In-house", "Complimentary"].map(type => (
-                              <SelectItem key={type} value={type}>{type}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormField>
-
-                      <FormField label="Referred By Name" required>
-                        {["Travel Agent", "Company", "OTA", "Member"].includes(form.referredByType) ? (
-                          <Select value={form.referredById} onValueChange={v => handleChange("referredById", v)}>
-                            <SelectTrigger className={errorClass("referredById")}><SelectValue placeholder="Select Name" /></SelectTrigger>
+                  <div className="flex-1 space-y-6">
+                    {/* Name & Contact */}
+                    <div>
+                      <div className="grid grid-cols-4 gap-4">
+                        <FormField label="Referred By" required>
+                          <Select value={form.referredByType} onValueChange={v => handleChange("referredByType", v)}>
+                            <SelectTrigger className={errorClass("referredByType")}><SelectValue placeholder="Select Source" /></SelectTrigger>
                             <SelectContent>
-                              {form.referredByType === "Member"
-                                ? guestLookupData.map(g => (
-                                  <SelectItem key={g.reservationId || g._id} value={g.reservationId || g._id}>
-                                    {g.guestName}
-                                  </SelectItem>
-                                ))
-                                : referrals.map(r => (
-                                  <SelectItem key={r._id} value={r._id}>
-                                    {r.name}
-                                  </SelectItem>
-                                ))
-                              }
+                              {["Walk-in", "Travel Agent", "Company", "OTA", "Member", "In-house", "Complimentary"].map(type => (
+                                <SelectItem key={type} value={type}>{type}</SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
-                        ) : (
-                          <Input value={form.referredByName} readOnly disabled className="bg-muted" />
-                        )}
-                      </FormField>
-
-                      <FormField label="Stay Type" required>
-                        <Select value={form.stayType} onValueChange={v => handleChange("stayType", v)}>
-                          <SelectTrigger className={errorClass("stayType")}><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>
-                            {stayTypeItems.map((item: any) => {
-                              const value = String(item?.value || "")
-                              return <SelectItem key={String(item?._id || value)} value={value}>{value}</SelectItem>
-                            })}
-                          </SelectContent>
-                        </Select>
-                      </FormField>
-
-                      {/* Row 8 */}
-                      <FormField label="Business Source">
-                        <Select value={form.businessSource} onValueChange={v => handleChange("businessSource", v)}>
-                          <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>{renderSetupItems(businessSourceOptions)}</SelectContent>
-                        </Select>
-                      </FormField>
-                      <FormField label="Market Segment">
-                        <Select value={form.marketSegment} onValueChange={v => handleChange("marketSegment", v)}>
-                          <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>{renderSetupItems(marketSegmentOptions)}</SelectContent>
-                        </Select>
-                      </FormField>
-                      <FormField label="Occupancy Type" required>
-                        <Select value={form.occupancyType} onValueChange={v => handleChange("occupancyType", v)}>
-                          <SelectTrigger className={errorClass("occupancyType")}><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>{renderSetupItems(occupancyTypeOptions)}</SelectContent>
-                        </Select>
-                      </FormField>
-                      <FormField label="No of Nights">
-                        <Input type="number" min="1" value={form.noOfNights} onChange={e => handleChange("noOfNights", e.target.value)} />
-                      </FormField>
-
-                      {/* Row 9 */}
-                      <FormField label="Voucher No">
-                        <Input value={form.voucherNo} onChange={e => handleChange("voucherNo", e.target.value)} placeholder="Voucher" />
-                      </FormField>
-                      <FormField label="Register No" className="col-span-2">
-                        <Input value={form.registerNo} placeholder="Auto-generated" readOnly className="bg-muted" disabled={isFieldDisabled("registerNo")} />
-                      </FormField>
-                      <div className="flex items-end">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="w-full gap-2 h-10 border-dashed border-primary/50 text-primary"
-                          onClick={() => setActiveTab("companion")}
-                        >
-                          <Plus className="h-4 w-4" />
-                          Add Companion
-                        </Button>
+                        </FormField>
+                        <FormField label="Referred By Name" required>
+                          {["Travel Agent", "Company", "OTA", "Member"].includes(form.referredByType) ? (
+                            <Select value={form.referredById} onValueChange={v => handleChange("referredById", v)}>
+                              <SelectTrigger className={errorClass("referredById")}><SelectValue placeholder="Select Name" /></SelectTrigger>
+                              <SelectContent>
+                                {form.referredByType === "Member"
+                                  ? guestLookupData.map(g => (
+                                    <SelectItem key={g.reservationId || g._id} value={g.reservationId || g._id}>
+                                      {g.guestName}
+                                    </SelectItem>
+                                  ))
+                                  : referrals.map(r => (
+                                    <SelectItem key={r._id} value={r._id}>
+                                      {r.name}
+                                    </SelectItem>
+                                  ))
+                                }
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Input value={form.referredByName} readOnly disabled className="bg-muted" />
+                          )}
+                        </FormField>
+                        <FormField label="Register No">
+                          <Input value={form.registerNo} placeholder="Auto-generated" readOnly className="bg-muted" disabled={isFieldDisabled("registerNo")} />
+                        </FormField>
+                        <div className="flex items-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-full gap-2 h-10 border-dashed border-primary/50 text-primary"
+                            onClick={() => setActiveTab("companion")}
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add Companion
+                          </Button>
+                        </div>
                       </div>
                     </div>
+                    <div>
+                      <div className="grid grid-cols-4 gap-4">
+                        <FormField label="Title" required>
+                          <Select value={form.title} onValueChange={v => handleChange("title", v)} disabled={isFieldDisabled("title")}>
+                            <SelectTrigger className={errorClass("title")}><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>{renderSetupItems(titleOptions)}</SelectContent>
+                          </Select>
+                          {fieldError("title") && <p className="mt-1 text-xs text-destructive">{fieldError("title")}</p>}
+                        </FormField>
+                        <FormField label="Guest Name" required className="col-span-3">
+                          <Input className={errorClass("guestName")} value={form.guestName} onChange={e => handleChange("guestName", e.target.value)} placeholder="Full name" disabled={isFieldDisabled("guestName")} />
+                          {fieldError("guestName") && <p className="mt-1 text-xs text-destructive">{fieldError("guestName")}</p>}
+                        </FormField>
+
+                        <FormField label="Mobile No" required className="col-span-2">
+                          <Input className={errorClass("mobile")} value={form.mobile} onChange={e => handleChange("mobile", e.target.value)} placeholder="+91 9876543210 (Enter to auto-fill)" disabled={isFieldDisabled("mobile")} />
+                          {(mobileLookupStatus !== "idle" || fieldError("mobile")) && (
+                            <div className="mt-1">
+                              {mobileLookupStatus === "loading" && <p className="text-xs text-muted-foreground">Checking existing guest...</p>}
+                              {mobileLookupStatus === "found" && existingGuest && !loadedGuestId && (
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-xs font-medium text-amber-600">Existing guest detected</p>
+                                  <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowGuestDialog(true)}>Load Details</Button>
+                                </div>
+                              )}
+                              {mobileLookupStatus === "found" && loadedGuestId && <p className="text-xs font-medium text-green-600">Existing guest loaded</p>}
+                              {mobileLookupStatus === "not-found" && !fieldError("mobile") && <p className="text-xs font-medium text-green-600">New guest</p>}
+                              {mobileLookupStatus === "error" && !fieldError("mobile") && <p className="text-xs text-destructive">Error checking mobile.</p>}
+                              {fieldError("mobile") && <p className="text-xs text-destructive">{fieldError("mobile")}</p>}
+                            </div>
+                          )}
+                        </FormField>
+                        <FormField label="Email" className="col-span-2">
+                          <Input type="email" value={form.email} onChange={e => handleChange("email", e.target.value)} placeholder="guest@email.com" disabled={isFieldDisabled("email")} />
+                        </FormField>
+                      </div>
+                    </div>
+
+                    {/* Personal Info */}
+                    <div>
+                      <div className="grid grid-cols-4 gap-4">
+                        <FormField label="Date of Birth">
+                          <Input type="date" value={form.dob} onChange={e => handleChange("dob", e.target.value)} disabled={isFieldDisabled("dob")} />
+                        </FormField>
+                        <FormField label="Gender">
+                          <Select value={form.gender} onValueChange={v => handleChange("gender", v)} disabled={isFieldDisabled("gender")}>
+                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>{renderSetupItems(genderOptions)}</SelectContent>
+                          </Select>
+                        </FormField>
+                        <FormField label="Nationality">
+                          <Select value={form.nationality} onValueChange={v => handleChange("nationality", v)} disabled={isFieldDisabled("nationality")}>
+                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>{renderSetupItems(nationalityOptions)}</SelectContent>
+                          </Select>
+                        </FormField>
+                        <FormField label="Guest Classification" required>
+                          <Select value={form.guestClassification} onValueChange={v => handleChange("guestClassification", v)}>
+                            <SelectTrigger className={errorClass("guestClassification")}><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>{renderSetupItems(guestClassificationOptions)}</SelectContent>
+                          </Select>
+                        </FormField>
+                      </div>
+                    </div>
+
+                    {/* Address & Journey */}
+                    <div>
+                      <div className="grid grid-cols-4 gap-4">
+                        <FormField label="Address" className="col-span-2">
+                          <Input value={form.address} onChange={e => handleChange("address", e.target.value)} placeholder="Street address" disabled={isFieldDisabled("address")} />
+                        </FormField>
+                        <FormField label="Country">
+                          <Select value={form.country} onValueChange={v => handleChange("country", v)} disabled={isFieldDisabled("country")}>
+                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>{renderSetupItems(countryOptions)}</SelectContent>
+                          </Select>
+                        </FormField>
+                        <FormField label="State">
+                          <Input value={form.state} onChange={e => handleChange("state", e.target.value)} placeholder="State" disabled={isFieldDisabled("state")} />
+                        </FormField>
+                        
+                        <FormField label="City">
+                          <Input value={form.city} onChange={e => handleChange("city", e.target.value)} placeholder="City" disabled={isFieldDisabled("city")} />
+                        </FormField>
+                        <FormField label="ZIP Code">
+                          <Input value={form.zip} onChange={e => handleChange("zip", e.target.value)} placeholder="ZIP" disabled={isFieldDisabled("zip")} />
+                        </FormField>
+                        <FormField label="Arrival From">
+                          <Input value={form.arrivalFrom} onChange={e => handleChange("arrivalFrom", e.target.value)} placeholder="Origin city" />
+                        </FormField>
+                        <FormField label="Departure To">
+                          <Input value={form.departureTo} onChange={e => handleChange("departureTo", e.target.value)} placeholder="Destination" />
+                        </FormField>
+                      </div>
+                    </div>
+
+                    {/* Business & Purpose */}
+                    <div>
+                      <div className="grid grid-cols-4 gap-4">
+                        <FormField label="Company" className="col-span-2">
+                          <Input value={form.company} onChange={e => handleChange("company", e.target.value)} placeholder="Company name" />
+                        </FormField>
+                        <FormField label="GST IN" className="col-span-2">
+                          <Input value={form.gstIn} onChange={e => handleChange("gstIn", e.target.value)} placeholder="GST Number" disabled={isFieldDisabled("gstIn")} />
+                        </FormField>
+
+                        <FormField label="Purpose of Visit">
+                          <Select value={form.purposeOfVisit} onValueChange={v => handleChange("purposeOfVisit", v)}>
+                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>{renderSetupItems(purposeOfVisitOptions)}</SelectContent>
+                          </Select>
+                        </FormField>
+                        <FormField label="Business Source">
+                          <Select value={form.businessSource} onValueChange={v => handleChange("businessSource", v)}>
+                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>{renderSetupItems(businessSourceOptions)}</SelectContent>
+                          </Select>
+                        </FormField>
+                        <FormField label="Market Segment">
+                          <Select value={form.marketSegment} onValueChange={v => handleChange("marketSegment", v)}>
+                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>{renderSetupItems(marketSegmentOptions)}</SelectContent>
+                          </Select>
+                        </FormField>
+                        <FormField label="Voucher No">
+                          <Input value={form.voucherNo} onChange={e => handleChange("voucherNo", e.target.value)} placeholder="Voucher" />
+                        </FormField>
+                      </div>
+                    </div>
+
+                    {/* Referral & References */}
+                   
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader className="pb-3"><CardTitle className="text-base">Booking & Stay Details</CardTitle></CardHeader>
+              <CardHeader className="pb-3"><CardTitle className="text-base">Check-In Details</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-5 gap-4">
                   <FormField label="Check-In Date" required><Input className={errorClass("checkInDate")} type="date" value={form.checkInDate} onChange={e => handleChange("checkInDate", e.target.value)} /></FormField>
@@ -1827,95 +1884,146 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
 
                 <fieldset disabled={(isEditMode && isEditing && isStaff) || mode === "pax"} title={(isEditMode && isEditing && isStaff) || mode === "pax" ? "Read-only in PAX mode" : undefined} className="space-y-4">
 
-                  <div className="grid grid-cols-4 gap-4">
-                    <FormField label="Room Type" required>
-                      <Select value={form.roomType} onValueChange={v => handleChange("roomType", v)} disabled={isFieldDisabled("roomType")}>
-                        <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                        <SelectContent>{uniqueRoomTypes.map((type) => <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </FormField>
-                    <FormField label="Room No" required>
-                      <Select value={form.roomNo} onValueChange={v => handleChange("roomNo", v)} disabled={isFieldDisabled("roomNo")}>
-                        <SelectTrigger className={errorClass("roomNo")} title={restrictedFieldTitle("roomNo")}><SelectValue placeholder="Select" /></SelectTrigger>
-                        <SelectContent>{filteredRooms.map(r => <SelectItem key={r.id} value={r.number}>{r.number} - {r.type}</SelectItem>)}</SelectContent>
-                      </Select>
-                      {fieldError("roomNo") && <p className="mt-1 text-xs text-destructive">{fieldError("roomNo")}</p>}
-                    </FormField>
-                    <FormField label="Plan Type" required>
-                      <Select value={form.planType} onValueChange={v => handleChange("planType", v)} disabled={isFieldDisabled("planType")}>
-                        <SelectTrigger className={errorClass("planType")} title={restrictedFieldTitle("planType")}><SelectValue placeholder="Select" /></SelectTrigger>
-                        <SelectContent>{ratePlans.map((p, index) => {
-                          const optionValue = p._id ?? p.id ?? p.code ?? `${p.name ?? "plan"}-${index}`
-                          const optionLabel = p.name ? `${p.name}${p.code ? ` (${p.code})` : ""}` : p.code || p.id || `Plan ${index + 1}`
-                          return <SelectItem key={`${optionValue}-${index}`} value={optionValue}>{optionLabel}</SelectItem>
-                        })}</SelectContent>
-                      </Select>
-                      {fieldError("planType") && <p className="mt-1 text-xs text-destructive">{fieldError("planType")}</p>}
-                    </FormField>
-                    <FormField label="No of Beds"><Input type="number" min="1" value={form.noOfBeds} onChange={e => handleChange("noOfBeds", e.target.value)} placeholder="0" /></FormField>
-                  </div>
-                  <div className="grid grid-cols-4 gap-4">
-                    <FormField label="Food Charge">
-                      <Input className={errorClass("foodCharge")} type="number" min="0" value={form.foodCharge} onChange={e => handleChange("foodCharge", e.target.value)} placeholder="0.00" disabled={isFieldDisabled("foodCharge")} title={restrictedFieldTitle("foodCharge")} />
-                      {fieldError("foodCharge") && <p className="mt-1 text-xs text-destructive">{fieldError("foodCharge")}</p>}
-                    </FormField>
-                    <FormField label="Plan Charge" required>
-                      <Input className={errorClass("planCharge")} type="number" min="0" value={form.planCharge} onChange={e => handleChange("planCharge", e.target.value)} placeholder="0.00" disabled={isFieldDisabled("planCharge")} title={restrictedFieldTitle("planCharge")} />
-                      {fieldError("planCharge") && <p className="mt-1 text-xs text-destructive">{fieldError("planCharge")}</p>}
-                    </FormField>
-                    <FormField label="Discount">
-                      <Input className={errorClass("discount")} type="number" min="0" value={form.discount} onChange={e => handleChange("discount", e.target.value)} placeholder="0.00" disabled={isFieldDisabled("discount")} title={restrictedFieldTitle("discount")} />
-                      {fieldError("discount") && <p className="mt-1 text-xs text-destructive">{fieldError("discount")}</p>}
-                    </FormField>
-                    <FormField label="GST %">
-                      <Input value={form.gstPercentage} readOnly className="bg-muted" />
-                    </FormField>
-                    <FormField label="GST Type">
-                      <Input value={form.gstType} readOnly className="bg-muted" />
-                    </FormField>
-                    <FormField label="GST Amount">
-                      <Input value={form.gstAmount} readOnly className="bg-muted" />
-                    </FormField>
-                    <FormField label="Net Amount">
-                      <Input className={`${errorClass("netAmount")} bg-muted font-bold`} value={form.netAmount} readOnly disabled={isFieldDisabled("netAmount")} />
-                    </FormField>
-                  </div>
-                  <div className="grid grid-cols-4 gap-4">
-                    <FormField label="Adult Male" required><Input className={errorClass("paxAdultMale")} type="number" min="1" value={form.paxAdultMale} onChange={e => handleChange("paxAdultMale", e.target.value)} /></FormField>
-                    <FormField label="Adult Female (PAX)"><Input type="number" min="0" value={form.paxAdultFemale} onChange={e => handleChange("paxAdultFemale", e.target.value)} /></FormField>
-                    <FormField label="Children"><Input type="number" min="0" value={form.paxChildren} onChange={e => handleChange("paxChildren", e.target.value)} /></FormField>
-                    <FormField label="Total PAX"><Input type="number" value={form.totalPax} readOnly className="bg-muted font-bold" /></FormField>
+                  {/* Room & Dates */}
+                  <div>
+                    <div className="grid grid-cols-4 gap-4">
+                      <FormField label="Room Type" required>
+                        <Select value={form.roomType} onValueChange={v => handleChange("roomType", v)} disabled={isFieldDisabled("roomType")}>
+                          <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                          <SelectContent>{uniqueRoomTypes.map((type) => <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </FormField>
+                      <FormField label="Room No" required>
+                        <Select value={form.roomNo} onValueChange={v => handleChange("roomNo", v)} disabled={isFieldDisabled("roomNo")}>
+                          <SelectTrigger className={errorClass("roomNo")} title={restrictedFieldTitle("roomNo")}><SelectValue placeholder="Select" /></SelectTrigger>
+                          <SelectContent>{filteredRooms.map(r => <SelectItem key={r.id} value={r.number}>{r.number} - {r.type}</SelectItem>)}</SelectContent>
+                        </Select>
+                        {fieldError("roomNo") && <p className="mt-1 text-xs text-destructive">{fieldError("roomNo")}</p>}
+                      </FormField>
+                      <FormField label="Plan Type" required>
+                        <Select
+                          value={form.planType}
+                          onValueChange={v => {
+                            const selectedPlan = ratePlans.find((p, index) => {
+                              const optionValue = p._id ?? p.id ?? p.code ?? `${p.name ?? "plan"}-${index}`
+                              return optionValue === v
+                            })
+                            const optionLabel = selectedPlan
+                              ? selectedPlan.name ? `${selectedPlan.name}${selectedPlan.code ? ` (${selectedPlan.code})` : ""}` : selectedPlan.code || selectedPlan.id || v
+                              : v
+                            setForm(prev => ({ ...prev, planType: v, planTypeLabel: optionLabel }))
+                          }}
+                          disabled={isFieldDisabled("planType")}
+                        >
+                          <SelectTrigger className={errorClass("planType")} title={restrictedFieldTitle("planType")}><SelectValue placeholder="Select" /></SelectTrigger>
+                          <SelectContent>{ratePlans.map((p, index) => {
+                            const optionValue = p._id ?? p.id ?? p.code ?? `${p.name ?? "plan"}-${index}`
+                            const optionLabel = p.name ? `${p.name}${p.code ? ` (${p.code})` : ""}` : p.code || p.id || `Plan ${index + 1}`
+                            return <SelectItem key={`${optionValue}-${index}`} value={optionValue}>{optionLabel}</SelectItem>
+                          })}</SelectContent>
+                        </Select>
+                        {fieldError("planType") && <p className="mt-1 text-xs text-destructive">{fieldError("planType")}</p>}
+                      </FormField>
+                      <FormField label="No of Beds"><Input type="number" min="1" value={form.noOfBeds} onChange={e => handleChange("noOfBeds", e.target.value)} placeholder="0" /></FormField>
+                    </div>
                   </div>
 
+                  {/* Stay Info */}
+                  <div>
+                    <div className="grid grid-cols-4 gap-4">
+                      <FormField label="Stay Type" required>
+                        <Select value={form.stayType} onValueChange={v => handleChange("stayType", v)}>
+                          <SelectTrigger className={errorClass("stayType")}><SelectValue placeholder="Select" /></SelectTrigger>
+                          <SelectContent>
+                            {stayTypeItems.map((item: any) => {
+                              const value = String(item?.value || "")
+                              return <SelectItem key={String(item?._id || value)} value={value}>{value}</SelectItem>
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </FormField>
+                      <FormField label="No of Nights">
+                        <Input type="number" min="1" value={form.noOfNights} onChange={e => handleChange("noOfNights", e.target.value)} />
+                      </FormField>
+                      <FormField label="Occupancy Type" required>
+                        <Select value={form.occupancyType} onValueChange={v => handleChange("occupancyType", v)}>
+                          <SelectTrigger className={errorClass("occupancyType")}><SelectValue placeholder="Select" /></SelectTrigger>
+                          <SelectContent>{renderSetupItems(occupancyTypeOptions)}</SelectContent>
+                        </Select>
+                      </FormField>
+                      <FormField label="Total PAX"><Input type="number" value={form.totalPax} readOnly className="bg-muted font-bold" /></FormField>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 mt-4">
+                      <FormField label="Adult Male" required><Input className={errorClass("paxAdultMale")} type="number" min="1" value={form.paxAdultMale} onChange={e => handleChange("paxAdultMale", e.target.value)} /></FormField>
+                      <FormField label="Adult Female (PAX)"><Input type="number" min="0" value={form.paxAdultFemale} onChange={e => handleChange("paxAdultFemale", e.target.value)} /></FormField>
+                      <FormField label="Children"><Input type="number" min="0" value={form.paxChildren} onChange={e => handleChange("paxChildren", e.target.value)} /></FormField>
+                    </div>
+                  </div>
 
-                  <div className="grid grid-cols-3 gap-4">
-                    <FormField label="Mode of Payment">
-                      <Select value={form.paymentMode} onValueChange={v => handleChange("paymentMode", v)} disabled={isFieldDisabled("paymentMode")}>
-                        <SelectTrigger title={restrictedFieldTitle("paymentMode")}>
-                          <SelectValue placeholder="Select Mode" />
-                        </SelectTrigger>
-                        <SelectContent>{renderSetupItems(paymentModeOptions)}</SelectContent>
-                      </Select>
-                    </FormField>
-                    <FormField label="Advance Amount">
-                      <Input
-                        type="number"
-                        min="0"
-                        value={form.advanceAmount}
-                        onChange={e => handleChange("advanceAmount", e.target.value)}
-                        placeholder="0.00"
-                        disabled={isFieldDisabled("advanceAmount")}
-                        title={restrictedFieldTitle("advanceAmount")}
-                      />
-                    </FormField>
-                    <FormField label="Ledger A/C">
-                      <Select value={form.ledgerAc} onValueChange={v => handleChange("ledgerAc", v)} disabled={isFieldDisabled("ledgerAc")}>
-                        <SelectTrigger title={restrictedFieldTitle("ledgerAc")}>
-                          <SelectValue placeholder="Select Account" />
-                        </SelectTrigger>
-                        <SelectContent>{renderSetupItems(ledgerAccountOptions)}</SelectContent>
-                      </Select>
-                    </FormField>
+                  {/* Billing Details */}
+                  <div>
+                    <div className="grid grid-cols-5 gap-4">
+                      <FormField label="Plan Charge" required>
+                        <Input className={errorClass("planCharge")} type="number" min="0" value={form.planCharge} onChange={e => handleChange("planCharge", e.target.value)} placeholder="0.00" disabled={isFieldDisabled("planCharge")} title={restrictedFieldTitle("planCharge")} />
+                        {fieldError("planCharge") && <p className="mt-1 text-xs text-destructive">{fieldError("planCharge")}</p>}
+                      </FormField>
+                      <FormField label="Discount %">
+                        <Input className={errorClass("discount")} type="number" min="0" max="100" value={form.discount} onChange={e => handleChange("discount", e.target.value)} placeholder="0.00" disabled={isFieldDisabled("discount")} title={restrictedFieldTitle("discount")} />
+                        {fieldError("discount") && <p className="mt-1 text-xs text-destructive">{fieldError("discount")}</p>}
+                      </FormField>
+                      <FormField label="Food Charge">
+                        <Input className={errorClass("foodCharge")} type="number" min="0" value={form.foodCharge} onChange={e => handleChange("foodCharge", e.target.value)} placeholder="0.00" disabled={isFieldDisabled("foodCharge")} title={restrictedFieldTitle("foodCharge")} />
+                        {fieldError("foodCharge") && <p className="mt-1 text-xs text-destructive">{fieldError("foodCharge")}</p>}
+                      </FormField>
+                      <FormField label="GST %">
+                        <Input value={form.gstPercentage} readOnly className="bg-muted text-muted-foreground" />
+                      </FormField>
+                      <FormField label="Net Amount">
+                        <Input className={`${errorClass("netAmount")} bg-muted font-bold`} value={form.netAmount} readOnly disabled={isFieldDisabled("netAmount")} />
+                      </FormField>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4 mt-4 bg-muted/30 p-3 rounded-lg border border-border/50">
+                      <FormField label="GST Type">
+                        <Input value={form.gstType} readOnly className="bg-muted text-muted-foreground" />
+                      </FormField>
+                      <FormField label="GST Amount">
+                        <Input value={form.gstAmount} readOnly className="bg-muted text-muted-foreground" />
+                      </FormField>
+                    </div>
+                  </div>
+
+                  {/* Payment Details */}
+                  <div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <FormField label="Mode of Payment">
+                        <Select value={form.paymentMode} onValueChange={v => handleChange("paymentMode", v)} disabled={isFieldDisabled("paymentMode")}>
+                          <SelectTrigger title={restrictedFieldTitle("paymentMode")}>
+                            <SelectValue placeholder="Select Mode" />
+                          </SelectTrigger>
+                          <SelectContent>{renderSetupItems(paymentModeOptions)}</SelectContent>
+                        </Select>
+                      </FormField>
+                      <FormField label="Advance Amount">
+                        <Input
+                          type="number"
+                          min="0"
+                          value={form.advanceAmount}
+                          onChange={e => handleChange("advanceAmount", e.target.value)}
+                          placeholder="0.00"
+                          disabled={isFieldDisabled("advanceAmount")}
+                          title={restrictedFieldTitle("advanceAmount")}
+                        />
+                      </FormField>
+                      <FormField label="Ledger A/C">
+                        <Select value={form.ledgerAc} onValueChange={v => handleChange("ledgerAc", v)} disabled={isFieldDisabled("ledgerAc")}>
+                          <SelectTrigger title={restrictedFieldTitle("ledgerAc")}>
+                            <SelectValue placeholder="Select Account" />
+                          </SelectTrigger>
+                          <SelectContent>{renderSetupItems(ledgerAccountOptions)}</SelectContent>
+                        </Select>
+                      </FormField>
+                    </div>
                   </div>
                   <FormField label="Remarks">
                     <Textarea
@@ -2237,6 +2345,9 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
             <Button variant="outline" onClick={isAddingLinkedRoom ? () => { setIsAddingLinkedRoom(false); router.push("/admin/front-office/in-house") } : handleReset} disabled={isLoading}>
               <RotateCcw className="h-4 w-4 mr-2" /> {isAddingLinkedRoom ? "Cancel" : "Reset"}
             </Button>
+            <Button type="button" variant="outline" onClick={handlePrintGRCard} className="gap-2">
+              <Printer className="h-4 w-4" /> Print GR Card
+            </Button>
             <Button onClick={handleCheckInClick} disabled={!canCheckIn || isLoading} className="bg-green-600 hover:bg-green-700 text-white">
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
               {isAddingLinkedRoom ? "Check-In Room" : "Check-In"}
@@ -2280,9 +2391,9 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
             </div>
           )}
           <DialogFooter className="flex flex-col sm:flex-row gap-2 mt-4">
-            <Button 
-              variant="outline" 
-              onClick={confirmFinalCheckIn} 
+            <Button
+              variant="outline"
+              onClick={confirmFinalCheckIn}
               className="w-full sm:w-auto bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
             >
               No, Successfully Check-In {pendingRooms.length > 0 ? "Both" : ""}

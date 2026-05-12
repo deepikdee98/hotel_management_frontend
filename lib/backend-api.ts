@@ -114,9 +114,14 @@ function mapRoom(raw: JsonRecord): Room {
     roomTypeId = roomType // If it's just a string, it might be the ID or the Name
   }
 
+  const rawRoomNo = raw.roomNumber || raw.number || raw.roomNo || ""
+  const roomNumberStr = typeof rawRoomNo === "object" && rawRoomNo !== null 
+    ? String((rawRoomNo as any).roomNumber || (rawRoomNo as any).number || "")
+    : String(rawRoomNo)
+
   return {
     id: String(raw._id || raw.id || ""),
-    number: String(raw.roomNumber || raw.number || ""),
+    number: roomNumberStr,
     floor: Number(raw.floor || 0),
     type: toRoomType(roomTypeName),
     roomTypeId: roomTypeId,
@@ -268,7 +273,8 @@ function mapStaff(raw: JsonRecord): Staff {
   const roleValue = String(raw.role || "staff")
   return {
     id: String(raw._id || raw.id || ""),
-    name: String(raw.username || raw.name || ""),
+    name: String(raw.name || raw.username || ""),
+    username: String(raw.username || ""),
     email: String(raw.email || ""),
     role: roleValue === "hoteladmin" ? "admin" : "staff",
     hotelId: String(raw.hotelId || ""),
@@ -388,8 +394,15 @@ export async function getFrontOfficeRooms(params?: { search?: string; status?: s
   const query = new URLSearchParams()
   if (params?.search) query.set("search", params.search)
   if (params?.status && params.status !== "all") query.set("status", params.status)
-  const data = await apiRequest<{ success: boolean; data: { rooms: JsonRecord[] } }>(`/front-office/rooms${query.toString() ? `?${query.toString()}` : ""}`)
-  return Array.isArray(data.data?.rooms) ? data.data.rooms.map(mapRoom) : []
+  const data = await apiRequest<JsonRecord[] | { success: boolean; data?: { rooms?: JsonRecord[] }; rooms?: JsonRecord[] }>(`/front-office/rooms${query.toString() ? `?${query.toString()}` : ""}`)
+  const rooms = Array.isArray(data)
+    ? data
+    : Array.isArray(data.data?.rooms)
+      ? data.data.rooms
+      : Array.isArray(data.rooms)
+        ? data.rooms
+        : []
+  return rooms.map(mapRoom)
 }
 
 export async function getRoomGuests(roomId: string) {
@@ -918,12 +931,14 @@ function mapService(raw: JsonRecord): Service {
   return {
     _id: String(raw._id || raw.id || ""),
     name: String(raw.name || ""),
+    code: raw.code ? String(raw.code) : undefined,
     category: raw.category ? String(raw.category) : undefined,
     defaultPrice: Number(raw.defaultPrice || raw.price || 0),
     chargeType: String(raw.chargeType || ""),
     isFood: Boolean(raw.isFood),
     gstApplicable: Boolean(raw.gstApplicable),
     gstPercentage: raw.gstPercentage ? Number(raw.gstPercentage) : undefined,
+    status: raw.status === "inactive" ? "inactive" : "active",
   }
 }
 
