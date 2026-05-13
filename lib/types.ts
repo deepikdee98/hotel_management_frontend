@@ -204,6 +204,7 @@ export interface User {
   expiryDate?: string
   modules?: ModuleType[]
   avatar?: string
+  needsSetup?: boolean
 }
 
 // Room types for front office

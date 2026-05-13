@@ -5,6 +5,7 @@ import React from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { DashboardSidebar } from "./dashboard-sidebar"
+import { SetupPopup } from "./setup-popup"
 import { useAuth } from "@/lib/auth-context"
 import type { UserRole, ModuleType } from "@/lib/types"
 import { normalizeSubscriptionStatus } from "@/lib/subscription"
@@ -71,6 +72,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
 
   return (
     <div className="min-h-screen bg-background">
+      <SetupPopup />
       <DashboardSidebar role={user?.role || "staff"} />
       <div className="ml-[15rem] min-h-screen">
         <main className="p-6">

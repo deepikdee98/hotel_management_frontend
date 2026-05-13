@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
 import { DoorOpen, Printer, Pencil, Loader2, Star, CheckCircle2, X } from "lucide-react"
-import { getInHouseGuests, getFolioDetails, createCheckOut, getSetupRoomTypes, getSetupRatePlans, getSetupOptions } from "@/lib/backend-api"
+import { getInHouseGuests, getFolioDetails, createCheckOut, getSetupRoomTypes, getSetupRatePlans, getSetupOptions, downloadCheckoutInvoice } from "@/lib/backend-api"
 import { toast } from "sonner"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
@@ -356,6 +356,25 @@ export default function CheckOutPage() {
     }
   }
 
+  const handleDownloadGeneratedBills = async () => {
+    if (!checkoutResult?.invoiceId) {
+      window.print()
+      return
+    }
+
+    try {
+      await downloadCheckoutInvoice(String(checkoutResult.invoiceId))
+      const companionInvoices = Array.isArray(checkoutResult.companionInvoices) ? checkoutResult.companionInvoices : []
+      for (const companionInvoice of companionInvoices) {
+        if (companionInvoice.invoiceId) {
+          await downloadCheckoutInvoice(String(companionInvoice.invoiceId))
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to download generated bills")
+    }
+  }
+
   const selectedRoomGuests = useMemo(
     () => inHouseGuests.filter(g => getGuestRoomNumber(g) === String(selectedRoom).trim()),
     [inHouseGuests, selectedRoom]
@@ -461,7 +480,7 @@ export default function CheckOutPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button size="sm" className="h-8 text-xs gap-1.5 bg-green-600 hover:bg-green-700" onClick={() => window.print()}>
+                <Button size="sm" className="h-8 text-xs gap-1.5 bg-green-600 hover:bg-green-700" onClick={handleDownloadGeneratedBills}>
                   <Printer className="h-3.5 w-3.5" /> Generate Bill
                 </Button>
                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-100" onClick={() => setShowSuccess(false)}>

@@ -993,6 +993,12 @@ export async function updateSetupHotelConfig(payload: JsonRecord) {
   })
 }
 
+export async function completeHotelSetup() {
+  return apiRequest<{ success: boolean; message: string }>("/admin/setup/hotel-config/complete-setup", {
+    method: "POST",
+  })
+}
+
 // Floors & Rooms
 export async function getSetupFloors() {
   const data = await apiRequest<{ success: boolean; data: { floors: JsonRecord[] } }>("/front-office/floors")

@@ -54,6 +54,57 @@ interface CheckInFormProps {
 
 type TabType = "guest-info" | "guest-id" | "companion" | "vehicle-company"
 
+type Companion = {
+  name: string
+  mobile: string
+  gender: string
+  type: string
+  idType: string
+  idNumber: string
+  separateBill: boolean
+}
+
+const createEmptyCompanion = (): Companion => ({
+  name: "",
+  mobile: "",
+  gender: "",
+  type: "",
+  idType: "",
+  idNumber: "",
+  separateBill: false,
+})
+
+const normalizeCompanion = (companion: Partial<Companion> = {}): Companion => ({
+  name: String(companion.name || ""),
+  mobile: String(companion.mobile || ""),
+  gender: String(companion.gender || ""),
+  type: String(companion.type || ""),
+  idType: String(companion.idType || ""),
+  idNumber: String(companion.idNumber || ""),
+  separateBill: Boolean(companion.separateBill),
+})
+
+const toMoneyString = (value: number | string) => (Number(value) || 0).toFixed(2)
+
+const normalizeRoomTypeName = (name: string) => {
+  if (!name) return "";
+  const n = name.trim().toLowerCase();
+  if (n === 'excutiv' || n === 'excutive') return 'Executive';
+  // Capitalize first letter as fallback
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+const getNightlyCharge = (singleCharge: unknown, totalCharge: unknown, nights: unknown) => {
+  const single = Number(singleCharge)
+  if (Number.isFinite(single) && single > 0) return single
+
+  const total = Number(totalCharge)
+  const totalNights = Math.max(1, Number(nights) || 1)
+  if (Number.isFinite(total) && total > 0) return total / totalNights
+
+  return 0
+}
+
 type ExistingGuest = {
   id?: string
   guestName?: string
@@ -146,7 +197,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
   const [gstInclusive, setGstInclusive] = useState(false)
   const [availableServices, setAvailableServices] = useState<Service[]>([])
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([])
-  const [companions, setCompanions] = useState<{ name: string; mobile: string; gender: string; type: string; idType: string; idNumber: string }[]>([])
+  const [companions, setCompanions] = useState<Companion[]>([])
 
   const [rooms, setRooms] = useState<Room[]>([])
   const [ratePlans, setRatePlans] = useState<any[]>([])
@@ -524,6 +575,10 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
 
     const selectedType = roomTypes.find(rt => rt.name === roomTypeDisplay || rt.code === roomTypeDisplay || rt._id === matchingRoom?.roomTypeId);
 
+    const bookingNights = Number(booking.nights || booking.noOfNights || 1) || 1
+    const nightlyPlanCharge = getNightlyCharge(booking.planCharge, booking.planCharges, bookingNights)
+    const nightlyFoodCharge = getNightlyCharge(booking.foodCharge, booking.foodCharges, bookingNights)
+
     const normalizedForm = {
       bookingNo: String(booking.bookingNumber || booking.bookingNo || booking.bookingId || ""),
       reservationId: String(booking.reservationId || ""),
@@ -555,7 +610,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
       checkInTime: booking.checkInTime || (booking.checkInDate ? new Date(booking.checkInDate).toTimeString().slice(0, 5) : new Date().toTimeString().slice(0, 5)),
       checkOutDate: booking.checkOutDate ? new Date(booking.checkOutDate).toISOString().slice(0, 10) : "",
       checkOutTime: booking.checkOutTime || (booking.checkOutDate ? new Date(booking.checkOutDate).toTimeString().slice(0, 5) : ""),
-      noOfNights: String(booking.nights || booking.noOfNights || "1"),
+      noOfNights: String(bookingNights),
       stayType: String(booking.stayType || "Walk-in"),
       amount: String(booking.amount || "0"),
       occupancyType: String(booking.occupancyType || "Single"),
@@ -564,10 +619,10 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
       roomNo,
       roomType: roomTypeDisplay,
       planType: planTypeCode,
-      planCharge: String(booking.planCharge || booking.planCharges || (matchingRoom?.price ? matchingRoom.price.toString() : "0")),
-      foodCharge: String(booking.foodCharge ?? booking.foodCharges ?? "0"),
-      planCharges: String(booking.planCharge || booking.planCharges || (matchingRoom?.price ? matchingRoom.price.toString() : "0")),
-      foodCharges: String(booking.foodCharge ?? booking.foodCharges ?? "0"),
+      planCharge: toMoneyString(nightlyPlanCharge || matchingRoom?.price || 0),
+      foodCharge: toMoneyString(nightlyFoodCharge),
+      planCharges: toMoneyString(booking.planCharges || nightlyPlanCharge || matchingRoom?.price || 0),
+      foodCharges: toMoneyString(booking.foodCharges || nightlyFoodCharge),
       discount: String(booking.discount || "0"),
       gstPercentage: String(booking.gstPercentage || selectedType?.gstPercentage || matchingRoom?.gstPercentage || "0"),
       gstType: String(booking.gstType || selectedType?.gstType || matchingRoom?.gstType || "EXCLUSIVE"),
@@ -603,7 +658,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
     setOriginalData(normalizedForm)
     setSelectedRoomType(roomTypeDisplay)
     setGstInclusive(Boolean(booking.gstInclusive))
-    setCompanions(Array.isArray(booking.companions) ? booking.companions : [])
+    setCompanions(Array.isArray(booking.companions) ? booking.companions.map(normalizeCompanion) : [])
     if (booking.bookingGroupId) {
       setMultiRoomContext({
         bookingGroupId: String(booking.bookingGroupId),
@@ -626,6 +681,8 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
           const checkIn = reservation.checkIn ? new Date(reservation.checkIn) : new Date();
           const checkOut = reservation.checkOut ? new Date(reservation.checkOut) : new Date();
           const noOfNights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
+          const nightlyReservationPlanCharge = getNightlyCharge(reservation.planCharge, reservation.planCharges || reservation.totalAmount, noOfNights)
+          const nightlyReservationFoodCharge = getNightlyCharge(reservation.foodCharge, reservation.foodCharges, noOfNights)
 
           const selectedType = roomTypes.find(rt => rt.name === resolvedRoomType || rt.code === resolvedRoomType || rt._id === matchingRoom?.roomTypeId);
           const plan = ratePlans.find((p, index) => {
@@ -654,8 +711,10 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
             checkOutTime: reservation.checkOut ? new Date(reservation.checkOut).toTimeString().slice(0, 5) : "",
             noOfNights: noOfNights.toString(),
             advanceAmount: reservation.paidAmount?.toString() || "0",
-            planCharge: reservation.totalAmount?.toString() || "",
-            planCharges: reservation.totalAmount?.toString() || "",
+            planCharge: toMoneyString(nightlyReservationPlanCharge),
+            planCharges: toMoneyString(reservation.planCharges || reservation.totalAmount || nightlyReservationPlanCharge),
+            foodCharge: toMoneyString(nightlyReservationFoodCharge),
+            foodCharges: toMoneyString(reservation.foodCharges || nightlyReservationFoodCharge),
             paymentMode: reservation.paymentMode || "",
             planType: reservation.ratePlan || "",
             planTypeLabel: plan?.name || reservation.ratePlan || "",
@@ -732,33 +791,11 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
 
     setForm(prev => ({ ...prev, [field]: value }))
 
-    if (field === "planCharge") {
-      setForm(prev => {
-        const originalPlanCharge = Number(prev.planCharges || prev.planCharge || 0)
-        const editedPlanCharge = Number(value || 0)
-        const autoDiscountPercent = originalPlanCharge > 0 && editedPlanCharge < originalPlanCharge
-          ? ((originalPlanCharge - editedPlanCharge) / originalPlanCharge) * 100
-          : 0
-        return {
-          ...prev,
-          planCharge: value,
-          discount: autoDiscountPercent.toFixed(2),
-        }
-      })
-    }
-
     if (field === "discount") {
       setForm(prev => {
-        const originalPlanCharge = Number(prev.planCharges || prev.planCharge || 0)
-        const discountPercent = Math.min(100, Math.max(0, Number(value || 0)))
-        const discountedPlanCharge = originalPlanCharge > 0
-          ? originalPlanCharge - (originalPlanCharge * discountPercent / 100)
-          : Number(prev.planCharge || 0)
-
         return {
           ...prev,
-          discount: value,
-          planCharge: discountedPlanCharge.toFixed(2),
+          discount: Math.min(100, Math.max(0, Number(value || 0))).toString(),
         }
       })
     }
@@ -872,8 +909,8 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
             roomType: roomTypeName,
             planType: selected.planType?.code || selected.planType || "",
             planTypeLabel: selected.planType?.name || selected.planTypeLabel || selected.planType || "",
-            planCharge: String(selected.planCharges || selected.planCharge || "0"),
-            foodCharge: String(selected.foodCharges || selected.foodCharge || "0"),
+            planCharge: toMoneyString(getNightlyCharge(selected.planCharge, selected.planCharges, selected.nights)),
+            foodCharge: toMoneyString(getNightlyCharge(selected.foodCharge, selected.foodCharges, selected.nights)),
             checkoutPlan: selected.checkoutPlan || "",
           }));
 
@@ -889,10 +926,10 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
             ...prev,
             roomType: room.type,
             roomNo: value,
-            planCharge: room.price.toString(),
-            planCharges: room.price.toString(),
-            gstPercentage: String(room.gstPercentage || selectedType?.gstPercentage || 0),
-            gstType: room.gstType || selectedType?.gstType || "EXCLUSIVE",
+            planCharge: toMoneyString(room.price),
+            planCharges: toMoneyString(room.price),
+            gstPercentage: String(selectedType?.gstPercentage || room.gstPercentage || 0),
+            gstType: selectedType?.gstType || room.gstType || "EXCLUSIVE",
             noOfBeds: String(selectedType?.maxOccupancy || selectedType?.capacity || ""),
           }))
           setSelectedRoomType(room.type)
@@ -916,7 +953,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
         )
         let foodCharge = "0"
         if (foodService && planCode !== "EP") {
-          foodCharge = foodService.defaultPrice.toString()
+          foodCharge = toMoneyString(foodService.defaultPrice)
         }
         setForm(prev => ({ ...prev, planType: value, foodCharge, planTypeLabel: plan.name || "" }))
       }
@@ -926,7 +963,10 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
   useEffect(() => {
     const roomGstPercent = Number(form.gstPercentage) || 0
     const roomCharge = Math.max(0, Number(form.planCharge) || 0)
-    const foodCharge = Number(form.foodCharge) || 0
+    const foodCharge = Math.max(0, Number(form.foodCharge) || 0)
+    const nights = Math.max(1, Number(form.noOfNights) || 1)
+    const discountPercent = Math.min(100, Math.max(0, Number(form.discount) || 0))
+    const discountedRoomCharge = Math.max(0, roomCharge - (roomCharge * discountPercent / 100))
 
     // Find Food Service to get its GST settings
     const foodService = availableServices.find(s =>
@@ -945,14 +985,15 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
     let roomGstAmount = 0
     if (roomGstPercent > 0) {
       if (isInclusive) {
-        roomGstAmount = roomCharge - roomCharge / (1 + roomGstPercent / 100)
+        roomGstAmount = discountedRoomCharge - discountedRoomCharge / (1 + roomGstPercent / 100)
       } else {
-        roomGstAmount = roomCharge * (roomGstPercent / 100)
+        roomGstAmount = discountedRoomCharge * (roomGstPercent / 100)
       }
     }
 
-    const totalGst = roomGstAmount + foodGstAmount
-    const net = (isInclusive ? roomCharge : roomCharge + roomGstAmount) + foodCharge + foodGstAmount
+    const nightlyNet = (isInclusive ? discountedRoomCharge : discountedRoomCharge + roomGstAmount) + foodCharge + foodGstAmount
+    const totalGst = (roomGstAmount + foodGstAmount) * nights
+    const net = nightlyNet * nights
 
     const formattedGst = totalGst.toFixed(2)
     const formattedNet = net.toFixed(2)
@@ -964,7 +1005,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
         netAmount: formattedNet
       }))
     }
-  }, [form.planCharge, form.planCharges, form.foodCharge, form.gstPercentage, form.gstType, gstInclusive, availableServices, form.discount, form.gstAmount, form.netAmount]);
+  }, [form.planCharge, form.foodCharge, form.gstPercentage, form.gstType, gstInclusive, availableServices, form.discount, form.noOfNights, form.gstAmount, form.netAmount]);
 
 
 
@@ -1083,83 +1124,95 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
     router.push("/admin/front-office/reception/gr-card")
   }
 
-  const buildUpdatePayload = () => ({
-    title: form.title,
-    guestName: form.guestName,
-    mobileNo: form.mobile,
-    mobile: form.mobile,
-    email: form.email,
-    dob: form.dob,
-    gender: form.gender,
-    address: form.address,
-    country: form.country,
-    state: form.state,
-    city: form.city,
-    zip: form.zip,
-    nationality: form.nationality,
-    gstNumber: form.gstIn,
-    referredByType: form.referredByType,
-    referredById: form.referredById || undefined,
-    referredByName: form.referredByName,
-    arrivalFrom: form.arrivalFrom,
-    departureTo: form.departureTo,
-    purposeOfVisit: form.purposeOfVisit,
-    businessSource: form.businessSource,
-    marketSegment: form.marketSegment,
-    company: form.company,
-    voucherNo: form.voucherNo,
-    checkInDate: form.checkInDate,
-    checkInTime: form.checkInTime,
-    checkOutDate: form.checkOutDate,
-    checkOutTime: form.checkOutTime,
-    nights: Number(form.noOfNights) || 1,
-    stayType: form.stayType,
-    amount: Number(form.amount) || 0,
-    occupancyType: form.occupancyType,
-    checkoutPlan: form.checkoutPlan,
-    guestClassification: form.guestClassification,
-    roomNumber: form.roomNo,
-    planType: form.planType,
-    planCharge: Number(form.planCharge) || 0,
-    foodCharge: Number(form.foodCharge) || 0,
-    planCharges: Number(form.planCharge) || 0,
-    foodCharges: Number(form.foodCharge) || 0,
-    discount: Number(form.discount) || 0,
-    gstPercentage: Number(form.gstPercentage) || 0,
-    gstType: form.gstType,
-    gstAmount: Number(form.gstAmount) || 0,
-    netAmount: Number(form.netAmount) || 0,
-    guestType: form.guestType,
-    noOfBeds: Number(form.noOfBeds) || 0,
-    adultMale: Number(form.paxAdultMale) || 1,
-    adultFemale: Number(form.paxAdultFemale) || 0,
-    children: Number(form.paxChildren) || 0,
-    paymentMode: form.paymentMode,
-    advanceAmount: Number(form.advanceAmount) || 0,
-    ledgerAccount: form.ledgerAc,
-    remarks: form.remark,
-    idProofType: form.idProofType,
-    idProofNumber: form.idProofNumber,
-    vehicleNo: form.vehicleNo,
-    vehicleType: form.vehicleType,
-    gstInclusive,
-    services: selectedServices,
-    companions: companions.filter(c => c.name || c.mobile || c.idType || c.idNumber || c.gender || c.type),
-    companyInfo: {
-      companyName: form.companyInfoCompanyName,
-      ledgerGroup: form.companyInfoLedgerGroup || null,
-      pan: form.companyInfoPan,
-      gst: form.companyInfoGst,
-      bankAccountNo: form.companyInfoBankAccountNo,
-      ifscCode: form.companyInfoIfscCode,
-      creditLimit: Number(form.companyInfoCreditLimit) || 0,
-      bookingCategory: form.companyInfoBookingCategory || null,
-    },
-    mainCheckin: form.mainCheckin || undefined,
-    bookingGroupId: multiRoomContext?.bookingGroupId || undefined,
-    parentGuestCheckin: multiRoomContext?.parentGuestCheckin || undefined,
-    isPax: mode === "pax",
-  })
+  const buildUpdatePayload = () => {
+    const nights = Math.max(1, Number(form.noOfNights) || 1)
+    const nightlyPlanCharge = Math.max(0, Number(form.planCharge) || 0)
+    const nightlyFoodCharge = Math.max(0, Number(form.foodCharge) || 0)
+    const discountPercent = Math.min(100, Math.max(0, Number(form.discount) || 0))
+    const totalPlanCharge = nightlyPlanCharge * nights
+    const totalFoodCharge = nightlyFoodCharge * nights
+    const discountAmount = totalPlanCharge * (discountPercent / 100)
+
+    return {
+      title: form.title,
+      guestName: form.guestName,
+      mobileNo: form.mobile,
+      mobile: form.mobile,
+      email: form.email,
+      dob: form.dob,
+      gender: form.gender,
+      address: form.address,
+      country: form.country,
+      state: form.state,
+      city: form.city,
+      zip: form.zip,
+      nationality: form.nationality,
+      gstNumber: form.gstIn,
+      referredByType: form.referredByType,
+      referredById: form.referredById || undefined,
+      referredByName: form.referredByName,
+      arrivalFrom: form.arrivalFrom,
+      departureTo: form.departureTo,
+      purposeOfVisit: form.purposeOfVisit,
+      businessSource: form.businessSource,
+      marketSegment: form.marketSegment,
+      company: form.company,
+      voucherNo: form.voucherNo,
+      checkInDate: form.checkInDate,
+      checkInTime: form.checkInTime,
+      checkOutDate: form.checkOutDate,
+      checkOutTime: form.checkOutTime,
+      nights,
+      stayType: form.stayType,
+      amount: Number(form.amount) || 0,
+      occupancyType: form.occupancyType,
+      checkoutPlan: form.checkoutPlan,
+      guestClassification: form.guestClassification,
+      roomNumber: form.roomNo,
+      planType: form.planType,
+      planCharge: nightlyPlanCharge,
+      foodCharge: nightlyFoodCharge,
+      planCharges: totalPlanCharge,
+      foodCharges: totalFoodCharge,
+      discount: discountAmount,
+      gstPercentage: Number(form.gstPercentage) || 0,
+      gstType: form.gstType,
+      gstAmount: Number(form.gstAmount) || 0,
+      netAmount: Number(form.netAmount) || 0,
+      guestType: form.guestType,
+      noOfBeds: Number(form.noOfBeds) || 0,
+      adultMale: Number(form.paxAdultMale) || 1,
+      adultFemale: Number(form.paxAdultFemale) || 0,
+      children: Number(form.paxChildren) || 0,
+      paymentMode: form.paymentMode,
+      advanceAmount: Number(form.advanceAmount) || 0,
+      ledgerAccount: form.ledgerAc,
+      remarks: form.remark,
+      idProofType: form.idProofType,
+      idProofNumber: form.idProofNumber,
+      vehicleNo: form.vehicleNo,
+      vehicleType: form.vehicleType,
+      gstInclusive,
+      services: selectedServices,
+      companions: companions
+        .filter(c => c.name || c.mobile || c.idType || c.idNumber || c.gender || c.type)
+        .map(normalizeCompanion),
+      companyInfo: {
+        companyName: form.companyInfoCompanyName,
+        ledgerGroup: form.companyInfoLedgerGroup || null,
+        pan: form.companyInfoPan,
+        gst: form.companyInfoGst,
+        bankAccountNo: form.companyInfoBankAccountNo,
+        ifscCode: form.companyInfoIfscCode,
+        creditLimit: Number(form.companyInfoCreditLimit) || 0,
+        bookingCategory: form.companyInfoBookingCategory || null,
+      },
+      mainCheckin: form.mainCheckin || undefined,
+      bookingGroupId: multiRoomContext?.bookingGroupId || undefined,
+      parentGuestCheckin: multiRoomContext?.parentGuestCheckin || undefined,
+      isPax: mode === "pax",
+    }
+  }
 
   const requiredFields: Array<[keyof typeof form, string]> = [
     ["guestName", "Guest Name"],
@@ -1980,6 +2033,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
                       </FormField>
                       <FormField label="Net Amount">
                         <Input className={`${errorClass("netAmount")} bg-muted font-bold`} value={form.netAmount} readOnly disabled={isFieldDisabled("netAmount")} />
+                        <p className="mt-1 text-xs text-muted-foreground">Total for {Math.max(1, Number(form.noOfNights) || 1)} night(s)</p>
                       </FormField>
                     </div>
                     
@@ -2095,7 +2149,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setCompanions([...companions, { name: "", mobile: "", gender: "", type: "", idType: "", idNumber: "" }])}
+                onClick={() => setCompanions([...companions, createEmptyCompanion()])}
                 disabled={isFieldDisabled("companion")}
               >
                 <Plus className="h-4 w-4 mr-1" /> Add Companion
@@ -2103,7 +2157,7 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
             </CardHeader>
             <CardContent className="space-y-4">
               {companions.map((comp, idx) => (
-                <div key={idx} className="grid grid-cols-1 md:grid-cols-7 gap-3 p-3 border rounded-lg bg-muted/30 relative items-end">
+                <div key={idx} className="grid grid-cols-1 md:grid-cols-8 gap-3 p-3 border rounded-lg bg-muted/30 relative items-end">
                   <FormField label="Name" required>
                     <Input
                       className="h-8 text-xs"
@@ -2174,6 +2228,21 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
                       disabled={isFieldDisabled("companion")}
                     />
                   </FormField>
+                  <div className="flex h-8 items-center gap-2">
+                    <Checkbox
+                      id={`companion-separate-bill-${idx}`}
+                      checked={Boolean(comp.separateBill)}
+                      onCheckedChange={checked => {
+                        const nc = [...companions]
+                        nc[idx] = { ...nc[idx], separateBill: Boolean(checked) }
+                        setCompanions(nc)
+                      }}
+                      disabled={isFieldDisabled("companion")}
+                    />
+                    <Label htmlFor={`companion-separate-bill-${idx}`} className="text-xs leading-tight">
+                      Separate Bill
+                    </Label>
+                  </div>
                   <div className="flex justify-end h-8 items-center">
                     <Button
                       type="button"

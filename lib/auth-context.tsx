@@ -411,6 +411,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           hotelId: userData.hotelId || hotelData?._id || hotelData?.id,
           hotelName: userData.hotelName || hotelData?.name,
           expiryDate: payloadExpiryDate,
+          needsSetup: payload.needsSetup || payload.data?.needsSetup || false,
         }
       } catch {
         const data = payload.data?.user || payload.user || payload
@@ -425,6 +426,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           hotelId: data.hotelId || hotelData?._id || hotelData?.id,
           hotelName: data.hotelName || hotelData?.name,
           expiryDate: payloadExpiryDate || pickExpiryDate(data, hotelData),
+          needsSetup: payload.needsSetup || payload.data?.needsSetup || false,
         }
       }
 
@@ -448,7 +450,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionStorage.removeItem(SUBSCRIPTION_STORAGE_KEY)
       }
 
-      return { accessToken, refreshToken, role: userProfile.role }
+      return { accessToken, refreshToken, role: userProfile.role, needsSetup: userProfile.needsSetup }
     } catch (error) {
       throw error instanceof Error ? error : new Error("Login failed")
     }
