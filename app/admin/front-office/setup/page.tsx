@@ -515,7 +515,17 @@ export default function FOSetupPage() {
 
     const requestedCount = parseInt(newRoomConfig.count)
     const currentTotal = floors.reduce((sum, f) => sum + f.totalRooms, 0)
-    const maxAllowed = hotelConfig?.totalRooms || 0
+
+    if (!hotelConfig) {
+      toast({
+        title: "Hotel configuration not loaded",
+        description: "Please refresh the page or try again after the hotel data loads.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    const maxAllowed = hotelConfig.totalRooms ?? 0
 
     if (currentTotal + requestedCount > maxAllowed) {
       toast({
@@ -1425,8 +1435,8 @@ export default function FOSetupPage() {
                       <TableCell>
                         <Badge variant="outline" className={
                           company.type === "Company" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                          company.type === "Travel Agent" ? "bg-purple-50 text-purple-700 border-purple-200" :
-                          "bg-orange-50 text-orange-700 border-orange-200"
+                            company.type === "Travel Agent" ? "bg-purple-50 text-purple-700 border-purple-200" :
+                              "bg-orange-50 text-orange-700 border-orange-200"
                         }>
                           {company.type}
                         </Badge>
