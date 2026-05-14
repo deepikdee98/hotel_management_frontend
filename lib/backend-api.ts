@@ -508,6 +508,7 @@ const STAFF_CHECK_IN_UPDATE_FIELDS = new Set([
   "address",
   "idProofType",
   "idProofNumber",
+  "occupancyType",
 ])
 
 function sanitizeCheckInUpdatePayload(payload: any, role?: string) {

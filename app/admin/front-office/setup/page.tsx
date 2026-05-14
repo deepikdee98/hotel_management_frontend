@@ -103,6 +103,7 @@ const masterDataGroups = {
     { label: "Vehicle Type", type: "vehicleType", module: "business" },
     { label: "Ledger Group", type: "ledgerGroup", module: "business" },
     { label: "Booking Category", type: "bookingCategory", module: "business" },
+    { label: "Occupancy Type", type: "occupancyType", module: "room" }
   ],
 } as const
 
