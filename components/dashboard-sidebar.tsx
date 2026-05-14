@@ -45,7 +45,6 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import type { UserRole, ModuleType } from "@/lib/types"
-import { useState } from "react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
 interface SubNavItem {
@@ -152,13 +151,22 @@ function getNavItems(role: UserRole): NavItem[] {
 
 interface DashboardSidebarProps {
   role: UserRole
+  collapsed?: boolean
+  mobileOpen?: boolean
+  onCollapsedChange?: (collapsed: boolean) => void
+  onMobileOpenChange?: (open: boolean) => void
 }
 
-export function DashboardSidebar({ role }: DashboardSidebarProps) {
+export function DashboardSidebar({
+  role,
+  collapsed = false,
+  mobileOpen = false,
+  onCollapsedChange,
+  onMobileOpenChange,
+}: DashboardSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { user, logout, hasAccess } = useAuth()
-  const [collapsed, setCollapsed] = useState(false)
 
   const navItems = getNavItems(role).filter((item) => {
     // Check role access if defined
@@ -174,45 +182,66 @@ export function DashboardSidebar({ role }: DashboardSidebarProps) {
     router.push("/")
   }
 
+  const toggleCollapsed = () => {
+    onCollapsedChange?.(!collapsed)
+  }
+
+  const closeMobileSidebar = () => {
+    onMobileOpenChange?.(false)
+  }
+
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300",
-        collapsed ? "w-16" : "w-60"
+        "fixed left-0 top-0 z-40 h-dvh w-60 bg-sidebar border-r border-sidebar-border transition-all duration-300 lg:translate-x-0",
+        mobileOpen ? "translate-x-0" : "-translate-x-full",
+        collapsed ? "lg:w-16" : "lg:w-60"
       )}
     >
       <div className="flex h-full flex-col">
         {/* Header */}
         <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
-          {!collapsed && (
-            <Link href="/" className="flex items-center gap-2">
-              <div className="p-1.5 bg-sidebar-primary rounded-lg">
-                <Building2 className="h-5 w-5 text-sidebar-primary-foreground" />
-              </div>
-              <span className="font-semibold text-sidebar-foreground">HotelManager</span>
-            </Link>
-          )}
+          <Link
+            href="/"
+            className={cn("flex items-center gap-2", collapsed && "lg:hidden")}
+            onClick={closeMobileSidebar}
+          >
+            <div className="p-1.5 bg-sidebar-primary rounded-lg">
+              <Building2 className="h-5 w-5 text-sidebar-primary-foreground" />
+            </div>
+            <span className="font-semibold text-sidebar-foreground">HotelManager</span>
+          </Link>
           {collapsed && (
-            <div className="p-1.5 bg-sidebar-primary rounded-lg mx-auto">
+            <div className="hidden p-1.5 bg-sidebar-primary rounded-lg mx-auto lg:block">
               <Building2 className="h-5 w-5 text-sidebar-primary-foreground" />
             </div>
           )}
           <Button
             variant="ghost"
             size="icon"
+            className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent lg:hidden"
+            onClick={closeMobileSidebar}
+            aria-label="Close navigation"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             className={cn(
-              "h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent",
-              collapsed && "hidden"
+              "hidden h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent lg:flex",
+              collapsed && "lg:hidden"
             )}
-            onClick={() => setCollapsed(!collapsed)}
+            onClick={toggleCollapsed}
+            aria-label="Collapse navigation"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
         </div>
 
         {/* User Info */}
-        {!collapsed && user && (
-          <div className="border-b border-sidebar-border p-4">
+        {user && (
+          <div className={cn("border-b border-sidebar-border p-4", collapsed && "lg:hidden")}>
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-full bg-sidebar-accent flex items-center justify-center">
                 <span className="text-sm font-medium text-sidebar-accent-foreground">
@@ -240,13 +269,14 @@ export function DashboardSidebar({ role }: DashboardSidebarProps) {
               item.subItems?.some(sub => pathname === sub.href || sub.subItems?.some(s => pathname === s.href))
             )
 
-            if (hasSubItems && !collapsed) {
+            if (hasSubItems) {
               return (
                 <Collapsible key={item.href} defaultOpen={isSubActive}>
                   <CollapsibleTrigger asChild>
                     <button
                       className={cn(
                         "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+                        collapsed && "lg:justify-center lg:px-2",
                         isSubActive
                           ? "bg-sidebar-accent text-sidebar-accent-foreground"
                           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -254,12 +284,12 @@ export function DashboardSidebar({ role }: DashboardSidebarProps) {
                     >
                       <div className="flex items-center gap-2.5">
                         <Icon className="h-4 w-4 flex-shrink-0" />
-                        <span>{item.label}</span>
+                        <span className={cn(collapsed && "lg:hidden")}>{item.label}</span>
                       </div>
-                      <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200 [[data-state=open]>&]:rotate-180" />
+                      <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200 [[data-state=open]>&]:rotate-180", collapsed && "lg:hidden")} />
                     </button>
                   </CollapsibleTrigger>
-                  <CollapsibleContent className="pl-3 mt-0.5 space-y-0.5">
+                  <CollapsibleContent className={cn("pl-3 mt-0.5 space-y-0.5", collapsed && "lg:hidden")}>
                     {item.subItems?.map((subItem) => {
                       const SubIcon = subItem.icon
                       const isSubItemActive = pathname === subItem.href
@@ -293,6 +323,7 @@ export function DashboardSidebar({ role }: DashboardSidebarProps) {
                                   <Link
                                     key={nestedItem.href}
                                     href={nestedItem.href}
+                                    onClick={closeMobileSidebar}
                                     className={cn(
                                       "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors",
                                       isNestedItemActive
@@ -314,6 +345,7 @@ export function DashboardSidebar({ role }: DashboardSidebarProps) {
                         <Link
                           key={subItem.href}
                           href={subItem.href}
+                          onClick={closeMobileSidebar}
                           className={cn(
                             "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
                             isSubItemActive
@@ -340,12 +372,13 @@ export function DashboardSidebar({ role }: DashboardSidebarProps) {
                   isActive
                     ? "bg-sidebar-primary text-sidebar-primary-foreground"
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  collapsed && "justify-center px-2"
+                  collapsed && "lg:justify-center lg:px-2"
                 )}
                 title={collapsed ? item.label : undefined}
+                onClick={closeMobileSidebar}
               >
                 <Icon className="h-4 w-4 flex-shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
+                <span className={cn(collapsed && "lg:hidden")}>{item.label}</span>
               </Link>
             )
           })}
@@ -357,8 +390,9 @@ export function DashboardSidebar({ role }: DashboardSidebarProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="w-full h-10 text-sidebar-foreground hover:bg-sidebar-accent mb-2"
-              onClick={() => setCollapsed(!collapsed)}
+              className="mb-2 hidden h-10 w-full text-sidebar-foreground hover:bg-sidebar-accent lg:flex"
+              onClick={toggleCollapsed}
+              aria-label="Expand navigation"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>

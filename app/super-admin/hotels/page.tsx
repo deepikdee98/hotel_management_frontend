@@ -110,7 +110,7 @@ export default function HotelsPage() {
 
   const handleAddHotel = async () => {
     try {
-      await createSuperAdminHotel({
+      const result = await createSuperAdminHotel({
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
@@ -124,7 +124,11 @@ export default function HotelsPage() {
         confirmPassword: formData.confirmPassword,
       })
 
-      toast.success("Hotel created successfully")
+      if ((result.accountEmail as { sent?: boolean } | undefined)?.sent) {
+        toast.success("Hotel created and account email sent")
+      } else {
+        toast.warning("Hotel created, but account email was not sent")
+      }
       loadHotels()
       setIsAddDialogOpen(false)
       setFormData({

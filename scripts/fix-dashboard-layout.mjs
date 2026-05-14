@@ -27,8 +27,8 @@ for (const filePath of pages) {
   // Remove import line for DashboardLayout
   content = content.replace(/import\s*\{\s*DashboardLayout\s*\}\s*from\s*["']@\/components\/dashboard-layout["']\s*\n?/g, '')
   
-  // Remove <DashboardLayout requiredRole="admin"> wrapper
-  content = content.replace(/<DashboardLayout\s+requiredRole="admin"\s*>\s*\n?/g, '')
+  // Remove any page-level DashboardLayout wrapper. app/admin/layout.tsx owns this shell.
+  content = content.replace(/<DashboardLayout(?:\s[^>]*)?>\s*\n?/g, '')
   // Remove closing tag
   content = content.replace(/\s*<\/DashboardLayout>\s*\n/g, '\n')
   // Handle closing tag at end of return
