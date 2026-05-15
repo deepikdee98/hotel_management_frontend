@@ -53,6 +53,7 @@ export default function LookupsPage() {
       case "available": return <Badge className="bg-primary/10 text-primary border-primary/20">Available</Badge>
       case "occupied": return <Badge className="bg-amber-100 text-amber-700 border-amber-200">Occupied</Badge>
       case "maintenance": return <Badge variant="destructive">Maintenance</Badge>
+      case "blocked": return <Badge variant="destructive">Blocked</Badge>
       case "reserved": return <Badge variant="secondary">Reserved</Badge>
       default: return <Badge variant="outline">{status}</Badge>
     }
@@ -86,6 +87,7 @@ export default function LookupsPage() {
                       <SelectItem value="available">Available</SelectItem>
                       <SelectItem value="occupied">Occupied</SelectItem>
                       <SelectItem value="maintenance">Maintenance</SelectItem>
+                      <SelectItem value="blocked">Blocked</SelectItem>
                       <SelectItem value="reserved">Reserved</SelectItem>
                     </SelectContent>
                   </Select>

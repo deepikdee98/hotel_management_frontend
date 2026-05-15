@@ -50,6 +50,8 @@ interface CheckInFormProps {
   mode?: "check-in" | "pax"
   editId?: string
   isEditMode?: boolean
+  preSelectedRoomId?: string
+  preSelectedRoomNo?: string
 }
 
 type TabType = "guest-info" | "guest-id" | "companion" | "vehicle-company"
@@ -181,7 +183,13 @@ function FormField({ label, required, children, className }: { label: string; re
   )
 }
 
-export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false }: CheckInFormProps) {
+export function CheckInForm({ 
+  mode = "check-in", 
+  editId = "", 
+  isEditMode = false,
+  preSelectedRoomId = "",
+  preSelectedRoomNo = ""
+}: CheckInFormProps) {
   const router = useRouter()
   const { user } = useAuth()
   const { toast } = useToast()
@@ -412,6 +420,28 @@ export function CheckInForm({ mode = "check-in", editId = "", isEditMode = false
       totalPax: (adultMale + adultFemale + children).toString()
     }));
   }, [form.gender, companions]);
+
+  useEffect(() => {
+    if (!isEditMode && preSelectedRoomNo && rooms.length > 0) {
+      const room = rooms.find(r => r.number === preSelectedRoomNo || r.id === preSelectedRoomId)
+      if (room) {
+        const roomTypeDisplay = room.type || ""
+        const selectedType = roomTypes.find(rt => rt.name === roomTypeDisplay || rt.code === roomTypeDisplay || rt._id === room.roomTypeId)
+        
+        setForm(prev => ({
+          ...prev,
+          roomNo: room.number,
+          roomType: roomTypeDisplay,
+          planCharge: toMoneyString(room.price || 0),
+          planCharges: toMoneyString(room.price || 0),
+          gstPercentage: String(selectedType?.gstPercentage || room.gstPercentage || "0"),
+          gstType: String(selectedType?.gstType || room.gstType || "EXCLUSIVE"),
+          noOfBeds: String(selectedType?.maxOccupancy || selectedType?.capacity || ""),
+        }))
+        setSelectedRoomType(roomTypeDisplay)
+      }
+    }
+  }, [preSelectedRoomNo, preSelectedRoomId, rooms, roomTypes, isEditMode])
 
   useEffect(() => {
     const fetchData = async () => {

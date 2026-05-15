@@ -1,14 +1,14 @@
 "use client"
 
 import Link from "next/link"
-import { useState, type FormEvent } from "react"
-import { Building2, Loader2, KeyRound } from "lucide-react"
+import { useState, type FormEvent, useEffect } from "react"
+import { Building2, Loader2, KeyRound, RefreshCw } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { requestPasswordReset, verifyOtp } from "@/lib/backend-api"
+import { requestPasswordReset, verifyOtp as verifyOtpApi } from "@/lib/backend-api"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 
 export function ForgotPasswordForm() {
@@ -16,39 +16,53 @@ export function ForgotPasswordForm() {
   const [identifier, setIdentifier] = useState("")
   const [otp, setOtp] = useState("")
   const [step, setStep] = useState<"request" | "verify">("request")
-  const [isLoading, setIsLoading] = useState(false)
+  const [isRequesting, setIsRequesting] = useState(false)
+  const [isVerifying, setIsVerifying] = useState(false)
   const [error, setError] = useState("")
   const [message, setMessage] = useState("")
+  const [timer, setTimer] = useState(0)
 
-  const handleRequestOtp = async (event: FormEvent) => {
-    event.preventDefault()
-    setIsLoading(true)
+  useEffect(() => {
+    let interval: any
+    if (timer > 0) {
+      interval = setInterval(() => {
+        setTimer((prev) => prev - 1)
+      }, 1000)
+    }
+    return () => clearInterval(interval)
+  }, [timer])
+
+  const handleRequestOtp = async (event?: FormEvent) => {
+    if (event) event.preventDefault()
+    setIsRequesting(true)
     setError("")
     setMessage("")
+    setOtp("") // Clear OTP field on resend
 
     try {
       const result = await requestPasswordReset(identifier)
       setMessage(result.message || "If an account exists, an OTP has been sent.")
       setStep("verify")
+      setTimer(60)
     } catch (error: any) {
       setError(error.message || "Failed to send OTP")
     } finally {
-      setIsLoading(false)
+      setIsRequesting(false)
     }
   }
 
   const handleVerifyOtp = async (event: FormEvent) => {
     event.preventDefault()
-    setIsLoading(true)
+    setIsVerifying(true)
     setError("")
 
     try {
-      await verifyOtp(identifier, otp)
+      await verifyOtpApi(identifier, otp)
       router.push(`/reset-password?identifier=${encodeURIComponent(identifier)}`)
     } catch (error: any) {
       setError(error.message || "Invalid or expired OTP")
     } finally {
-      setIsLoading(false)
+      setIsVerifying(false)
     }
   }
 
@@ -94,8 +108,8 @@ export function ForgotPasswordForm() {
                 {error && <div className="rounded-lg bg-destructive/10 p-3 text-center text-sm text-destructive">{error}</div>}
                 {message && <div className="rounded-lg bg-primary/10 p-3 text-center text-sm text-primary">{message}</div>}
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? (
+                <Button type="submit" className="w-full" disabled={isRequesting || isVerifying}>
+                  {isRequesting ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Sending...
@@ -105,7 +119,7 @@ export function ForgotPasswordForm() {
                   )}
                 </Button>
 
-                <Button type="button" variant="outline" className="w-full" asChild>
+                <Button type="button" variant="outline" className="w-full" asChild disabled={isRequesting || isVerifying}>
                   <Link href="/">Back to Sign In</Link>
                 </Button>
               </form>
@@ -117,6 +131,7 @@ export function ForgotPasswordForm() {
                     maxLength={6}
                     value={otp}
                     onChange={(value) => setOtp(value)}
+                    disabled={isRequesting || isVerifying}
                   >
                     <InputOTPGroup>
                       <InputOTPSlot index={0} />
@@ -131,8 +146,8 @@ export function ForgotPasswordForm() {
 
                 {error && <div className="rounded-lg bg-destructive/10 p-3 text-center text-sm text-destructive">{error}</div>}
 
-                <Button type="submit" className="w-full" disabled={isLoading || otp.length !== 6}>
-                  {isLoading ? (
+                <Button type="submit" className="w-full" disabled={isRequesting || isVerifying || otp.length !== 6}>
+                  {isVerifying ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Verifying...
@@ -142,15 +157,37 @@ export function ForgotPasswordForm() {
                   )}
                 </Button>
 
-                <div className="text-center">
-                  <Button 
-                    type="button" 
-                    variant="link" 
-                    onClick={() => setStep("request")}
-                    className="text-sm"
+                <div className="flex flex-col space-y-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleRequestOtp()}
+                    disabled={isRequesting || isVerifying || timer > 0}
                   >
-                    Try another identifier
+                    {isRequesting ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    {timer > 0 ? `Resend OTP in ${timer}s` : "Resend OTP"}
                   </Button>
+
+                  <div className="text-center">
+                    <Button 
+                      type="button" 
+                      variant="link" 
+                      onClick={() => {
+                        setStep("request")
+                        setTimer(0)
+                        setOtp("")
+                      }}
+                      className="text-sm"
+                      disabled={isRequesting || isVerifying}
+                    >
+                      Try another identifier
+                    </Button>
+                  </div>
                 </div>
               </form>
             )}

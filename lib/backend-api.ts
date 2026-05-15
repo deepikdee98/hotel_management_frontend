@@ -90,8 +90,7 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 function toRoomStatus(status?: string): Room["status"] {
   const normalized = String(status || "available").toLowerCase();
-  if (normalized === "blocked") return "maintenance";
-  if (["available", "occupied", "reserved", "cleaning", "maintenance"].includes(normalized)) {
+  if (["available", "occupied", "reserved", "cleaning", "maintenance", "blocked"].includes(normalized)) {
     return normalized as Room["status"];
   }
   return "available";
@@ -132,8 +131,29 @@ function mapRoom(raw: JsonRecord): Room {
     gstType: (typeof roomType === "object" && roomType !== null ? (roomType.gstType as any) : "EXCLUSIVE") || "EXCLUSIVE",
     amenities: Array.isArray(raw.amenities) ? (raw.amenities as string[]) : [],
     guestName: raw.guestName ? String(raw.guestName) : undefined,
-    checkIn: raw.checkIn ? String(raw.checkIn) : undefined,
-    checkOut: raw.checkOut ? String(raw.checkOut) : undefined,
+    checkIn: (raw.checkInDate || raw.checkIn || raw.checkinDate || raw.checkin || raw.arrivalDate) ? String(raw.checkInDate || raw.checkIn || raw.checkinDate || raw.checkin || raw.arrivalDate) : undefined,
+    checkOut: (raw.checkOutDate || raw.checkOut || raw.checkoutDate || raw.checkout || raw.departureDate) ? String(raw.checkOutDate || raw.checkOut || raw.checkoutDate || raw.checkout || raw.departureDate) : undefined,
+    bookingId: (raw.bookingNumber || raw.bookingNo || raw.bookingId) ? String(raw.bookingNumber || raw.bookingNo || raw.bookingId) : undefined,
+    phone: (raw.phone || raw.mobileNo || raw.mobile) ? String(raw.phone || raw.mobileNo || raw.mobile) : undefined,
+    adults: (raw.adults !== undefined) ? Number(raw.adults) : (Number(raw.adultMale || 0) + Number(raw.adultFemale || 0) || undefined),
+    children: raw.children !== undefined ? Number(raw.children) : undefined,
+    remainingDays: raw.remainingDays !== undefined ? Number(raw.remainingDays) : undefined,
+    checkinId: String(raw.checkinId || raw._id || raw.id || ""),
+    guestDetails: (raw.guestName || raw.checkInDate || raw.checkIn || raw.checkinDate || raw.checkin || raw.bookingNumber || raw.bookingNo || raw.mobileNo || raw.phone) ? {
+      name: raw.guestName ? String(raw.guestName) : undefined,
+      phone: (raw.phone || raw.mobileNo || raw.mobile) ? String(raw.phone || raw.mobileNo || raw.mobile) : undefined,
+      checkIn: (raw.checkInDate || raw.checkIn || raw.checkinDate || raw.checkin || raw.arrivalDate) ? String(raw.checkInDate || raw.checkIn || raw.checkinDate || raw.checkin || raw.arrivalDate) : undefined,
+      checkOut: (raw.checkOutDate || raw.checkOut || raw.checkoutDate || raw.checkout || raw.departureDate) ? String(raw.checkOutDate || raw.checkOut || raw.checkoutDate || raw.checkout || raw.departureDate) : undefined,
+      adults: (raw.adults !== undefined) ? Number(raw.adults) : (Number(raw.adultMale || 0) + Number(raw.adultFemale || 0) || undefined),
+      children: raw.children !== undefined ? Number(raw.children) : undefined,
+      bookingId: (raw.bookingNumber || raw.bookingNo || raw.bookingId) ? String(raw.bookingNumber || raw.bookingNo || raw.bookingId) : undefined,
+      checkinId: String(raw.checkinId || raw._id || raw.id || ""),
+    } : undefined,
+    blockDetails: raw.blockDetails ? {
+      from: String((raw.blockDetails as any).from),
+      to: String((raw.blockDetails as any).to),
+      reason: String((raw.blockDetails as any).reason)
+    } : undefined
   }
 }
 
@@ -414,7 +434,7 @@ export async function deleteAdminStaff(id: string) {
 export async function getFrontOfficeRooms(params?: { search?: string; status?: string }): Promise<Room[]> {
   const query = new URLSearchParams()
   if (params?.search) query.set("search", params.search)
-  if (params?.status && params.status !== "all") query.set("status", params.status)
+  if (params?.status) query.set("status", params.status)
   const data = await apiRequest<JsonRecord[] | { success: boolean; data?: { rooms?: JsonRecord[] }; rooms?: JsonRecord[] }>(`/front-office/rooms${query.toString() ? `?${query.toString()}` : ""}`)
   const rooms = Array.isArray(data)
     ? data

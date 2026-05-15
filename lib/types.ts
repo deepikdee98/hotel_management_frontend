@@ -208,7 +208,7 @@ export interface User {
 }
 
 // Room types for front office
-export type RoomStatus = "available" | "occupied" | "maintenance" | "cleaning" | "reserved"
+export type RoomStatus = "available" | "occupied" | "maintenance" | "cleaning" | "reserved" | "blocked"
 export type RoomType = string
 
 export interface Room {
@@ -227,6 +227,26 @@ export interface Room {
   checkinId?: string
   checkIn?: string
   checkOut?: string
+  bookingId?: string
+  phone?: string
+  adults?: number
+  children?: number
+  remainingDays?: number
+  guestDetails?: {
+    name?: string
+    phone?: string
+    checkIn?: string
+    checkOut?: string
+    adults?: number
+    children?: number
+    bookingId?: string
+    checkinId?: string
+  }
+  blockDetails?: {
+    from: string
+    to: string
+    reason: string
+  }
 }
 
 // Housekeeping

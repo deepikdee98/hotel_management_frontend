@@ -7,6 +7,8 @@ import { CheckInForm } from "@/components/front-office/reception/check-in-form"
 export default function CheckInPage() {
   const searchParams = useSearchParams()
   const checkInId = searchParams.get("id") || ""
+  const roomId = searchParams.get("roomId") || ""
+  const roomNo = searchParams.get("roomNo") || ""
   const isEditMode = searchParams.get("mode") === "edit" && Boolean(checkInId)
 
   return (
@@ -15,6 +17,8 @@ export default function CheckInPage() {
         mode="check-in" 
         editId={checkInId} 
         isEditMode={isEditMode} 
+        preSelectedRoomId={roomId}
+        preSelectedRoomNo={roomNo}
       />
     </DashboardLayout>
   )

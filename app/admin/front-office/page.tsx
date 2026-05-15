@@ -166,6 +166,8 @@ export default function AdminFrontOfficePage() {
         return "bg-muted-foreground"
       case "cleaning":
         return "bg-chart-2"
+      case "blocked":
+        return "bg-destructive"
       default:
         return "bg-muted"
     }
@@ -352,7 +354,7 @@ export default function AdminFrontOfficePage() {
                 <CardDescription>Current room status distribution</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {["available", "occupied", "reserved", "maintenance", "cleaning"].map((status) => {
+                {["available", "occupied", "reserved", "maintenance", "cleaning", "blocked"].map((status) => {
                   const count = rooms.filter(r => r.status === status).length
                   const percentage = rooms.length ? Math.round((count / rooms.length) * 100) : 0
                   return (
