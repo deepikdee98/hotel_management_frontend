@@ -267,7 +267,9 @@ export default function InHouseGuestsPage() {
                       </TableCell>
                       <TableCell>{guest.checkOut}</TableCell>
                       <TableCell>
-                        {guest.balance > 0 ? (
+                        {guest.totalAmount <= 0 ? (
+                          <span className="text-muted-foreground">$0</span>
+                        ) : guest.balance > 0 ? (
                           <span className="text-warning font-medium">${guest.balance}</span>
                         ) : (
                           <span className="text-success">Paid</span>

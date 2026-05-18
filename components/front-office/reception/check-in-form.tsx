@@ -108,6 +108,23 @@ const getNightlyCharge = (singleCharge: unknown, totalCharge: unknown, nights: u
   return 0
 }
 
+const getCheckoutPlanMetadata = (
+  planValue: string,
+  optionMetadata?: CheckoutPlanMetadata
+): CheckoutPlanMetadata | undefined => {
+  const normalizedPlan = planValue.toLowerCase().replace(/[\s_-]+/g, "")
+
+  if (/(^|[^0-9])24([^0-9]|$)/.test(normalizedPlan) || normalizedPlan.includes("24hour")) {
+    return { type: "duration", hours: 24 }
+  }
+
+  if (normalizedPlan.includes("12noon") || normalizedPlan.includes("noon")) {
+    return { type: "fixed", time: "12:00" }
+  }
+
+  return optionMetadata
+}
+
 type ExistingGuest = {
   id?: string
   guestName?: string
@@ -376,17 +393,10 @@ export function CheckInForm({
     if (form.checkInDate && form.checkInTime && form.checkoutPlan) {
       const selectedPlan = checkoutPlanOptions.data.find(opt => opt.value === form.checkoutPlan);
 
-      let metadata = (selectedPlan as any)?.metadata as CheckoutPlanMetadata;
-
-      // Fallback logic for common plans if metadata is missing
-      if (!metadata) {
-        const planValue = form.checkoutPlan.toLowerCase();
-        if (planValue.includes("noon")) {
-          metadata = { type: "fixed", time: "12:00" };
-        } else if (planValue.includes("24 hour")) {
-          metadata = { type: "duration", hours: 24 };
-        }
-      }
+      const metadata = getCheckoutPlanMetadata(
+        form.checkoutPlan,
+        (selectedPlan as any)?.metadata as CheckoutPlanMetadata | undefined
+      );
 
       if (metadata) {
         const result = calculateCheckoutDateTime(

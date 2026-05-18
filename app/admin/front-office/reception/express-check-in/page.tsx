@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -94,10 +94,19 @@ export default function ExpressCheckInPage() {
     }
   }, [])
 
+  const filteredRooms = useMemo(() => {
+    if (!form.roomType) return rooms
+    return rooms.filter((room: any) => String(room.roomTypeId || "") === String(form.roomType))
+  }, [form.roomType, rooms])
+
   const handleChange = (field: string, value: string) => {
     if (field === "mobile") {
       setLoadedGuestId("")
       lastCheckedMobile.current = ""
+    }
+    if (field === "roomType") {
+      setForm(prev => ({ ...prev, roomType: value, roomNo: "" }))
+      return
     }
     setForm(prev => ({ ...prev, [field]: value }))
   }
@@ -335,15 +344,20 @@ export default function ExpressCheckInPage() {
                       <SelectItem key={r._id} value={r._id}>
                         {r.code || r.name}
                       </SelectItem>
-                    ))}                  </SelectContent>
+                    ))}
+                  </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Room No <span className="text-destructive">*</span></Label>
-                <Select value={form.roomNo} onValueChange={v => handleChange("roomNo", v)}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
+                <Select value={form.roomNo} onValueChange={v => handleChange("roomNo", v)} disabled={!form.roomType}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder={form.roomType ? "Select" : "Select room type first"} />
+                  </SelectTrigger>
                   <SelectContent>
-                    {rooms.map((room: any) => (
+                    {filteredRooms.length === 0 ? (
+                      <SelectItem value="__empty__" disabled>No rooms available</SelectItem>
+                    ) : filteredRooms.map((room: any) => (
                       <SelectItem key={room.id} value={room.number}>
                         {room.number}
                       </SelectItem>
