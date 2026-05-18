@@ -9,6 +9,7 @@ import {
   Pencil,
   Trash2,
   Eye,
+  EyeOff,
   Filter,
   Calendar,
   ShieldCheck,
@@ -74,6 +75,8 @@ export default function HotelsPage() {
     confirmPassword: "",
     roomCount: "",
   })
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const isAdminUsernameValid = /^[a-zA-Z0-9_]{4,}$/.test(formData.adminUsername)
 
   useEffect(() => {
@@ -109,6 +112,11 @@ export default function HotelsPage() {
   }
 
   const handleAddHotel = async () => {
+    if (formData.password !== formData.confirmPassword) {
+      toast.error("Passwords do not match")
+      return
+    }
+
     try {
       const result = await createSuperAdminHotel({
         name: formData.name,
@@ -304,7 +312,11 @@ export default function HotelsPage() {
                     value={formData.adminUsername}
                     onChange={(e) => setFormData({ ...formData, adminUsername: e.target.value })}
                     placeholder="Enter admin username"
+                    className={formData.adminUsername && !isAdminUsernameValid ? "border-destructive" : ""}
                   />
+                  {formData.adminUsername && !isAdminUsernameValid && (
+                    <p className="text-xs text-destructive">Username must be at least 4 characters (letters, numbers, underscores only)</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
@@ -364,23 +376,46 @@ export default function HotelsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="password">Admin Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="Enter admin password"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      placeholder="Enter admin password"
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="confirmPassword">Confirm Password</Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    value={formData.confirmPassword}
-                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                    placeholder="Confirm admin password"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="confirmPassword"
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={formData.confirmPassword}
+                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                      placeholder="Confirm admin password"
+                      className={`pr-10 ${formData.confirmPassword && formData.password !== formData.confirmPassword ? "border-destructive" : ""}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                    <p className="text-xs text-destructive">Passwords do not match</p>
+                  )}
                 </div>
               </div>
 
@@ -412,7 +447,7 @@ export default function HotelsPage() {
                 <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleAddHotel} disabled={!formData.name || !isAdminUsernameValid || !formData.email || !formData.password || formData.password !== formData.confirmPassword || selectedModules.length === 0}>
+                <Button onClick={handleAddHotel} disabled={!formData.name || !isAdminUsernameValid || !formData.email || !formData.password || !formData.confirmPassword || selectedModules.length === 0}>
                   Register Hotel
                 </Button>
               </div>

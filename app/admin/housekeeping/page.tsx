@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { Fragment, useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -161,6 +161,20 @@ export default function HousekeepingPage() {
     completed: tasks.filter(t => t.status === "completed").length,
     inProgress: tasks.filter(t => t.status === "in-progress").length,
     highPriority: tasks.filter(t => t.priority === "high" || t.priority === "urgent").length,
+    dirtyRooms: rooms.filter(room => room.hkStatus === "dirty").length,
+  }
+
+  const dirtyRooms = rooms.filter((room) => room.hkStatus === "dirty")
+
+  const handleAssignDirtyRoom = (room: Room) => {
+    setNewTask({
+      roomId: room.id,
+      taskType: "checkout",
+      priority: "medium",
+      assignedTo: "",
+      notes: "Room marked dirty after guest checkout",
+    })
+    setIsAssignTaskOpen(true)
   }
 
   const getStatusBadge = (status: string) => {
@@ -200,6 +214,10 @@ export default function HousekeepingPage() {
         return "Deep Clean"
       case "turndown":
         return "Turndown Service"
+      case "inspection":
+        return "Inspection"
+      case "maintenance":
+        return "Maintenance"
       default:
         return type
     }
@@ -207,7 +225,7 @@ export default function HousekeepingPage() {
 
   if (isLoading) {
     return (
-      <DashboardLayout requiredModule="housekeeping">
+      <DashboardLayout requiredModule={["housekeeping", "front-office"]}>
         <div className="flex items-center justify-center h-[60vh]">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
@@ -216,7 +234,7 @@ export default function HousekeepingPage() {
   }
 
   return (
-    <DashboardLayout requiredModule="housekeeping">
+    <DashboardLayout requiredModule={["housekeeping", "front-office"]}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -364,15 +382,67 @@ export default function HousekeepingPage() {
           </Card>
           <Card className="bg-card border-border">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">High Priority</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Dirty Rooms</CardTitle>
               <AlertTriangle className="h-4 w-4 text-destructive" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">{stats.highPriority}</div>
-              <p className="text-xs text-destructive">Requires attention</p>
+              <div className="text-2xl font-bold text-foreground">{stats.dirtyRooms}</div>
+              <p className="text-xs text-destructive">Needs cleaning</p>
             </CardContent>
           </Card>
         </div>
+
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle className="text-foreground flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Dirty Rooms
+            </CardTitle>
+            <CardDescription>Rooms marked dirty after guest checkout</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="text-muted-foreground">Room</TableHead>
+                  <TableHead className="text-muted-foreground">Type</TableHead>
+                  <TableHead className="text-muted-foreground">Floor</TableHead>
+                  <TableHead className="text-muted-foreground">Front Office Status</TableHead>
+                  <TableHead className="text-muted-foreground text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {dirtyRooms.map((room) => (
+                  <TableRow key={room.id} className="border-border">
+                    <TableCell className="font-medium text-foreground">Room {room.number}</TableCell>
+                    <TableCell className="text-foreground">{room.type}</TableCell>
+                    <TableCell className="text-foreground">{room.floor}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">{room.status}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" size="sm" onClick={() => handleAssignDirtyRoom(room)}>
+                          Assign
+                        </Button>
+                        <Button size="sm" onClick={() => handleUpdateRoomHkStatus(room.id, "clean")}>
+                          Mark Clean
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {dirtyRooms.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      No dirty rooms found
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Tasks Table */}
@@ -421,27 +491,43 @@ export default function HousekeepingPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredTasks.map((task) => (
-                    <TableRow key={task.id} className="border-border">
-                      <TableCell className="font-medium text-foreground">{task.room.roomNumber}</TableCell>
-                      <TableCell className="text-foreground">{getTypeLabel(task.taskType)}</TableCell>
-                      <TableCell>{getPriorityBadge(task.priority)}</TableCell>
-                      <TableCell className="text-foreground">{task.assignedToName || 'Unassigned'}</TableCell>
-                      <TableCell>{getStatusBadge(task.status)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          {task.status === 'pending' && (
-                            <Button variant="outline" size="sm" onClick={() => handleUpdateStatus(task.id, 'in-progress')}>
-                              Start
-                            </Button>
-                          )}
-                          {task.status === 'in-progress' && (
-                            <Button variant="outline" size="sm" onClick={() => handleUpdateStatus(task.id, 'completed')}>
-                              Complete
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                    <Fragment key={task.id}>
+                      <TableRow className="border-border">
+                        <TableCell className="font-medium text-foreground">{task.room.roomNumber}</TableCell>
+                        <TableCell className="text-foreground">{getTypeLabel(task.taskType)}</TableCell>
+                        <TableCell>{getPriorityBadge(task.priority)}</TableCell>
+                        <TableCell className="text-foreground">{task.assignedToName || 'Unassigned'}</TableCell>
+                        <TableCell>{getStatusBadge(task.status)}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            {task.status === 'pending' && (
+                              <Button variant="outline" size="sm" onClick={() => handleUpdateStatus(task.id, 'in-progress')}>
+                                Start
+                              </Button>
+                            )}
+                            {task.status === 'in-progress' && (
+                              <Button variant="outline" size="sm" onClick={() => handleUpdateStatus(task.id, 'completed')}>
+                                Complete
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      {task.notes?.trim() && (
+                        <TableRow className="border-border hover:bg-transparent">
+                          <TableCell colSpan={6} className="pt-0">
+                            <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
+                              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                Notes
+                              </p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">
+                                {task.notes}
+                              </p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
                   ))}
                   {filteredTasks.length === 0 && (
                     <TableRow>

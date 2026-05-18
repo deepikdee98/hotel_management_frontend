@@ -58,7 +58,7 @@ interface NavItem {
   label: string
   href: string
   icon: typeof LayoutDashboard
-  module?: ModuleType
+  module?: ModuleType | ModuleType[]
   roles?: UserRole[]
   subItems?: SubNavItem[]
 }
@@ -112,7 +112,7 @@ const HOTEL_NAV: NavItem[] = [
     ]
   },
   { label: "Point of Sale", href: "/admin/pos", icon: CreditCard, module: "point-of-sale" },
-  { label: "Housekeeping", href: "/admin/housekeeping", icon: Sparkles, module: "housekeeping" },
+  { label: "Housekeeping", href: "/admin/housekeeping", icon: Sparkles, module: ["housekeeping", "front-office"] },
   {
     label: "Accounts",
     href: "/admin/accounts",
@@ -174,7 +174,8 @@ export function DashboardSidebar({
 
     // Check module access if defined
     if (!item.module) return true
-    return hasAccess(item.module)
+    const modules = Array.isArray(item.module) ? item.module : [item.module]
+    return modules.some((module) => hasAccess(module))
   })
 
   const handleLogout = () => {

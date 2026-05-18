@@ -52,6 +52,7 @@ interface CheckInFormProps {
   isEditMode?: boolean
   preSelectedRoomId?: string
   preSelectedRoomNo?: string
+  reservationId?: string
 }
 
 type TabType = "guest-info" | "guest-id" | "companion" | "vehicle-company"
@@ -188,7 +189,8 @@ export function CheckInForm({
   editId = "", 
   isEditMode = false,
   preSelectedRoomId = "",
-  preSelectedRoomNo = ""
+  preSelectedRoomNo = "",
+  reservationId = ""
 }: CheckInFormProps) {
   const router = useRouter()
   const { user } = useAuth()
@@ -286,10 +288,10 @@ export function CheckInForm({
     netAmount: "0",
     guestType: mode === "pax" ? "PAX" : "Regular",
     noOfBeds: "",
-    paxAdultMale: "1",
+    paxAdultMale: "0",
     paxAdultFemale: "0",
     paxChildren: "0",
-    totalPax: "1",
+    totalPax: "0",
     paymentMode: "",
     advanceAmount: "",
     remark: "",
@@ -309,6 +311,16 @@ export function CheckInForm({
     planTypeLabel: "",
     mainCheckin: "",
   })
+
+  const hasCurrentRoomDraft = Boolean(form.roomNo || form.roomType || form.planType || Number(form.planCharges || 0) > 0)
+  const queuedRoomCount = pendingRooms.length + (hasCurrentRoomDraft ? 1 : 0)
+  const formatMoney = (value: unknown) => `₹${toMoneyString(Number(value) || 0)}`
+  const getRoomTotal = (room: any) => {
+    const plan = Number(room.planCharges || room.planCharge || room.amount || 0)
+    const food = Number(room.foodCharges || room.foodCharge || 0)
+    const discount = Number(room.discount || 0)
+    return Math.max(0, plan + food - discount)
+  }
 
   useEffect(() => {
     if (isEditMode) return
@@ -398,8 +410,7 @@ export function CheckInForm({
     const isMale = form.gender === "Male";
     const isFemale = form.gender === "Female";
 
-    // Keep a sensible default when gender is not selected yet.
-    let adultMale = isMale ? 1 : (!isFemale ? 1 : 0);
+    let adultMale = isMale ? 1 : 0;
     let adultFemale = isFemale ? 1 : 0;
     let children = 0;
 
@@ -660,10 +671,10 @@ export function CheckInForm({
       netAmount: String(booking.netAmount || "0"),
       guestType: String(booking.guestType || (mode === "pax" ? "PAX" : "Regular")),
       noOfBeds: String(booking.noOfBeds || selectedType?.maxOccupancy || selectedType?.capacity || ""),
-      paxAdultMale: String(booking.adultMale || booking.paxAdultMale || "1"),
+      paxAdultMale: String(booking.adultMale || booking.paxAdultMale || "0"),
       paxAdultFemale: String(booking.adultFemale || booking.paxAdultFemale || "0"),
       paxChildren: String(booking.children || booking.paxChildren || "0"),
-      totalPax: String(booking.totalPax || (Number(booking.adultMale || 0) + Number(booking.adultFemale || 0) + Number(booking.children || 0)) || "1"),
+      totalPax: String(booking.totalPax || (Number(booking.adultMale || 0) + Number(booking.adultFemale || 0) + Number(booking.children || 0)) || "0"),
       paymentMode: String(booking.paymentMode || ""),
       advanceAmount: String(booking.advanceAmount || ""),
       remark: String(booking.remarks || booking.remark || ""),
@@ -698,12 +709,21 @@ export function CheckInForm({
     }
   }
 
-  const handleReservationSearch = async () => {
-    if (!reservationSearchId.trim()) return;
+  useEffect(() => {
+    if (reservationId && !isEditMode && rooms.length > 0 && ratePlans.length > 0 && roomTypes.length > 0) {
+      setReservationIdSearch(reservationId);
+      handleReservationSearch(reservationId);
+    }
+  }, [reservationId, isEditMode, rooms, ratePlans, roomTypes]);
+
+  const handleReservationSearch = async (searchId?: string) => {
+    const idToSearch = searchId || reservationSearchId;
+    if (!idToSearch.trim()) return;
     setIsFetchingReservation(true);
     try {
-      const reservation = await getFrontOfficeReservationById(reservationSearchId);
+      const reservation = await getFrontOfficeReservationById(idToSearch);
       if (reservation) {
+        const reservationData = reservation as any
         const matchingRoom = rooms.find(r => r.number === reservation.roomNumber || r.id === reservation.roomId)
         const resolvedRoomType = matchingRoom?.type || reservation.roomType || ""
 
@@ -711,8 +731,8 @@ export function CheckInForm({
           const checkIn = reservation.checkIn ? new Date(reservation.checkIn) : new Date();
           const checkOut = reservation.checkOut ? new Date(reservation.checkOut) : new Date();
           const noOfNights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
-          const nightlyReservationPlanCharge = getNightlyCharge(reservation.planCharge, reservation.planCharges || reservation.totalAmount, noOfNights)
-          const nightlyReservationFoodCharge = getNightlyCharge(reservation.foodCharge, reservation.foodCharges, noOfNights)
+          const nightlyReservationPlanCharge = getNightlyCharge(reservationData.planCharge, reservationData.planCharges || reservation.totalAmount, noOfNights)
+          const nightlyReservationFoodCharge = getNightlyCharge(reservationData.foodCharge, reservationData.foodCharges, noOfNights)
 
           const selectedType = roomTypes.find(rt => rt.name === resolvedRoomType || rt.code === resolvedRoomType || rt._id === matchingRoom?.roomTypeId);
           const plan = ratePlans.find((p, index) => {
@@ -742,16 +762,16 @@ export function CheckInForm({
             noOfNights: noOfNights.toString(),
             advanceAmount: reservation.paidAmount?.toString() || "0",
             planCharge: toMoneyString(nightlyReservationPlanCharge),
-            planCharges: toMoneyString(reservation.planCharges || reservation.totalAmount || nightlyReservationPlanCharge),
+            planCharges: toMoneyString(reservationData.planCharges || reservation.totalAmount || nightlyReservationPlanCharge),
             foodCharge: toMoneyString(nightlyReservationFoodCharge),
-            foodCharges: toMoneyString(reservation.foodCharges || nightlyReservationFoodCharge),
+            foodCharges: toMoneyString(reservationData.foodCharges || nightlyReservationFoodCharge),
             paymentMode: reservation.paymentMode || "",
             planType: reservation.ratePlan || "",
             planTypeLabel: plan?.name || reservation.ratePlan || "",
             businessSource: reservation.bookingSource || "",
-            paxAdultMale: reservation.adults?.toString() || "1",
+            paxAdultMale: reservation.adults?.toString() || "0",
             paxChildren: reservation.children?.toString() || "0",
-            totalPax: (Number(reservation.adults || 1) + Number(reservation.children || 0)).toString(),
+            totalPax: (Number(reservation.adults || 0) + Number(reservation.children || 0)).toString(),
             gstPercentage: String(selectedType?.gstPercentage || matchingRoom?.gstPercentage || 0),
             gstType: selectedType?.gstType || matchingRoom?.gstType || "EXCLUSIVE",
             noOfBeds: String(selectedType?.maxOccupancy || selectedType?.capacity || ""),
@@ -1106,10 +1126,10 @@ export function CheckInForm({
       netAmount: "0",
       guestType: mode === "pax" ? "PAX" : "Regular",
       noOfBeds: "",
-      paxAdultMale: "1",
+      paxAdultMale: "0",
       paxAdultFemale: "0",
       paxChildren: "0",
-      totalPax: "1",
+      totalPax: "0",
       paymentMode: "",
       advanceAmount: "",
       remark: "",
@@ -1140,6 +1160,7 @@ export function CheckInForm({
     setActiveTab("guest-info")
     setMainGuestInfo({ name: "", booking: "" })
     setMultiRoomContext(null)
+    setPendingRooms([])
     setShowAddMorePop(false)
     setIsAddingLinkedRoom(false)
   }
@@ -1211,7 +1232,7 @@ export function CheckInForm({
       netAmount: Number(form.netAmount) || 0,
       guestType: form.guestType,
       noOfBeds: Number(form.noOfBeds) || 0,
-      adultMale: Number(form.paxAdultMale) || 1,
+      adultMale: Number(form.paxAdultMale) || 0,
       adultFemale: Number(form.paxAdultFemale) || 0,
       children: Number(form.paxChildren) || 0,
       paymentMode: form.paymentMode,
@@ -1247,6 +1268,7 @@ export function CheckInForm({
   const requiredFields: Array<[keyof typeof form, string]> = [
     ["guestName", "Guest Name"],
     ["mobile", "Mobile Number"],
+    ["email", "Email"],
     ["roomNo", "Room Number"],
     ["checkInDate", "Check-in Date"],
     ["checkInTime", "Check-in Time"],
@@ -1260,7 +1282,6 @@ export function CheckInForm({
   if (mode !== "pax") {
     requiredFields.push(["planType", "Plan Type"])
     requiredFields.push(["planCharge", "Plan Charge"])
-    requiredFields.push(["paxAdultMale", "Adult Male"])
   }
 
   const validationErrors = (() => {
@@ -1277,7 +1298,7 @@ export function CheckInForm({
       if (Number(form.discount || 0) < 0) errors.discount = "Discount % must not be negative"
       if (Number(form.discount || 0) > 100) errors.discount = "Discount % must not exceed 100"
       if (Number(form.netAmount || 0) < 0) errors.netAmount = "Net Amount must not be negative"
-      if (form.paxAdultMale && (Number(form.paxAdultMale) < 1 || Number.isNaN(Number(form.paxAdultMale)))) errors.paxAdultMale = "Adult Male must be at least 1"
+      if (form.paxAdultMale && (Number(form.paxAdultMale) < 0 || Number.isNaN(Number(form.paxAdultMale)))) errors.paxAdultMale = "Adult Male must be greater than or equal to 0"
     }
 
     if (!isEditMode && !multiRoomContext && mobileLookupStatus === "found" && existingGuest && !loadedGuestId && mode !== "pax") {
@@ -1372,6 +1393,10 @@ export function CheckInForm({
     toast({ title: "Room Added", description: "Details saved. Please enter details for the next room." })
   }
 
+  const removePendingRoom = (index: number) => {
+    setPendingRooms(prev => prev.filter((_, idx) => idx !== index))
+  }
+
   const confirmFinalCheckIn = () => {
     setShowAddMorePop(false)
     handleSave()
@@ -1410,10 +1435,10 @@ export function CheckInForm({
       netAmount: "0",
       amount: "0",
       noOfBeds: "",
-      paxAdultMale: "1",
+      paxAdultMale: "0",
       paxAdultFemale: "0",
       paxChildren: "0",
-      totalPax: "1",
+      totalPax: "0",
       paymentMode: "",
       advanceAmount: "",
       ledgerAc: "",
@@ -1565,19 +1590,15 @@ export function CheckInForm({
 
   const uniqueRoomTypes = Array.from(
     new Map(
-      [
-        ...roomTypes.map((roomType) => {
-          const name = String(roomType.name || roomType.code || roomType._id || "")
+      roomTypes
+        .map((roomType) => {
+          const name = String(roomType.name || roomType.code || "").trim()
           return [
             name,
             { id: name, name }
           ] as const
-        }),
-        ...rooms.map((room) => [
-          room.type,
-          { id: room.type, name: room.type }
-        ] as const)
-      ].filter(([id]) => Boolean(id))
+        })
+        .filter(([id]) => Boolean(id))
     ).values()
   );
 
@@ -1634,7 +1655,7 @@ export function CheckInForm({
                   onChange={(e) => setReservationIdSearch(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleReservationSearch()}
                 />
-                <Button size="icon" variant="ghost" className="absolute right-0 top-0 h-8 w-8" onClick={handleReservationSearch} disabled={isFetchingReservation}>
+                <Button size="icon" variant="ghost" className="absolute right-0 top-0 h-8 w-8" onClick={() => handleReservationSearch()} disabled={isFetchingReservation}>
                   {isFetchingReservation ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
                 </Button>
               </div>
@@ -1698,6 +1719,79 @@ export function CheckInForm({
                 )}
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {mode === "check-in" && !isEditMode && pendingRooms.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <CardTitle className="text-base">Multi-Room Check-In</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  {queuedRoomCount} {queuedRoomCount === 1 ? "room" : "rooms"} in this check-in
+                </p>
+              </div>
+              {pendingRooms.length > 0 && (
+                <Badge variant="secondary" className="w-fit">
+                  {pendingRooms.length} saved, {hasCurrentRoomDraft ? "1 current" : "0 current"}
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {pendingRooms.map((room, index) => (
+              <div key={`${room.roomNumber || room.roomNo || "room"}-${index}`} className="rounded-md border bg-muted/30 p-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge>Room {room.roomNumber || room.roomNo || "-"}</Badge>
+                      <Badge variant="outline">Saved</Badge>
+                      {room.roomType && <span className="text-xs text-muted-foreground">{room.roomType}</span>}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted-foreground md:grid-cols-4">
+                      <span>Plan: <span className="font-medium text-foreground">{room.planTypeLabel || room.planType || "-"}</span></span>
+                      <span>Nights: <span className="font-medium text-foreground">{room.nights || form.noOfNights || "1"}</span></span>
+                      <span>PAX: <span className="font-medium text-foreground">{Number(room.adultMale || 0) + Number(room.adultFemale || 0) + Number(room.children || 0)}</span></span>
+                      <span>Total: <span className="font-medium text-foreground">{formatMoney(getRoomTotal(room))}</span></span>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 self-end text-destructive md:self-start"
+                    onClick={() => removePendingRoom(index)}
+                    disabled={isLoading}
+                    aria-label={`Remove room ${room.roomNumber || index + 1}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+
+            {hasCurrentRoomDraft && (
+              <div className="rounded-md border border-dashed p-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">Current Entry</Badge>
+                      <Badge variant={form.roomNo ? "secondary" : "outline"}>Room {form.roomNo || "Not selected"}</Badge>
+                      {form.roomType && <span className="text-xs text-muted-foreground">{form.roomType}</span>}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted-foreground md:grid-cols-4">
+                      <span>Plan: <span className="font-medium text-foreground">{form.planTypeLabel || form.planType || "-"}</span></span>
+                      <span>Nights: <span className="font-medium text-foreground">{form.noOfNights || "1"}</span></span>
+                      <span>PAX: <span className="font-medium text-foreground">{Number(form.paxAdultMale || 0) + Number(form.paxAdultFemale || 0) + Number(form.paxChildren || 0)}</span></span>
+                      <span>Total: <span className="font-medium text-foreground">{formatMoney(Number(form.planCharges || form.planCharge || 0) + Number(form.foodCharges || form.foodCharge || 0))}</span></span>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="w-fit">Editing</Badge>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -1845,8 +1939,9 @@ export function CheckInForm({
                             </div>
                           )}
                         </FormField>
-                        <FormField label="Email" className="col-span-2">
-                          <Input type="email" value={form.email} onChange={e => handleChange("email", e.target.value)} placeholder="guest@email.com" disabled={isFieldDisabled("email")} />
+                        <FormField label="Email" required className="col-span-2">
+                          <Input className={errorClass("email")} type="email" value={form.email} onChange={e => handleChange("email", e.target.value)} placeholder="guest@email.com" disabled={isFieldDisabled("email")} />
+                          {fieldError("email") && <p className="text-xs text-destructive">{fieldError("email")}</p>}
                         </FormField>
                       </div>
                     </div>
@@ -2037,7 +2132,7 @@ export function CheckInForm({
                       <FormField label="Total PAX"><Input type="number" value={form.totalPax} readOnly className="bg-muted font-bold" /></FormField>
                     </div>
                     <div className="grid grid-cols-3 gap-4 mt-4">
-                      <FormField label="Adult Male" required><Input className={errorClass("paxAdultMale")} type="number" min="1" value={form.paxAdultMale} onChange={e => handleChange("paxAdultMale", e.target.value)} /></FormField>
+                      <FormField label="Adult Male"><Input className={errorClass("paxAdultMale")} type="number" min="0" value={form.paxAdultMale} onChange={e => handleChange("paxAdultMale", e.target.value)} /></FormField>
                       <FormField label="Adult Female (PAX)"><Input type="number" min="0" value={form.paxAdultFemale} onChange={e => handleChange("paxAdultFemale", e.target.value)} /></FormField>
                       <FormField label="Children"><Input type="number" min="0" value={form.paxChildren} onChange={e => handleChange("paxChildren", e.target.value)} /></FormField>
                     </div>
@@ -2495,7 +2590,7 @@ export function CheckInForm({
               onClick={confirmFinalCheckIn}
               className="w-full sm:w-auto bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
             >
-              No, Successfully Check-In {pendingRooms.length > 0 ? "Both" : ""}
+              Complete Check-In {pendingRooms.length > 0 ? `(${pendingRooms.length + 1} Rooms)` : ""}
             </Button>
             <Button onClick={confirmAddMore} className="w-full sm:w-auto">
               Yes, Add More Room

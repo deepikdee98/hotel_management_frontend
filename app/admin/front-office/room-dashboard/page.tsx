@@ -16,8 +16,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { getFrontOfficeRooms } from "@/lib/backend-api"
-import { Room } from "@/lib/types"
+import { getFrontOfficeReservations, getFrontOfficeRooms, getHousekeepingTasks } from "@/lib/backend-api"
+import type { HousekeepingTask, Reservation, Room } from "@/lib/types"
 
 const statusLabels: Record<Room["status"], string> = {
   available: "Available",
@@ -65,9 +65,101 @@ const getStatusImage = (status: Room["status"], roomNumber: string) => {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`
 }
 
+const formatDate = (value?: string) => {
+  if (!value) return "N/A"
+
+  const date = new Date(value)
+  return isNaN(date.getTime()) ? "N/A" : date.toLocaleDateString("en-GB")
+}
+
+const calculateRemainingDays = (checkOut?: string) => {
+  if (!checkOut) return 0
+
+  const checkOutDate = new Date(checkOut)
+  if (isNaN(checkOutDate.getTime())) return 0
+
+  return Math.max(
+    0,
+    Math.ceil((checkOutDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  )
+}
+
+const buildRoomGuestDetails = (room: Room, reservations: Reservation[]): Room => {
+  if (room.status !== "reserved" && room.status !== "occupied") return room
+
+  // Check if room already has guest details from the direct room API response
+  const hasReservationDetails =
+    Boolean(room.guestDetails?.name || room.guestName) &&
+    Boolean(room.guestDetails?.checkIn || room.checkIn || (room as any).checkInDate) &&
+    Boolean(room.guestDetails?.checkOut || room.checkOut || (room as any).checkOutDate)
+
+  // Ensure guestDetails object exists if we have data at root
+  if (hasReservationDetails) {
+    if (!room.guestDetails) {
+      return {
+        ...room,
+        guestDetails: {
+          name: room.guestName,
+          phone: room.phone,
+          checkIn: room.checkIn || (room as any).checkInDate,
+          checkOut: room.checkOut || (room as any).checkOutDate,
+          adults: room.adults,
+          children: room.children,
+          bookingId: room.bookingId || (room as any).bookingNumber,
+          checkinId: room.checkinId,
+          folioId: room.folioId,
+        }
+      }
+    }
+    return room
+  }
+
+  const allowedStatuses = room.status === "occupied"
+    ? ["checked-in"]
+    : ["confirmed", "no-show"]
+
+  const reservation = reservations.find(
+    (item) =>
+      allowedStatuses.includes(item.status) &&
+      ((room.id && item.roomId === room.id) || (room.number && item.roomNumber === room.number))
+  )
+
+  if (!reservation) return room
+
+  const checkOut = room.checkOut || reservation.checkOut
+
+  return {
+    ...room,
+    guestName: room.guestName || reservation.guestName,
+    checkIn: room.checkIn || reservation.checkIn,
+    checkOut,
+    bookingId: room.bookingId || reservation.bookingNumber || reservation.reservationId,
+    phone: room.phone || reservation.guestPhone,
+    adults: room.adults ?? reservation.adults,
+    children: room.children ?? reservation.children,
+    remainingDays: room.remainingDays ?? (room.status === "occupied" ? calculateRemainingDays(checkOut) : undefined),
+    guestDetails: {
+      ...room.guestDetails,
+      name: room.guestDetails?.name || room.guestName || reservation.guestName,
+      phone: room.guestDetails?.phone || room.phone || reservation.guestPhone,
+      checkIn: room.guestDetails?.checkIn || room.checkIn || reservation.checkIn,
+      checkOut: room.guestDetails?.checkOut || checkOut,
+      adults: room.guestDetails?.adults ?? room.adults ?? reservation.adults,
+      children: room.guestDetails?.children ?? room.children ?? reservation.children,
+      bookingId: room.guestDetails?.bookingId || room.bookingId || reservation.bookingNumber || reservation.reservationId,
+      checkinId: room.guestDetails?.checkinId || room.checkinId,
+      folioId: room.guestDetails?.folioId || room.folioId,
+    },
+  }
+}
+
+const getDisplayStatus = (room: Room): Room["status"] =>
+  room.hkStatus === "dirty" && room.status === "available" ? "cleaning" : room.status
+
 export default function RoomDashboardPage() {
   const router = useRouter()
   const [rooms, setRooms] = useState<Room[]>([])
+  const [housekeepingTasks, setHousekeepingTasks] = useState<HousekeepingTask[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState<string>("all")
@@ -75,8 +167,17 @@ export default function RoomDashboardPage() {
   const loadRooms = async (status = "all", search = "") => {
     setLoading(true)
     try {
-      const data = await getFrontOfficeRooms({ status, search })
-      setRooms(data)
+      const [roomData, confirmedReservations, noShowReservations, checkedInReservations, taskData] = await Promise.all([
+        getFrontOfficeRooms({ status, search }),
+        getFrontOfficeReservations({ status: "confirmed" }),
+        getFrontOfficeReservations({ status: "no-show" }),
+        getFrontOfficeReservations({ status: "checked-in" }),
+        getHousekeepingTasks().catch(() => [] as HousekeepingTask[]),
+      ])
+
+      const reservationData = [...confirmedReservations, ...noShowReservations, ...checkedInReservations]
+      setRooms(roomData.map((room) => buildRoomGuestDetails(room, reservationData)))
+      setHousekeepingTasks(taskData)
     } catch (error) {
       console.error("Failed to load room dashboard", error)
       setRooms([])
@@ -90,13 +191,31 @@ export default function RoomDashboardPage() {
   }, [filterStatus, searchQuery])
 
   const handleRoomDoubleClick = (room: Room) => {
+    const displayStatus = getDisplayStatus(room)
+
+    if (displayStatus === "cleaning" || displayStatus === "maintenance") {
+      router.push("/admin/housekeeping")
+      return
+    }
+
     if (room.status === "available" || room.status === "blocked") {
       router.push(`/admin/front-office/reception/check-in?roomId=${room.id}&roomNo=${room.number}`)
 
       return
     }
+    if (room.status === "reserved") {
+      router.push(`/admin/front-office/reception/check-in?reservationId=${room.guestDetails?.bookingId || room.bookingId}&roomNo=${room.number}`)
+      return
+    }
     if(room.status === "occupied") {
-      router.push(`/admin/front-office/reception/check-out?room=${room.number}`)
+      const params = new URLSearchParams({ room: room.number })
+      const folioId = room.guestDetails?.folioId || room.folioId
+      const checkinId = room.guestDetails?.checkinId || room.checkinId
+      const bookingId = room.guestDetails?.bookingId || room.bookingId
+      if (folioId) params.set("folioId", folioId)
+      if (checkinId) params.set("checkinId", checkinId)
+      if (bookingId) params.set("bookingId", bookingId)
+      router.push(`/admin/front-office/reception/check-out?${params.toString()}`)
     }
   }
 
@@ -109,14 +228,17 @@ export default function RoomDashboardPage() {
         (room) =>
           room.number.toLowerCase().includes(query) ||
           room.type.toLowerCase().includes(query) ||
-          room.status.toLowerCase().includes(query)
+          getDisplayStatus(room).toLowerCase().includes(query)
       )
     }
 
     if (filterStatus !== "all") {
       result.sort((a, b) => {
-        if (a.status === filterStatus && b.status !== filterStatus) return -1
-        if (a.status !== filterStatus && b.status === filterStatus) return 1
+        const aStatus = getDisplayStatus(a)
+        const bStatus = getDisplayStatus(b)
+
+        if (aStatus === filterStatus && bStatus !== filterStatus) return -1
+        if (aStatus !== filterStatus && bStatus === filterStatus) return 1
         return 0
       })
     }
@@ -124,9 +246,28 @@ export default function RoomDashboardPage() {
     return result
   }, [rooms, searchQuery, filterStatus])
 
+  const activeTaskByRoom = useMemo(() => {
+    const lookup = new Map<string, HousekeepingTask>()
+
+    housekeepingTasks
+      .filter((task) => task.status !== "completed" && task.status !== "cancelled")
+      .forEach((task) => {
+        const keys = [task.room.id, task.room.roomNumber].filter(Boolean)
+
+        keys.forEach((key) => {
+          if (!lookup.has(key)) {
+            lookup.set(key, task)
+          }
+        })
+      })
+
+    return lookup
+  }, [housekeepingTasks])
+
   const roomCounts = rooms.reduce(
     (acc, room) => {
-      acc[room.status] = (acc[room.status] || 0) + 1
+      const status = getDisplayStatus(room)
+      acc[status] = (acc[status] || 0) + 1
       return acc
     },
     {} as Record<Room["status"], number>
@@ -224,14 +365,17 @@ export default function RoomDashboardPage() {
               </Card>
             ) : (
               filteredAndSortedRooms.map((room) => {
+                const displayStatus = getDisplayStatus(room)
+                const activeTask = activeTaskByRoom.get(room.id) || activeTaskByRoom.get(room.number)
+                const roomNote = activeTask?.notes?.trim()
                 const card = (
                   <Card
                     key={room.id}
-                    className={`border-0 shadow-sm hover:shadow-md transition-all ${(room.status === "available" || room.status === "blocked" || room.status === "occupied") ? "cursor-pointer" : ""}`}
+                    className={`border-0 shadow-sm hover:shadow-md transition-all ${(displayStatus === "available" || displayStatus === "blocked" || displayStatus === "occupied" || displayStatus === "reserved" || displayStatus === "maintenance") ? "cursor-pointer" : ""}`}
                     onDoubleClick={() => handleRoomDoubleClick(room)}
                     style={{
-                      backgroundColor: `${statusColors[room.status]}15`,
-                      borderLeft: `5px solid ${statusColors[room.status]}`,
+                      backgroundColor: `${statusColors[displayStatus]}15`,
+                      borderLeft: `5px solid ${statusColors[displayStatus]}`,
                     }}
                   >
                     <CardHeader className="space-y-3">
@@ -240,18 +384,27 @@ export default function RoomDashboardPage() {
                           <CardTitle className="text-base">Room {room.number}</CardTitle>
                           <p className="text-sm text-muted-foreground">{room.type}</p>
                         </div>
-                        <Badge className="capitalize" style={{ backgroundColor: statusColors[room.status], color: "white" }}>
-                          {statusLabels[room.status]}
+                        <Badge className="capitalize" style={{ backgroundColor: statusColors[displayStatus], color: "white" }}>
+                          {statusLabels[displayStatus] || displayStatus}
                         </Badge>
                       </div>
                     </CardHeader>
                     <CardContent className="pb-4">
-                      {room.status === "occupied" && (
+                      {(room.status === "occupied" || room.status === "reserved") && (
                         <div className="space-y-1">
-                          <p className="text-sm font-bold text-foreground truncate">{room.guestName}</p>
-                          <p className="text-xs font-medium text-primary">
-                            {room.remainingDays} {room.remainingDays === 1 ? "Day" : "Days"} Left
+                          <p className="text-sm font-bold text-foreground truncate">
+                            {room.guestName || room.guestDetails?.name || "Guest"}
                           </p>
+                          {room.status === "occupied" ? (
+                            <p className="text-xs font-medium text-primary">
+                              {room.remainingDays ?? calculateRemainingDays(room.guestDetails?.checkOut || room.checkOut)}{" "}
+                              {(room.remainingDays ?? calculateRemainingDays(room.guestDetails?.checkOut || room.checkOut)) === 1 ? "Day" : "Days"} Left
+                            </p>
+                          ) : (
+                            <p className="text-xs font-medium text-blue-600">
+                              Reserved
+                            </p>
+                          )}
                         </div>
                       )}
                       {room.status === "blocked" && room.blockDetails && (
@@ -267,11 +420,21 @@ export default function RoomDashboardPage() {
                           </p>
                         </div>
                       )}
+                      {(displayStatus === "cleaning" || displayStatus === "maintenance") && roomNote && (
+                        <div className="mt-3 rounded-md border border-border bg-background/70 px-3 py-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Notes
+                          </p>
+                          <p className="mt-1 max-h-12 overflow-hidden whitespace-pre-wrap text-xs font-medium text-foreground">
+                            {roomNote}
+                          </p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 )
 
-                if (room.status === "occupied" && room.guestDetails) {
+                if (room.status === "occupied" || room.status === "reserved") {
                   return (
                     <Tooltip key={room.id}>
                       <TooltipTrigger asChild>
@@ -297,88 +460,86 @@ export default function RoomDashboardPage() {
                         <div className="space-y-3">
                           <div className="pb-2 border-b border-gray-200">
                             <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                              Guest Details
+                              {room.status === "occupied" ? "Guest Details" : "Reserved Room"}
                             </p>
 
                             <p className="text-sm font-bold mt-1 text-gray-900">
-                              {room.guestDetails?.name || "Guest"}
+                              Guest: {room.guestDetails?.name || room.guestName || "Guest"}
                             </p>
 
                             <p className="text-xs text-gray-500 mt-1">
-                              {room.guestDetails?.phone || "No phone provided"}
+                              {room.guestDetails?.phone || room.phone || "No phone provided"}
                             </p>
                           </div>
                           <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
 
                             <div>
                               <p className="text-gray-500 font-medium">
-                                Check-In
+                                {room.status === "occupied" ? "Check-In" : "From"}
                               </p>
 
                               <p className="font-semibold text-gray-900 mt-1">
-                                {room.guestDetails?.checkIn && !isNaN(new Date(room.guestDetails.checkIn).getTime())
-                                  ? new Date(room.guestDetails.checkIn).toLocaleDateString("en-GB")
-                                  : "N/A"}
+                                {formatDate(room.guestDetails?.checkIn || room.checkIn)}
                               </p>
                             </div>
 
                             <div>
                               <p className="text-gray-500 font-medium">
-                                Check-Out
+                                {room.status === "occupied" ? "Check-Out" : "To"}
                               </p>
 
                               <p className="font-semibold text-gray-900 mt-1">
-                                {room.guestDetails?.checkOut && !isNaN(new Date(room.guestDetails.checkOut).getTime())
-                                  ? new Date(room.guestDetails.checkOut).toLocaleDateString("en-GB")
-                                  : "N/A"}
+                                {formatDate(room.guestDetails?.checkOut || room.checkOut)}
                               </p>
                             </div>
 
                             <div>
                               <p className="text-gray-500 font-medium">
-                                Adults / Children
+                                {room.status === "occupied" ? "Adults / Children" : "Guests"}
                               </p>
 
                               <p className="font-semibold text-gray-900 mt-1">
-                                {room.guestDetails?.adults || 0}
+                                {room.guestDetails?.adults ?? room.adults ?? 0}
                                 {" / "}
-                                {room.guestDetails?.children || 0}
+                                {room.guestDetails?.children ?? room.children ?? 0}
                               </p>
                             </div>
 
-                            <div>
-                              <p className="text-gray-500 font-medium">
-                                Remaining
-                              </p>
+                            {room.status === "occupied" && (
+                              <div>
+                                <p className="text-gray-500 font-medium">
+                                  Remaining
+                                </p>
 
-                              <p className="font-bold text-green-600 mt-1">
-                                {room.remainingDays !== undefined && !isNaN(room.remainingDays) ? room.remainingDays : (
-                                  room.guestDetails?.checkOut && !isNaN(new Date(room.guestDetails.checkOut).getTime()) ? Math.max(
-                                    0,
-                                    Math.ceil(
-                                      (
-                                        new Date(
-                                          room.guestDetails.checkOut
-                                        ).getTime() - Date.now()
-                                      ) /
-                                      (1000 * 60 * 60 * 24)
-                                    )
-                                  ) : 0
-                                )}{" "}
-                                Days
-                              </p>
-                            </div>
+                                <p className="font-bold text-green-600 mt-1">
+                                  {room.remainingDays !== undefined && !isNaN(room.remainingDays) ? room.remainingDays : (
+                                    (room.guestDetails?.checkOut || room.checkOut) && !isNaN(new Date((room.guestDetails?.checkOut || room.checkOut) as string).getTime()) ? Math.max(
+                                      0,
+                                      Math.ceil(
+                                        (
+                                          new Date(
+                                            (room.guestDetails?.checkOut || room.checkOut) as string
+                                          ).getTime() - Date.now()
+                                        ) /
+                                        (1000 * 60 * 60 * 24)
+                                      )
+                                    ) : 0
+                                  )}{" "}
+                                  Days
+                                </p>
+                              </div>
+                            )}
 
                           </div>
 
                           {/* Booking ID */}
                           <div className="pt-3 border-t border-gray-200">
                             <p className="text-[10px] text-gray-500 uppercase tracking-wider">
-                              Booking ID
+                              {room.status === "occupied" ? "Booking ID" : "Reservation ID"}
                             </p>
 
-                            <p className="text-xs font-mono font-semibold text-gray-900 mt-1">
-                              {room.guestDetails?.bookingId || "N/A"}
+                            <p className="text-xs font-mono font-semibold text-blue-600 mt-1">
+                              {room.guestDetails?.bookingId || room.bookingId || "N/A"}
                             </p>
                           </div>
 

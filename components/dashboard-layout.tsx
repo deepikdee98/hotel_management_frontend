@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useMemo } from "react"
 
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -18,7 +18,7 @@ const DashboardLayoutContext = React.createContext(false)
 interface DashboardLayoutProps {
   children: React.ReactNode
   requiredRole?: UserRole | UserRole[]
-  requiredModule?: ModuleType
+  requiredModule?: ModuleType | ModuleType[]
 }
 
 export function DashboardLayout({ children, requiredRole, requiredModule }: DashboardLayoutProps) {
@@ -30,7 +30,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
-  const routeModule =
+  const routeModule: ModuleType | undefined =
     pathname.startsWith("/admin/front-office") ? "front-office" :
       pathname.startsWith("/admin/pos") ? "point-of-sale" :
         pathname.startsWith("/admin/housekeeping") ? "housekeeping" :
@@ -39,7 +39,17 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
               pathname.startsWith("/admin/reports") ? "reports" :
                 undefined
 
-  const moduleToCheck = requiredModule || routeModule
+  const modulesToCheck = useMemo(
+    () =>
+      requiredModule
+        ? Array.isArray(requiredModule)
+          ? requiredModule
+          : [requiredModule]
+        : routeModule
+          ? [routeModule]
+          : [],
+    [requiredModule, routeModule]
+  )
   const subscriptionStatus = normalizeSubscriptionStatus(subscriptionInfo?.status)
 
   if (insideDashboardLayout) {
@@ -56,7 +66,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
     }
 
     // Check module access if required
-    if (moduleToCheck && !hasAccess(moduleToCheck)) {
+    if (modulesToCheck.length > 0 && !modulesToCheck.some((module) => hasAccess(module))) {
       router.replace("/")
       return
     }
@@ -71,7 +81,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
     }
 
     setIsReady(true)
-  }, [isLoading, isAuthenticated, user, requiredRole, moduleToCheck, router, hasAccess])
+  }, [isLoading, isAuthenticated, user, requiredRole, modulesToCheck, router, hasAccess])
 
   if (isLoading || !isReady) {
     return (

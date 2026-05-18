@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useToast } from "@/hooks/use-toast"
 import {
   Users,
   Plus,
@@ -13,6 +14,7 @@ import {
   Filter,
   Mail,
   Shield,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -53,6 +55,7 @@ import { useAuth } from "@/lib/auth-context"
 
 export default function StaffManagementPage() {
   const { user } = useAuth()
+  const { toast } = useToast()
   const [staff, setStaff] = useState<Staff[]>([])
   const [search, setSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState<string>("all")
@@ -64,6 +67,7 @@ export default function StaffManagementPage() {
   })
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [selectedModules, setSelectedModules] = useState<ModuleType[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
     username: "",
@@ -111,6 +115,9 @@ export default function StaffManagementPage() {
   }
 
   const handleAddStaff = async () => {
+    if (isSubmitting) return
+    setIsSubmitting(true)
+
     try {
       await createAdminStaff({
         name: formData.name,
@@ -125,16 +132,29 @@ export default function StaffManagementPage() {
       setStaff(refreshed)
       const summaryData = await getAdminStaffSummary()
       setSummary(summaryData)
-    } catch {
-      return
-    }
 
-    setIsAddDialogOpen(false)
-    setFormData({ name: "", username: "", email: "", role: "staff", password: "" })
-    setSelectedModules([])
+      toast({
+        title: "Success",
+        description: `${formData.role === "admin" ? "Admin" : "Staff"} account created successfully.`,
+      })
+
+      setIsAddDialogOpen(false)
+      setFormData({ name: "", username: "", email: "", role: "staff", password: "" })
+      setSelectedModules([])
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create staff account.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleDeleteStaff = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this staff member?")) return
+
     try {
       await deleteAdminStaff(id)
       const [refreshed, summaryData] = await Promise.all([
@@ -143,8 +163,16 @@ export default function StaffManagementPage() {
       ])
       setStaff(refreshed)
       setSummary(summaryData)
-    } catch {
-      return
+      toast({
+        title: "Success",
+        description: "Staff member deleted successfully.",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete staff member.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -160,8 +188,16 @@ export default function StaffManagementPage() {
       ])
       setStaff(refreshed)
       setSummary(summaryData)
-    } catch {
-      return
+      toast({
+        title: "Status Updated",
+        description: `Staff member is now ${nextStatus}.`,
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update staff status.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -208,8 +244,13 @@ export default function StaffManagementPage() {
                     value={formData.username}
                     onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                     placeholder="Enter username"
+                    className={formData.username && !isUsernameValid ? "border-destructive" : ""}
                   />
-                  <p className="text-xs text-muted-foreground">Username will be used for login.</p>
+                  {formData.username && !isUsernameValid ? (
+                    <p className="text-xs text-destructive">Username must be at least 4 characters and only contain letters, numbers, or underscores.</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Username will be used for login.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
@@ -254,25 +295,31 @@ export default function StaffManagementPage() {
                   Select which modules this user can access
                 </p>
                 <div className="grid grid-cols-2 gap-3">
-                  {assignableModules.map((module) => (
-                    <div
-                      key={module.id}
-                      className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-all ${selectedModules.includes(module.id)
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:border-primary/50"
-                        }`}
-                      onClick={() => handleModuleToggle(module.id)}
-                    >
-                      <Checkbox
-                        checked={selectedModules.includes(module.id)}
-                        onCheckedChange={() => handleModuleToggle(module.id)}
-                      />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-foreground">{module.name}</p>
-                        <p className="text-xs text-muted-foreground">{module.description}</p>
+                  {assignableModules.length === 0 ? (
+                    <p className="col-span-2 text-sm text-destructive font-medium p-3 border border-destructive/20 bg-destructive/5 rounded-lg">
+                      No modules available to assign. Please ensure your account has module permissions.
+                    </p>
+                  ) : (
+                    assignableModules.map((module) => (
+                      <div
+                        key={module.id}
+                        className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-all ${selectedModules.includes(module.id)
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50"
+                          }`}
+                        onClick={() => handleModuleToggle(module.id)}
+                      >
+                        <Checkbox
+                          checked={selectedModules.includes(module.id)}
+                          onCheckedChange={() => handleModuleToggle(module.id)}
+                        />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-foreground">{module.name}</p>
+                          <p className="text-xs text-muted-foreground">{module.description}</p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -282,9 +329,16 @@ export default function StaffManagementPage() {
                 </Button>
                 <Button
                   onClick={handleAddStaff}
-                  disabled={!formData.name || !isUsernameValid || !formData.email || !formData.password || selectedModules.length === 0}
+                  disabled={!formData.name || !isUsernameValid || !formData.email || !formData.password || selectedModules.length === 0 || isSubmitting}
                 >
-                  {formData.role === "admin" ? "Create Admin Account" : "Create Staff Account"}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    formData.role === "admin" ? "Create Admin Account" : "Create Staff Account"
+                  )}
                 </Button>
               </div>
             </div>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useToast } from "@/hooks/use-toast"
 import {
   BedDouble,
   CalendarCheck,
@@ -38,6 +39,7 @@ interface BlockedRoom {
 
 export default function UnifiedDashboard() {
   const { user, hasAccess } = useAuth()
+  const { toast } = useToast()
   const isAdmin = user?.role === "admin" || user?.role === "hoteladmin"
   const canAccessFrontOffice = hasAccess("front-office")
 
@@ -73,11 +75,19 @@ export default function UnifiedDashboard() {
       ])
 
       setRooms(roomData || [])
-      setReservations(reservationData || [])
       if (isAdmin) setStaff(staffData || [])
 
       if (dashboard?.success && dashboard?.data?.blockedRooms) {
         setBlockedRooms(dashboard.data.blockedRooms as BlockedRoom[])
+      }
+
+      // If we don't have reservationData (e.g. no access or empty), 
+      // then use recentReservations as a fallback
+      if ((!reservationData || reservationData.length === 0) && dashboard?.data?.recentReservations) {
+        const recent = (dashboard.data.recentReservations as Record<string, unknown>[]).map((item) => mapReservation(item))
+        setReservations(recent)
+      } else if (reservationData) {
+        setReservations(reservationData)
       }
 
       const stats = (dashboard?.data?.stats || {}) as Record<string, number>
@@ -109,11 +119,6 @@ export default function UnifiedDashboard() {
         revenue: Number(stats.totalRevenue || 0),
         occupancyRate: Number(stats.occupancyRate || 0),
       })
-
-      const recentReservations = (dashboard?.data?.recentReservations as Record<string, unknown>[] | undefined) || []
-      if (recentReservations.length) {
-        setReservations(recentReservations.map((item) => mapReservation(item)))
-      }
     } catch (error) {
       console.error("Dashboard Load Error:", error)
       setRooms([])
@@ -130,10 +135,36 @@ export default function UnifiedDashboard() {
     try {
       await updateStaffReservationStatus(reservationId, "checked-in")
       await loadData()
-    } catch (error) {
+      toast({
+        title: "Check-in Successful",
+        description: "Guest has been checked in.",
+      })
+    } catch (error: any) {
       console.error("Failed to check in guest:", error)
+      toast({
+        title: "Check-in Failed",
+        description: error.message || "Failed to check in guest.",
+        variant: "destructive",
+      })
     }
   }
+
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  const todayArrivals = useMemo(() => {
+    return reservations.filter(r => {
+      // Robust date matching: compare YYYY-MM-DD parts
+      const checkInDateStr = r.checkIn && typeof r.checkIn === 'string' ? r.checkIn.split('T')[0] : '';
+      return checkInDateStr === todayStr && 
+             (r.status === "confirmed" || r.status === "no-show")
+    })
+  }, [reservations, todayStr])
 
   const stats = useMemo(() => [
     {
@@ -154,7 +185,7 @@ export default function UnifiedDashboard() {
     },
     {
       label: "Today's Check-ins",
-      value: dashboardStats.todayCheckIns.toString(),
+      value: todayArrivals.length.toString(),
       change: "+0",
       trend: "up",
       icon: CalendarCheck,
@@ -168,11 +199,10 @@ export default function UnifiedDashboard() {
       icon: isAdmin ? DollarSign : CalendarCheck,
       description: isAdmin ? "vs yesterday" : "departures today",
     },
-  ], [dashboardStats, isAdmin, todayCheckOuts])
+  ], [dashboardStats, isAdmin, todayCheckOuts, todayArrivals])
 
   const activeStaff = staff.filter(s => s.status === "active").length
   const occupiedRoomsCount = rooms.filter(r => r.status === "occupied").length
-  const confirmedReservations = reservations.filter(r => r.status === "confirmed")
 
   return (
     <div className="space-y-6">
@@ -239,7 +269,7 @@ export default function UnifiedDashboard() {
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
                 <CardTitle className="text-lg">Today's Arrivals</CardTitle>
-                <CardDescription>{confirmedReservations.length} pending check-ins</CardDescription>
+                <CardDescription>{todayArrivals.length} pending check-ins</CardDescription>
               </div>
               <Link href="/admin/front-office/reservation">
                 <Button variant="outline" size="sm">View All</Button>
@@ -247,8 +277,8 @@ export default function UnifiedDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {confirmedReservations.length > 0 ? (
-                  confirmedReservations.slice(0, 5).map((reservation) => (
+                {todayArrivals.length > 0 ? (
+                  todayArrivals.slice(0, 5).map((reservation) => (
                     <div
                       key={reservation.id}
                       className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border"

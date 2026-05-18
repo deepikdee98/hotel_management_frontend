@@ -24,6 +24,7 @@ export default function CheckOutPage() {
     return Number.isFinite(numericValue) ? numericValue : 0
   }
   const toNonNegativeNum = (value: any) => Math.max(0, toNum(value))
+  const numberInputValue = (value: number) => value === 0 || isNaN(value) ? "" : value
   const money = (value: number) => `₹${toNum(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   const roundMoney = (value: number) => Math.round(toNum(value) * 100) / 100
   const moneyEquals = (a: number, b: number) => Math.round(toNum(a) * 100) === Math.round(toNum(b) * 100)
@@ -49,6 +50,18 @@ export default function CheckOutPage() {
 
   const getGuestFolioNumber = (guest: any) => {
     return String(guest?.folioNumber ?? guest?.folio?.folioNumber ?? "").trim()
+  }
+
+  const getGuestCheckinId = (guest: any) => {
+    return String(guest?.checkinId ?? guest?.checkInId ?? guest?.id ?? "").trim()
+  }
+
+  const getGuestFolioId = (guest: any) => {
+    return String(guest?.folioId ?? guest?.folio?._id ?? guest?.folio?.id ?? "").trim()
+  }
+
+  const getGuestBookingId = (guest: any) => {
+    return String(guest?.bookingNumber ?? guest?.bookingNo ?? guest?.bookingId ?? guest?.reservationId ?? "").trim()
   }
 
   const isPaxGuest = (guest: any) => {
@@ -77,6 +90,7 @@ export default function CheckOutPage() {
   const [comments, setComments] = useState("")
   const [paymentMode, setPaymentMode] = useState("cash")
   const [amountPaid, setAmountPaid] = useState(0)
+  const [amountPaidEdited, setAmountPaidEdited] = useState(false)
   const [discount, setDiscount] = useState(0)
   const [extraManualCharges, setExtraManualCharges] = useState(0)
   const [lateCheckoutHours, setLateCheckoutHours] = useState(0)
@@ -94,12 +108,21 @@ export default function CheckOutPage() {
   }, [])
 
   useEffect(() => {
-    const roomNumber = new URLSearchParams(window.location.search).get("room")
-    if (!roomNumber || loading || !inHouseGuests.length || selectedRoom) return
+    const params = new URLSearchParams(window.location.search)
+    const roomNumber = params.get("room")?.trim() || ""
+    const checkinId = params.get("checkinId")?.trim() || ""
+    const folioId = params.get("folioId")?.trim() || ""
+    const bookingId = params.get("bookingId")?.trim() || ""
+    if ((!roomNumber && !checkinId && !folioId && !bookingId) || loading || !inHouseGuests.length || selectedRoom) return
 
-    const guest = inHouseGuests.find(g => getGuestRoomNumber(g) === roomNumber)
+    const guest = inHouseGuests.find((g) =>
+      (checkinId && getGuestCheckinId(g) === checkinId) ||
+      (folioId && getGuestFolioId(g) === folioId) ||
+      (bookingId && getGuestBookingId(g) === bookingId) ||
+      (roomNumber && getGuestRoomNumber(g) === roomNumber)
+    )
     if (guest) {
-      handleRoomChange(roomNumber)
+      handleRoomChange(getGuestRoomNumber(guest), guest)
     }
   }, [loading, inHouseGuests, selectedRoom])
 
@@ -175,16 +198,19 @@ export default function CheckOutPage() {
     }
   }
 
-  const handleRoomChange = async (roomNumber: string) => {
+  const handleRoomChange = async (roomNumber: string, selectedGuest?: any) => {
     setShowSuccess(false)
     setSelectedRoom(roomNumber)
     setFolioData(null)
+    setAmountPaid(0)
+    setAmountPaidEdited(false)
     setSplitAllocations(buildSplitRowsForRoom(roomNumber))
-    const guest = inHouseGuests.find(g => getGuestRoomNumber(g) === String(roomNumber).trim())
-    if (guest && (guest.folioId || guest.id)) {
+    const guest = selectedGuest || inHouseGuests.find(g => getGuestRoomNumber(g) === String(roomNumber).trim())
+    const folioId = getGuestFolioId(guest) || getGuestCheckinId(guest)
+    if (guest && folioId) {
       setFetchingFolio(true)
       try {
-        const response = await getFolioDetails(guest.folioId || guest.id)
+        const response = await getFolioDetails(folioId)
         if (response.success) {
           setFolioData(response.data.folio || response.data)
         }
@@ -300,6 +326,7 @@ export default function CheckOutPage() {
         setLateCheckoutCharges(0)
         setPaymentMode("cash")
         setAmountPaid(0)
+        setAmountPaidEdited(false)
         setRoomStatus("dirty")
         setSplitAllocations([{ name: "Guest 1", amount: 0, mode: "cash" }])
         setBillingType("full")
@@ -454,10 +481,10 @@ export default function CheckOutPage() {
   const splitHasAllocationMismatch = billingType === "split" && !moneyEquals(totalSplit, finalAmount)
 
   useEffect(() => {
-    if (billingType === "full" && finalAmount > 0 && (amountPaid === 0 || amountPaid === null)) {
+    if (billingType === "full" && finalAmount > 0 && !amountPaidEdited) {
       setAmountPaid(finalAmount)
     }
-  }, [finalAmount, billingType, amountPaid])
+  }, [finalAmount, billingType, amountPaidEdited])
 
   return (
     <DashboardLayout requiredRole={["admin", "staff"]}>
@@ -614,96 +641,176 @@ export default function CheckOutPage() {
 
                       <Separator />
 
-                      <div className="grid grid-cols-2 gap-4 pt-2">
-                        <div className="space-y-3">
-                          <div className="flex items-center space-x-2">
-                            <Checkbox id="minibar" checked={minibarChecked} onCheckedChange={(v) => setMinibarChecked(!!v)} />
-                            <Label htmlFor="minibar" className="text-xs">Minibar Checked</Label>
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+
+                            {/* Left Section */}
+                            <div className="space-y-4">
+
+                              <div className="rounded-lg border border-border p-4 space-y-3">
+                                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                  Room Verification
+                                </h3>
+
+                                <div className="flex items-center space-x-2">
+                                  <Checkbox
+                                    id="minibar"
+                                    checked={minibarChecked}
+                                    onCheckedChange={(v) => setMinibarChecked(!!v)}
+                                  />
+
+                                  <Label htmlFor="minibar" className="text-sm">
+                                    Minibar Checked
+                                  </Label>
+                                </div>
+
+                                <div className="flex items-center space-x-2">
+                                  <Checkbox
+                                    id="inspected"
+                                    checked={roomInspected}
+                                    onCheckedChange={(v) => setRoomInspected(!!v)}
+                                  />
+
+                                  <Label htmlFor="inspected" className="text-sm">
+                                    Room Inspected
+                                  </Label>
+                                </div>
+
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] font-medium text-muted-foreground uppercase">
+                                    Key Cards Returned
+                                  </Label>
+
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    className="h-9 text-sm"
+                                    value={isNaN(keyCardsReturned) ? "" : keyCardsReturned}
+                                    onChange={(e) =>
+                                      setKeyCardsReturned(
+                                        Math.max(0, parseInt(e.target.value) || 0)
+                                      )
+                                    }
+                                  />
+                                </div>
+                              </div>
+
+                            </div>
+
+                            {/* Right Section */}
+                            <div className="rounded-lg border border-border p-4 space-y-4">
+
+                              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Additional Charges
+                              </h3>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] font-medium text-muted-foreground uppercase">
+                                    Minibar Charges
+                                  </Label>
+
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    className="h-9 text-sm"
+                                    value={numberInputValue(minibarCharges)}
+                                    onChange={(e) =>
+                                      setMinibarCharges(toNonNegativeNum(e.target.value))
+                                    }
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] font-medium text-muted-foreground uppercase">
+                                    Damage Charges
+                                  </Label>
+
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    className="h-9 text-sm"
+                                    value={numberInputValue(damageCharges)}
+                                    onChange={(e) =>
+                                      setDamageCharges(toNonNegativeNum(e.target.value))
+                                    }
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] font-medium text-muted-foreground uppercase">
+                                    Late Checkout Hours
+                                  </Label>
+
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    className="h-9 text-sm"
+                                    value={numberInputValue(lateCheckoutHours)}
+                                    onChange={(e) =>
+                                      setLateCheckoutHours(toNonNegativeNum(e.target.value))
+                                    }
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] font-medium text-muted-foreground uppercase">
+                                    Late Checkout Charges
+                                  </Label>
+
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    className="h-9 text-sm"
+                                    value={numberInputValue(lateCheckoutCharges)}
+                                    onChange={(e) =>
+                                      setLateCheckoutCharges(toNonNegativeNum(e.target.value))
+                                    }
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] font-medium text-muted-foreground uppercase">
+                                    Manual Extra Charges
+                                  </Label>
+
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    className="h-9 text-sm"
+                                    value={numberInputValue(extraManualCharges)}
+                                    onChange={(e) =>
+                                      setExtraManualCharges(toNonNegativeNum(e.target.value))
+                                    }
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <Label className="text-[11px] font-medium text-muted-foreground uppercase">
+                                    Discount
+                                  </Label>
+
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    className="h-9 text-sm"
+                                    value={numberInputValue(discount)}
+                                    onChange={(e) =>
+                                      setDiscount(toNonNegativeNum(e.target.value))
+                                    }
+                                  />
+                                </div>
+
+                              </div>
+                            </div>
+
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <Checkbox id="inspected" checked={roomInspected} onCheckedChange={(v) => setRoomInspected(!!v)} />
-                            <Label htmlFor="inspected" className="text-xs">Room Inspected</Label>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground uppercase">Key Cards Returned</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              className="h-7 text-xs"
-                              value={isNaN(keyCardsReturned) ? "" : keyCardsReturned}
-                              onChange={(e) => setKeyCardsReturned(Math.max(0, parseInt(e.target.value) || 0))}
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground uppercase">Minibar Charges</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              className="h-7 text-xs"
-                              value={isNaN(minibarCharges) ? "" : minibarCharges}
-                              onChange={(e) => setMinibarCharges(toNonNegativeNum(e.target.value))}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground uppercase">Damage Charges</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              className="h-7 text-xs"
-                              value={isNaN(damageCharges) ? "" : damageCharges}
-                              onChange={(e) => setDamageCharges(toNonNegativeNum(e.target.value))}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground uppercase">Late Checkout Hours</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              className="h-7 text-xs"
-                              value={lateCheckoutHours}
-                              onChange={(e) => setLateCheckoutHours(toNonNegativeNum(e.target.value))}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground uppercase">Late Checkout Charges</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              className="h-7 text-xs"
-                              value={lateCheckoutCharges}
-                              onChange={(e) => setLateCheckoutCharges(toNonNegativeNum(e.target.value))}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground uppercase">Manual Extra Charges</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              className="h-7 text-xs"
-                              value={extraManualCharges}
-                              onChange={(e) => setExtraManualCharges(toNonNegativeNum(e.target.value))}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground uppercase">Discount</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              className="h-7 text-xs"
-                              value={discount}
-                              onChange={(e) => setDiscount(toNonNegativeNum(e.target.value))}
-                            />
-                          </div>
-                        </div>
-                      </div>
 
                       <Separator />
 
@@ -727,8 +834,11 @@ export default function CheckOutPage() {
                               min="0"
                               step="0.01"
                               className="h-8 text-xs"
-                              value={amountPaid}
-                              onChange={(e) => setAmountPaid(toNonNegativeNum(e.target.value))}
+                              value={numberInputValue(amountPaid)}
+                              onChange={(e) => {
+                                setAmountPaidEdited(true)
+                                setAmountPaid(toNonNegativeNum(e.target.value))
+                              }}
                             />
                           </div>
                         </div>
@@ -836,16 +946,6 @@ export default function CheckOutPage() {
                         </div>
                       )}
 
-                      <div className="space-y-1">
-                        <Label className="text-[10px] text-muted-foreground uppercase">Room Status After Checkout</Label>
-                        <Select value={roomStatus} onValueChange={setRoomStatus}>
-                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="dirty">Dirty</SelectItem>
-                            <SelectItem value="clean">Clean</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
 
                       <div className="space-y-1.5 border rounded-md p-3">
                         <div className="flex justify-between text-xs">

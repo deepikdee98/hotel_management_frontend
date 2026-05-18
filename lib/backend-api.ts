@@ -110,13 +110,22 @@ function mapRoom(raw: JsonRecord): Room {
     roomTypeId = String(roomType._id || roomType.id || "")
   } else if (typeof roomType === "string") {
     roomTypeName = roomType
-    roomTypeId = roomType // If it's just a string, it might be the ID or the Name
+    roomTypeId = roomType
   }
 
   const rawRoomNo = raw.roomNumber || raw.number || raw.roomNo || ""
-  const roomNumberStr = typeof rawRoomNo === "object" && rawRoomNo !== null 
+  const roomNumberStr = typeof rawRoomNo === "object" && rawRoomNo !== null
     ? String((rawRoomNo as any).roomNumber || (rawRoomNo as any).number || "")
     : String(rawRoomNo)
+
+  const guestName = raw.guestName || (raw.guestDetails as any)?.name || raw.name
+  const checkIn = raw.checkIn || raw.checkInDate || raw.checkinDate || raw.checkin || raw.arrivalDate
+  const checkOut = raw.checkOut || raw.checkOutDate || raw.checkoutDate || raw.checkout || raw.departureDate
+  const phone = raw.phone || raw.mobileNo || raw.mobile || (raw.guestDetails as any)?.phone
+
+  const adults = raw.adults !== undefined ? Number(raw.adults) :
+                (raw.adultMale || raw.adultFemale ? (Number(raw.adultMale || 0) + Number(raw.adultFemale || 0)) : undefined)
+  const children = raw.children !== undefined ? Number(raw.children) : undefined
 
   return {
     id: String(raw._id || raw.id || ""),
@@ -130,24 +139,26 @@ function mapRoom(raw: JsonRecord): Room {
     gstPercentage: typeof roomType === "object" && roomType !== null ? Number(roomType.gstPercentage || 0) : 0,
     gstType: (typeof roomType === "object" && roomType !== null ? (roomType.gstType as any) : "EXCLUSIVE") || "EXCLUSIVE",
     amenities: Array.isArray(raw.amenities) ? (raw.amenities as string[]) : [],
-    guestName: raw.guestName ? String(raw.guestName) : undefined,
-    checkIn: (raw.checkInDate || raw.checkIn || raw.checkinDate || raw.checkin || raw.arrivalDate) ? String(raw.checkInDate || raw.checkIn || raw.checkinDate || raw.checkin || raw.arrivalDate) : undefined,
-    checkOut: (raw.checkOutDate || raw.checkOut || raw.checkoutDate || raw.checkout || raw.departureDate) ? String(raw.checkOutDate || raw.checkOut || raw.checkoutDate || raw.checkout || raw.departureDate) : undefined,
-    bookingId: (raw.bookingNumber || raw.bookingNo || raw.bookingId) ? String(raw.bookingNumber || raw.bookingNo || raw.bookingId) : undefined,
-    phone: (raw.phone || raw.mobileNo || raw.mobile) ? String(raw.phone || raw.mobileNo || raw.mobile) : undefined,
-    adults: (raw.adults !== undefined) ? Number(raw.adults) : (Number(raw.adultMale || 0) + Number(raw.adultFemale || 0) || undefined),
-    children: raw.children !== undefined ? Number(raw.children) : undefined,
+    guestName: guestName ? String(guestName) : undefined,
+    checkIn: checkIn ? String(checkIn) : undefined,
+    checkOut: checkOut ? String(checkOut) : undefined,
+    bookingId: String(raw.bookingNumber || raw.bookingNo || raw.bookingId || raw.reservationId || ""),
+    phone: phone ? String(phone) : undefined,
+    adults: adults,
+    children: children,
     remainingDays: raw.remainingDays !== undefined ? Number(raw.remainingDays) : undefined,
     checkinId: String(raw.checkinId || raw._id || raw.id || ""),
-    guestDetails: (raw.guestName || raw.checkInDate || raw.checkIn || raw.checkinDate || raw.checkin || raw.bookingNumber || raw.bookingNo || raw.mobileNo || raw.phone) ? {
-      name: raw.guestName ? String(raw.guestName) : undefined,
-      phone: (raw.phone || raw.mobileNo || raw.mobile) ? String(raw.phone || raw.mobileNo || raw.mobile) : undefined,
-      checkIn: (raw.checkInDate || raw.checkIn || raw.checkinDate || raw.checkin || raw.arrivalDate) ? String(raw.checkInDate || raw.checkIn || raw.checkinDate || raw.checkin || raw.arrivalDate) : undefined,
-      checkOut: (raw.checkOutDate || raw.checkOut || raw.checkoutDate || raw.checkout || raw.departureDate) ? String(raw.checkOutDate || raw.checkOut || raw.checkoutDate || raw.checkout || raw.departureDate) : undefined,
-      adults: (raw.adults !== undefined) ? Number(raw.adults) : (Number(raw.adultMale || 0) + Number(raw.adultFemale || 0) || undefined),
-      children: raw.children !== undefined ? Number(raw.children) : undefined,
-      bookingId: (raw.bookingNumber || raw.bookingNo || raw.bookingId) ? String(raw.bookingNumber || raw.bookingNo || raw.bookingId) : undefined,
+    folioId: raw.folioId ? String(raw.folioId) : undefined,
+    guestDetails: (guestName || checkIn || checkOut || phone || adults !== undefined || children !== undefined) ? {
+      name: guestName ? String(guestName) : undefined,
+      phone: phone ? String(phone) : undefined,
+      checkIn: checkIn ? String(checkIn) : undefined,
+      checkOut: checkOut ? String(checkOut) : undefined,
+      adults: adults,
+      children: children,
+      bookingId: String(raw.bookingNumber || raw.bookingNo || raw.bookingId || raw.reservationId || ""),
       checkinId: String(raw.checkinId || raw._id || raw.id || ""),
+      folioId: raw.folioId ? String(raw.folioId) : undefined,
     } : undefined,
     blockDetails: raw.blockDetails ? {
       from: String((raw.blockDetails as any).from),
@@ -1318,6 +1329,7 @@ export function mapHousekeepingTask(raw: JsonRecord): HousekeepingTask {
     priority: raw.priority as any,
     status: raw.status as any,
     assignedTo: String(raw.assignedTo || ""),
+    assignedToName: String(raw.assignedToName || ""),
     notes: String(raw.notes || ""),
     createdAt: String(raw.createdAt || ""),
     completedAt: raw.completedAt ? String(raw.completedAt) : undefined,

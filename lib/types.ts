@@ -225,6 +225,7 @@ export interface Room {
   amenities: string[]
   guestName?: string
   checkinId?: string
+  folioId?: string
   checkIn?: string
   checkOut?: string
   bookingId?: string
@@ -241,6 +242,7 @@ export interface Room {
     children?: number
     bookingId?: string
     checkinId?: string
+    folioId?: string
   }
   blockDetails?: {
     from: string
@@ -259,7 +261,7 @@ export interface HousekeepingTask {
     hkStatus: string
     status: string
   }
-  taskType: "checkout" | "stayover" | "deep-clean" | "turndown" | "repair"
+  taskType: "checkout" | "stayover" | "deep-clean" | "turndown" | "inspection" | "maintenance"
   priority: "low" | "medium" | "high" | "urgent"
   status: "pending" | "in-progress" | "completed" | "cancelled"
   assignedTo?: string
