@@ -84,6 +84,65 @@ const calculateRemainingDays = (checkOut?: string) => {
   )
 }
 
+const getCheckoutStayStatus = (checkOut?: string, fallbackRemainingDays?: number) => {
+  if (!checkOut) {
+    const remainingDays = Number.isFinite(fallbackRemainingDays) ? Number(fallbackRemainingDays) : 0
+    return {
+      remainingDays,
+      isCheckoutToday: remainingDays === 0,
+      isOverstay: false,
+      label: remainingDays === 0 ? "Checkout Today" : `${remainingDays} ${remainingDays === 1 ? "Day" : "Days"} Left`,
+      className: remainingDays === 0 ? "text-amber-600" : "text-primary",
+    }
+  }
+
+  const checkOutDate = new Date(checkOut)
+  if (isNaN(checkOutDate.getTime())) {
+    const remainingDays = Number.isFinite(fallbackRemainingDays) ? Number(fallbackRemainingDays) : 0
+    return {
+      remainingDays,
+      isCheckoutToday: remainingDays === 0,
+      isOverstay: false,
+      label: remainingDays === 0 ? "Checkout Today" : `${remainingDays} ${remainingDays === 1 ? "Day" : "Days"} Left`,
+      className: remainingDays === 0 ? "text-amber-600" : "text-primary",
+    }
+  }
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  checkOutDate.setHours(0, 0, 0, 0)
+
+  const dayDifference = Math.ceil((checkOutDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+  if (dayDifference < 0) {
+    return {
+      remainingDays: dayDifference,
+      isCheckoutToday: false,
+      isOverstay: true,
+      label: "Overstay",
+      className: "text-destructive",
+    }
+  }
+
+  if (dayDifference === 0) {
+    return {
+      remainingDays: 0,
+      isCheckoutToday: true,
+      isOverstay: false,
+      label: "Checkout Today",
+      className: "text-amber-600",
+    }
+  }
+
+  return {
+    remainingDays: dayDifference,
+    isCheckoutToday: false,
+    isOverstay: false,
+    label: `${dayDifference} ${dayDifference === 1 ? "Day" : "Days"} Left`,
+    className: "text-primary",
+  }
+}
+
 const buildRoomGuestDetails = (room: Room, reservations: Reservation[]): Room => {
   if (room.status !== "reserved" && room.status !== "occupied") return room
 
@@ -207,7 +266,7 @@ export default function RoomDashboardPage() {
       router.push(`/admin/front-office/reception/check-in?reservationId=${room.guestDetails?.bookingId || room.bookingId}&roomNo=${room.number}`)
       return
     }
-    if(room.status === "occupied") {
+    if (room.status === "occupied") {
       const params = new URLSearchParams({ room: room.number })
       const folioId = room.guestDetails?.folioId || room.folioId
       const checkinId = room.guestDetails?.checkinId || room.checkinId
@@ -368,6 +427,10 @@ export default function RoomDashboardPage() {
                 const displayStatus = getDisplayStatus(room)
                 const activeTask = activeTaskByRoom.get(room.id) || activeTaskByRoom.get(room.number)
                 const roomNote = activeTask?.notes?.trim()
+                const checkoutStayStatus = getCheckoutStayStatus(
+                  room.guestDetails?.checkOut || room.checkOut,
+                  room.remainingDays
+                )
                 const card = (
                   <Card
                     key={room.id}
@@ -396,9 +459,8 @@ export default function RoomDashboardPage() {
                             {room.guestName || room.guestDetails?.name || "Guest"}
                           </p>
                           {room.status === "occupied" ? (
-                            <p className="text-xs font-medium text-primary">
-                              {room.remainingDays ?? calculateRemainingDays(room.guestDetails?.checkOut || room.checkOut)}{" "}
-                              {(room.remainingDays ?? calculateRemainingDays(room.guestDetails?.checkOut || room.checkOut)) === 1 ? "Day" : "Days"} Left
+                            <p className={`text-xs font-medium ${checkoutStayStatus.className}`}>
+                              {checkoutStayStatus.label}
                             </p>
                           ) : (
                             <p className="text-xs font-medium text-blue-600">
@@ -511,21 +573,8 @@ export default function RoomDashboardPage() {
                                   Remaining
                                 </p>
 
-                                <p className="font-bold text-green-600 mt-1">
-                                  {room.remainingDays !== undefined && !isNaN(room.remainingDays) ? room.remainingDays : (
-                                    (room.guestDetails?.checkOut || room.checkOut) && !isNaN(new Date((room.guestDetails?.checkOut || room.checkOut) as string).getTime()) ? Math.max(
-                                      0,
-                                      Math.ceil(
-                                        (
-                                          new Date(
-                                            (room.guestDetails?.checkOut || room.checkOut) as string
-                                          ).getTime() - Date.now()
-                                        ) /
-                                        (1000 * 60 * 60 * 24)
-                                      )
-                                    ) : 0
-                                  )}{" "}
-                                  Days
+                                <p className={`font-bold mt-1 ${checkoutStayStatus.className}`}>
+                                  {checkoutStayStatus.label}
                                 </p>
                               </div>
                             )}

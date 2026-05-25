@@ -53,6 +53,12 @@ import { AVAILABLE_MODULES } from "@/lib/types"
 import type { Staff, ModuleType } from "@/lib/types"
 import { useAuth } from "@/lib/auth-context"
 
+const usernamePattern = /^[a-zA-Z0-9_]{4,}$/
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const normalizeText = (value: string) => value.trim().toLowerCase()
+const normalizePhone = (value: string) => value.replace(/[^\d+]/g, "")
+
 export default function StaffManagementPage() {
   const { user } = useAuth()
   const { toast } = useToast()
@@ -72,10 +78,36 @@ export default function StaffManagementPage() {
     name: "",
     username: "",
     email: "",
+    phone: "",
     role: "staff" as "admin" | "staff",
     password: "",
   })
-  const isUsernameValid = /^[a-zA-Z0-9_]{4,}$/.test(formData.username)
+  const isUsernameValid = usernamePattern.test(formData.username.trim())
+  const isEmailValid = emailPattern.test(formData.email.trim())
+  const phoneDigits = normalizePhone(formData.phone)
+  const isIndianPrefix = formData.phone.trim().startsWith("+91")
+  const isPhoneValid = isIndianPrefix 
+    ? phoneDigits.length === 12 
+    : (phoneDigits.length === 10 && !formData.phone.trim().startsWith("+")) || (phoneDigits.length >= 7 && phoneDigits.length <= 15)
+  const isDuplicateUsername = Boolean(formData.username.trim()) && staff.some((member) =>
+    normalizeText(member.username || "") === normalizeText(formData.username)
+  )
+  const isDuplicateEmail = Boolean(formData.email.trim()) && staff.some((member) =>
+    normalizeText(member.email) === normalizeText(formData.email)
+  )
+  const isDuplicatePhone = Boolean(formData.phone.trim()) && staff.some((member) =>
+    normalizePhone(member.phone || "") === phoneDigits
+  )
+  const isAddStaffFormValid =
+    Boolean(formData.name.trim()) &&
+    isUsernameValid &&
+    !isDuplicateUsername &&
+    isEmailValid &&
+    !isDuplicateEmail &&
+    isPhoneValid &&
+    !isDuplicatePhone &&
+    Boolean(formData.password) &&
+    selectedModules.length > 0
 
   useEffect(() => {
     const load = async () => {
@@ -116,13 +148,23 @@ export default function StaffManagementPage() {
 
   const handleAddStaff = async () => {
     if (isSubmitting) return
+    if (!isAddStaffFormValid) {
+      toast({
+        title: "Validation Error",
+        description: "Please fix username, email, phone number and required fields before creating the account.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
       await createAdminStaff({
-        name: formData.name,
-        username: formData.username,
-        email: formData.email,
+        name: formData.name.trim(),
+        username: formData.username.trim(),
+        email: formData.email.trim().toLowerCase(),
+        phone: formData.phone.trim(),
         password: formData.password,
         role: formData.role === "admin" ? "hoteladmin" : "staff",
         modules: selectedModules,
@@ -139,7 +181,7 @@ export default function StaffManagementPage() {
       })
 
       setIsAddDialogOpen(false)
-      setFormData({ name: "", username: "", email: "", role: "staff", password: "" })
+      setFormData({ name: "", username: "", email: "", phone: "", role: "staff", password: "" })
       setSelectedModules([])
     } catch (error: any) {
       toast({
@@ -244,10 +286,12 @@ export default function StaffManagementPage() {
                     value={formData.username}
                     onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                     placeholder="Enter username"
-                    className={formData.username && !isUsernameValid ? "border-destructive" : ""}
+                    className={formData.username && (!isUsernameValid || isDuplicateUsername) ? "border-destructive" : ""}
                   />
                   {formData.username && !isUsernameValid ? (
                     <p className="text-xs text-destructive">Username must be at least 4 characters and only contain letters, numbers, or underscores.</p>
+                  ) : isDuplicateUsername ? (
+                    <p className="text-xs text-destructive">Username already exists.</p>
                   ) : (
                     <p className="text-xs text-muted-foreground">Username will be used for login.</p>
                   )}
@@ -260,7 +304,30 @@ export default function StaffManagementPage() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="john@hotel.com"
+                    className={formData.email && (!isEmailValid || isDuplicateEmail) ? "border-destructive" : ""}
                   />
+                  {formData.email && !isEmailValid && (
+                    <p className="text-xs text-destructive">Enter a valid email address.</p>
+                  )}
+                  {isDuplicateEmail && (
+                    <p className="text-xs text-destructive">Email already exists.</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone *</Label>
+                  <Input
+                    id="phone"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/[^\d+]/g, "") })}
+                    placeholder="Enter phone number"
+                    className={formData.phone && (!isPhoneValid || isDuplicatePhone) ? "border-destructive" : ""}
+                  />
+                  {formData.phone && !isPhoneValid && (
+                    <p className="text-xs text-destructive">Phone number must contain 7 to 15 digits.</p>
+                  )}
+                  {isDuplicatePhone && (
+                    <p className="text-xs text-destructive">Phone number already exists.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="password">Initial Password</Label>
@@ -329,7 +396,7 @@ export default function StaffManagementPage() {
                 </Button>
                 <Button
                   onClick={handleAddStaff}
-                  disabled={!formData.name || !isUsernameValid || !formData.email || !formData.password || selectedModules.length === 0 || isSubmitting}
+                  disabled={!isAddStaffFormValid || isSubmitting}
                 >
                   {isSubmitting ? (
                     <>
@@ -467,6 +534,9 @@ export default function StaffManagementPage() {
                             <Mail className="h-3 w-3" />
                             <span>{member.email}</span>
                           </div>
+                          {member.phone && (
+                            <p className="text-sm text-muted-foreground">{member.phone}</p>
+                          )}
                         </div>
                       </div>
                     </td>

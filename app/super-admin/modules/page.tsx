@@ -30,8 +30,8 @@ export default function ModulesPage() {
           getModuleRequests(),
           getAvailableModules(),
         ])
-        setModuleRequests(requests.data)
-        setAvailableModules(modules.data)
+        setModuleRequests((Array.isArray(requests.data) ? requests.data : []) as unknown as ModuleRequest[])
+        setAvailableModules(Array.isArray(modules.data) ? modules.data : [])
       } finally {
         setLoading(false)
       }

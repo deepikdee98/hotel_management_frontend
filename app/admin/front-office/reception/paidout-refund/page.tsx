@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -20,7 +21,7 @@ import { useSetupOptions } from "@/hooks/use-setup-options"
 interface Transaction {
   _id: string
   type: "paidout" | "refund"
-  roomNo: string
+  roomNo: string | { roomNumber: string }
   guestName: string
   amount: number
   reason: string
@@ -35,6 +36,22 @@ interface InHouseGuest {
 }
 
 export default function PaidoutRefundPage() {
+  return (
+    <Suspense fallback={
+      <DashboardLayout requiredRole={["admin", "staff"]}>
+        <div className="flex items-center justify-center min-h-100">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    }>
+      <PaidoutRefundContent />
+    </Suspense>
+  )
+}
+
+function PaidoutRefundContent() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const { toast } = useToast()
   const paymentModeOptions = useSetupOptions("paymentMode")
   const [search, setSearch] = useState("")
@@ -57,6 +74,23 @@ export default function PaidoutRefundPage() {
   useEffect(() => {
     loadData()
   }, [])
+
+  useEffect(() => {
+    const folioId = searchParams.get("folioId")
+    const amount = searchParams.get("amount")
+    const type = searchParams.get("type")
+
+    if (folioId && amount) {
+      setTxnType(type === "refund" ? "refund" : "paidout")
+      setFormData(prev => ({
+        ...prev,
+        roomNo: folioId,
+        amount: amount,
+        reason: "Refund settled from checkout"
+      }))
+      setIsNewOpen(true)
+    }
+  }, [searchParams])
 
   const loadData = async () => {
     try {
@@ -120,6 +154,7 @@ export default function PaidoutRefundPage() {
       })
 
       setIsNewOpen(false)
+      const finishedFolioId = formData.roomNo
       setFormData({
         roomNo: "",
         amount: "",
@@ -129,6 +164,11 @@ export default function PaidoutRefundPage() {
       })
 
       await loadData()
+
+      // If we came from checkout, redirect back
+      if (searchParams.get("from") === "checkout" || searchParams.get("folioId")) {
+        router.push(`/admin/front-office/reception/check-out?folioId=${finishedFolioId}`)
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to process transaction"
       toast({
@@ -142,9 +182,10 @@ export default function PaidoutRefundPage() {
   }
 
   const filtered = transactions.filter((t) => {
+    const roomNumber = typeof t.roomNo === 'string' ? t.roomNo : t.roomNo?.roomNumber || ""
     const matchesSearch =
       t.guestName.toLowerCase().includes(search.toLowerCase()) ||
-      t.roomNo.includes(search)
+      roomNumber.includes(search)
     const matchesTab = activeTab === "all" || t.type === activeTab
     return matchesSearch && matchesTab
   })
@@ -221,7 +262,9 @@ export default function PaidoutRefundPage() {
                             {t.type === "paidout" ? "Paidout" : "Refund"}
                           </Badge>
                         </TableCell>
-                        <TableCell className="font-medium">{t.roomNo}</TableCell>
+                        <TableCell className="font-medium">
+                          {typeof t.roomNo === 'string' ? t.roomNo : t.roomNo?.roomNumber}
+                        </TableCell>
                         <TableCell>{t.guestName}</TableCell>
                         <TableCell className="font-medium">₹{t.amount.toFixed(2)}</TableCell>
                         <TableCell className="max-w-sm truncate text-sm">{t.reason}</TableCell>

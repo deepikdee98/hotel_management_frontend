@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
-import { DoorOpen, Printer, Pencil, Loader2, Star, CheckCircle2, X } from "lucide-react"
+import { DoorOpen, Printer, Pencil, Loader2, Star, CheckCircle2, X, AlertCircle, ArrowRight } from "lucide-react"
 import { getInHouseGuests, getFolioDetails, createCheckOut, getSetupRoomTypes, getSetupRatePlans, getSetupOptions, downloadCheckoutInvoice } from "@/lib/backend-api"
 import { toast } from "sonner"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -102,6 +102,11 @@ export default function CheckOutPage() {
   const [companyName, setCompanyName] = useState("")
   const [companyGstin, setCompanyGstin] = useState("")
   const [companyBillingAddress, setCompanyBillingAddress] = useState("")
+
+  const [settlementMethod, setSettlementMethod] = useState("cash")
+  const [isSettled, setIsSettled] = useState(false)
+  const [refundSettled, setRefundSettled] = useState(false)
+  const [isSettling, setIsSettling] = useState(false)
 
   useEffect(() => {
     fetchInitialData()
@@ -204,6 +209,8 @@ export default function CheckOutPage() {
     setFolioData(null)
     setAmountPaid(0)
     setAmountPaidEdited(false)
+    setIsSettled(false)
+    setRefundSettled(false)
     setSplitAllocations(buildSplitRowsForRoom(roomNumber))
     const guest = selectedGuest || inHouseGuests.find(g => getGuestRoomNumber(g) === String(roomNumber).trim())
     const folioId = getGuestFolioId(guest) || getGuestCheckinId(guest)
@@ -223,6 +230,28 @@ export default function CheckOutPage() {
     }
   }
 
+  const handleSettle = async () => {
+    setIsSettling(true)
+    // Simulate settlement process
+    try {
+      await new Promise(resolve => setTimeout(resolve, 800))
+      if (balance > 0) {
+        setIsSettled(true)
+        toast.success(`Payment of ${money(balance)} collected via ${settlementMethod.toUpperCase()}`)
+      } else if (refund > 0) {
+        setRefundSettled(true)
+        toast.success(`Refund of ${money(refund)} processed via ${settlementMethod.toUpperCase()}`)
+      } else {
+        setIsSettled(true)
+        toast.success("Billing settled")
+      }
+    } catch (err) {
+      toast.error("Settlement failed")
+    } finally {
+      setIsSettling(false)
+    }
+  }
+
   const handleCheckout = async () => {
     if (!selectedRoom || !folioData) return
     if (!minibarChecked) {
@@ -233,8 +262,12 @@ export default function CheckOutPage() {
       toast.error("Please complete room inspection before checkout")
       return
     }
-    if (billingType === "full" && balance > 0.001) {
-      toast.error("Payment incomplete. Please collect full amount before checkout")
+    if (billingType === "full" && balance > 0.001 && !isSettled) {
+      toast.error("Pending payment settlement. Please collect balance before checkout.")
+      return
+    }
+    if (billingType === "full" && refund > 0.001 && !refundSettled) {
+      toast.error("Refund settlement pending. Please process refund before checkout.")
       return
     }
     if (billingType === "split" && !isSplitBillingValid()) {
@@ -463,9 +496,10 @@ export default function CheckOutPage() {
   const cgst = providedCgst || totalTax / 2
   const sgst = providedSgst || totalTax / 2
   const grossTotal = roomCharges + serviceCharges + totalTax
-  const advance = payments.reduce((sum: number, p: any) => sum + toNum(p.amount), 0) || Number(room?.advanceAmount || 0)
+  const rawAdvance = payments.reduce((sum: number, p: any) => sum + toNum(p.amount), 0) || Number(room?.advanceAmount || 0)
+  const advance = Math.abs(rawAdvance)
   const netPayable = grossTotal - advance
-  const folioNetPayable = Math.max(0, roundMoney(netPayable))
+  const folioNetPayable = roundMoney(netPayable)
 
   const extraCharges =
     minibarCharges +
@@ -473,16 +507,31 @@ export default function CheckOutPage() {
     lateCheckoutCharges +
     extraManualCharges
 
-  const finalAmount = Math.max(0, roundMoney(folioNetPayable + extraCharges - discount))
+  const finalAmount = roundMoney(folioNetPayable + extraCharges - discount)
   const totalSplit = roundMoney(splitAllocations.reduce((sum, row) => sum + toNonNegativeNum(row.amount), 0))
-  const balance = billingType === "full" ? roundMoney(finalAmount - toNonNegativeNum(amountPaid)) : 0
-  const refund = billingType === "full" && toNonNegativeNum(amountPaid) > finalAmount ? roundMoney(toNonNegativeNum(amountPaid) - finalAmount) : 0
+  
+  // Scenario Detection
+  const refundDue = finalAmount < -0.01 ? Math.abs(finalAmount) : 0
+  const isRefundScenario = refundDue > 0
+  
+  // Balance is only if finalAmount > 0
+  const balance = billingType === "full" && !isRefundScenario 
+    ? Math.max(0, roundMoney(finalAmount - toNonNegativeNum(amountPaid))) 
+    : 0
+  
+  // Refund is either from negative finalAmount (refundScenario) or from overpayment of amountPaid
+  const refund = billingType === "full" 
+    ? (isRefundScenario 
+        ? refundDue + toNonNegativeNum(amountPaid)
+        : (toNonNegativeNum(amountPaid) > finalAmount ? roundMoney(toNonNegativeNum(amountPaid) - finalAmount) : 0)
+      ) 
+    : 0
   const remainingSplitBalance = roundMoney(finalAmount - totalSplit)
   const splitHasAllocationMismatch = billingType === "split" && !moneyEquals(totalSplit, finalAmount)
 
   useEffect(() => {
-    if (billingType === "full" && finalAmount > 0 && !amountPaidEdited) {
-      setAmountPaid(finalAmount)
+    if (billingType === "full" && !amountPaidEdited) {
+      setAmountPaid(Math.max(0, finalAmount))
     }
   }, [finalAmount, billingType, amountPaidEdited])
 
@@ -636,7 +685,12 @@ export default function CheckOutPage() {
                         <div className="flex justify-between text-xs"><span>Gross Total</span><span className="font-medium">{money(grossTotal)}</span></div>
                         <div className="flex justify-between text-xs text-green-600"><span>Advance Paid</span><span>-{money(advance)}</span></div>
                         <Separator />
-                        <div className="flex justify-between text-sm font-bold"><span>Net Payable</span><span className="text-primary">{money(folioNetPayable)}</span></div>
+                        <div className="flex justify-between text-sm font-bold">
+                          <span>{finalAmount < 0 ? "Net Refundable" : "Net Payable"}</span>
+                          <span className={finalAmount < 0 ? "text-green-600" : "text-primary"}>
+                            {money(folioNetPayable)}
+                          </span>
+                        </div>
                       </div>
 
                       <Separator />
@@ -815,32 +869,63 @@ export default function CheckOutPage() {
                       <Separator />
 
                       {billingType === "full" && (
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground uppercase">Payment Mode</Label>
-                            <Select value={paymentMode} onValueChange={setPaymentMode}>
-                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="cash">Cash</SelectItem>
-                                <SelectItem value="upi">UPI</SelectItem>
-                                <SelectItem value="card">Card</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-muted-foreground uppercase">Amount Paid</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              className="h-8 text-xs"
-                              value={numberInputValue(amountPaid)}
-                              onChange={(e) => {
-                                setAmountPaidEdited(true)
-                                setAmountPaid(toNonNegativeNum(e.target.value))
-                              }}
-                            />
-                          </div>
+                        <div className="space-y-4">
+                          {isRefundScenario ? (
+                            <div className="bg-amber-50 border border-amber-200 rounded-md p-4 space-y-3">
+                              <div className="flex items-center gap-2 text-amber-800 font-semibold">
+                                <AlertCircle className="h-5 w-5" />
+                                <span>Refund Settlement Required</span>
+                              </div>
+                              <p className="text-sm text-amber-700">
+                                This guest is due for a refund of <span className="font-bold">{money(refundDue)}</span>. 
+                                Please complete the refund settlement before checking out.
+                              </p>
+                              <Button 
+                                variant="outline" 
+                                className="w-full bg-white border-amber-300 text-amber-800 hover:bg-amber-100"
+                                onClick={() => {
+                                  const guest = inHouseGuests.find(g => getGuestRoomNumber(g) === String(selectedRoom).trim())
+                                  const folioId = getGuestFolioId(guest) || getGuestCheckinId(guest)
+                                  router.push(`/admin/front-office/reception/paidout-refund?folioId=${folioId}&amount=${refundDue}&type=refund&from=checkout`)
+                                }}
+                              >
+                                Go To Refund Settlement <ArrowRight className="h-4 w-4 ml-2" />
+                              </Button>
+                            </div>
+                          ) : finalAmount > 0.001 ? (
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground uppercase">Payment Mode</Label>
+                                <Select value={paymentMode} onValueChange={setPaymentMode}>
+                                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="cash">Cash</SelectItem>
+                                    <SelectItem value="upi">UPI</SelectItem>
+                                    <SelectItem value="card">Card</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px] text-muted-foreground uppercase">Amount Paid</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  className="h-8 text-xs"
+                                  value={numberInputValue(amountPaid)}
+                                  onChange={(e) => {
+                                    setAmountPaidEdited(true)
+                                    setAmountPaid(toNonNegativeNum(e.target.value))
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="bg-green-50 border border-green-200 rounded-md p-4 flex items-center gap-2 text-green-700">
+                              <CheckCircle2 className="h-5 w-5" />
+                              <span className="text-sm font-medium">Billing Already Settled</span>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -1018,7 +1103,7 @@ export default function CheckOutPage() {
                   size="sm"
                   className="gap-1.5"
                   onClick={handleCheckout}
-                  disabled={processingCheckout || !isSplitBillingValid()}
+                  disabled={processingCheckout || !isSplitBillingValid() || isRefundScenario || (billingType === "full" && balance > 0.001)}
                 >
                   {processingCheckout ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <DoorOpen className="h-3.5 w-3.5" />}
                   Checkout (F10)

@@ -318,7 +318,6 @@ export default function CheckInPage() {
                 <div className="space-y-2">
                   <Label htmlFor="assignedRoom">Assigned Room</Label>
                   <Select
-                    modal={false}
                     value={checkInForm.assignedRoom}
                     onValueChange={(v) => setCheckInForm({ ...checkInForm, assignedRoom: v })}
                   >

@@ -36,11 +36,11 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { 
-  createSuperAdminHotel, 
-  deleteSuperAdminHotel, 
-  getSuperAdminHotels, 
-  updateSuperAdminHotelStatus, 
+import {
+  createSuperAdminHotel,
+  deleteSuperAdminHotel,
+  getSuperAdminHotels,
+  updateSuperAdminHotelStatus,
   updateSuperAdminHotel,
   extendSuperAdminHotelSubscription,
   toggleSuperAdminHotelActive
@@ -50,6 +50,12 @@ import type { Hotel, ModuleType } from "@/lib/types"
 import ViewDetailsModal from "@/components/common/ViewDetailsModal"
 import EditDetailsModal from "@/components/common/EditDetailsModal"
 import { toast } from "sonner"
+
+const usernamePattern = /^[a-zA-Z0-9_]{4,}$/
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const normalizeText = (value: string) => value.trim().toLowerCase()
+const normalizePhone = (value: string) => value.replace(/[^\d+]/g, "")
 
 export default function HotelsPage() {
   const [hotels, setHotels] = useState<Hotel[]>([])
@@ -61,6 +67,7 @@ export default function HotelsPage() {
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
   const [pendingAction, setPendingAction] = useState<{ id: string, type: 'toggle' | 'extend' } | null>(null)
   const [loading, setLoading] = useState<Record<string, boolean>>({})
+  const [isCreatingHotel, setIsCreatingHotel] = useState(false)
   const [selectedModules, setSelectedModules] = useState<ModuleType[]>([])
   const [selectedEditModules, setSelectedEditModules] = useState<ModuleType[]>([])
   const [formData, setFormData] = useState({
@@ -77,7 +84,31 @@ export default function HotelsPage() {
   })
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const isAdminUsernameValid = /^[a-zA-Z0-9_]{4,}$/.test(formData.adminUsername)
+  const isAdminUsernameValid = usernamePattern.test(formData.adminUsername.trim())
+  const isEmailValid = emailPattern.test(formData.email.trim())
+  const phoneDigits = normalizePhone(formData.phone)
+  const isPhoneValid = phoneDigits.length >= 7 && phoneDigits.length <= 15
+  const isDuplicateHotelEmail = Boolean(formData.email.trim()) && hotels.some((hotel) =>
+    normalizeText(hotel.email) === normalizeText(formData.email)
+  )
+  const isDuplicateHotelPhone = Boolean(formData.phone.trim()) && hotels.some((hotel) =>
+    normalizePhone(hotel.phone) === phoneDigits
+  )
+  const doPasswordsMatch = formData.password === formData.confirmPassword
+  const isAddHotelFormValid =
+    Boolean(formData.name.trim()) &&
+    isAdminUsernameValid &&
+    isEmailValid &&
+    !isDuplicateHotelEmail &&
+    isPhoneValid &&
+    !isDuplicateHotelPhone &&
+    Boolean(formData.address.trim()) &&
+    Boolean(formData.city.trim()) &&
+    Boolean(formData.country.trim()) &&
+    Boolean(formData.password) &&
+    Boolean(formData.confirmPassword) &&
+    doPasswordsMatch &&
+    selectedModules.length > 0
 
   useEffect(() => {
     loadHotels()
@@ -112,22 +143,29 @@ export default function HotelsPage() {
   }
 
   const handleAddHotel = async () => {
+    if (isCreatingHotel) return
+    if (!isAddHotelFormValid) {
+      toast.error("Please fix username, email, phone number and required fields before registering the hotel")
+      return
+    }
+
     if (formData.password !== formData.confirmPassword) {
       toast.error("Passwords do not match")
       return
     }
 
+    setIsCreatingHotel(true)
     try {
       const result = await createSuperAdminHotel({
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        address: formData.address,
-        city: formData.city,
-        country: formData.country,
+        name: formData.name.trim(),
+        email: formData.email.trim().toLowerCase(),
+        phone: formData.phone.trim(),
+        address: formData.address.trim(),
+        city: formData.city.trim(),
+        country: formData.country.trim(),
         totalRooms: parseInt(formData.roomCount) || 0,
         modules: selectedModules,
-        adminUsername: formData.adminUsername,
+        adminUsername: formData.adminUsername.trim(),
         adminPassword: formData.password,
         confirmPassword: formData.confirmPassword,
       })
@@ -154,6 +192,8 @@ export default function HotelsPage() {
       setSelectedModules([])
     } catch (error: any) {
       toast.error(error.message || "Failed to create hotel")
+    } finally {
+      setIsCreatingHotel(false)
     }
   }
 
@@ -208,14 +248,44 @@ export default function HotelsPage() {
   }
 
   const handleUpdateHotel = async () => {
+    const cleanEmail = String(selectedHotel.email || "").trim().toLowerCase()
+    const cleanPhone = String(selectedHotel.phone || "").trim()
+    const cleanPhoneDigits = normalizePhone(cleanPhone)
+
+    if (!emailPattern.test(cleanEmail)) {
+      toast.error("Enter a valid email address")
+      return
+    }
+
+    if (cleanPhoneDigits.length < 7 || cleanPhoneDigits.length > 15) {
+      toast.error("Phone number must contain 7 to 15 digits")
+      return
+    }
+
+    const duplicateEmail = hotels.some((hotel) =>
+      hotel.id !== selectedHotel.id && normalizeText(hotel.email) === cleanEmail
+    )
+    if (duplicateEmail) {
+      toast.error("Email already exists")
+      return
+    }
+
+    const duplicatePhone = hotels.some((hotel) =>
+      hotel.id !== selectedHotel.id && normalizePhone(hotel.phone) === cleanPhoneDigits
+    )
+    if (duplicatePhone) {
+      toast.error("Phone number already exists")
+      return
+    }
+
     try {
       await updateSuperAdminHotel(selectedHotel.id, {
-        name: selectedHotel.name,
-        email: selectedHotel.email,
-        phone: selectedHotel.phone,
-        address: selectedHotel.address,
-        city: selectedHotel.city,
-        country: selectedHotel.country,
+        name: String(selectedHotel.name || "").trim(),
+        email: cleanEmail,
+        phone: cleanPhone,
+        address: String(selectedHotel.address || "").trim(),
+        city: String(selectedHotel.city || "").trim(),
+        country: String(selectedHotel.country || "").trim(),
         totalRooms: selectedHotel.totalRooms,
         modules: selectedEditModules,
       })
@@ -326,7 +396,14 @@ export default function HotelsPage() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="info@hotel.com"
+                    className={formData.email && (!isEmailValid || isDuplicateHotelEmail) ? "border-destructive" : ""}
                   />
+                  {formData.email && !isEmailValid && (
+                    <p className="text-xs text-destructive">Enter a valid email address.</p>
+                  )}
+                  {isDuplicateHotelEmail && (
+                    <p className="text-xs text-destructive">Email already exists.</p>
+                  )}
                 </div>
                 <div className="col-span-2 space-y-2">
                   <Label htmlFor="address">Address</Label>
@@ -360,9 +437,16 @@ export default function HotelsPage() {
                   <Input
                     id="phone"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="+1 234 567 8900"
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/[^\d+]/g, "") })}
+                    placeholder="Enter phone number"
+                    className={formData.phone && (!isPhoneValid || isDuplicateHotelPhone) ? "border-destructive" : ""}
                   />
+                  {formData.phone && !isPhoneValid && (
+                    <p className="text-xs text-destructive">Phone number must contain 7 to 15 digits.</p>
+                  )}
+                  {isDuplicateHotelPhone && (
+                    <p className="text-xs text-destructive">Phone number already exists.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="roomCount">Number of Rooms</Label>
@@ -447,8 +531,15 @@ export default function HotelsPage() {
                 <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleAddHotel} disabled={!formData.name || !isAdminUsernameValid || !formData.email || !formData.password || !formData.confirmPassword || selectedModules.length === 0}>
-                  Register Hotel
+                <Button onClick={handleAddHotel} disabled={!isAddHotelFormValid || isCreatingHotel}>
+                  {isCreatingHotel ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Registering...
+                    </>
+                  ) : (
+                    "Register Hotel"
+                  )}
                 </Button>
               </div>
             </div>
@@ -575,7 +666,7 @@ export default function HotelsPage() {
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit Hotel
                           </DropdownMenuItem>
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={() => handleExtendSubscription(hotel.id)}
                             disabled={loading[`extend-${hotel.id}`]}
                           >

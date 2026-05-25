@@ -40,7 +40,8 @@ interface BlockedRoom {
 export default function UnifiedDashboard() {
   const { user, hasAccess } = useAuth()
   const { toast } = useToast()
-  const isAdmin = user?.role === "admin" || user?.role === "hoteladmin"
+  const userRole = user?.role as string | undefined
+  const isAdmin = userRole === "admin" || userRole === "hoteladmin"
   const canAccessFrontOffice = hasAccess("front-office")
 
   const [rooms, setRooms] = useState<any[]>([])
@@ -94,11 +95,12 @@ export default function UnifiedDashboard() {
       let roomStatus = (dashboard?.data?.roomStatus || {}) as Record<string, number>
 
       if (!isAdmin && staffDashboard) {
-        const sDashboardStats = staffDashboard.stats as Record<string, number> | undefined
-        const roomOverview = Array.isArray(staffDashboard.roomOverview) ? staffDashboard.roomOverview : []
+        const staffDashboardData = staffDashboard as { stats?: Record<string, number>; roomOverview?: Array<{ status?: string }> }
+        const sDashboardStats = staffDashboardData.stats
+        const roomOverview = Array.isArray(staffDashboardData.roomOverview) ? staffDashboardData.roomOverview : []
 
         if (!Object.keys(roomStatus).length && roomOverview.length) {
-          roomStatus = roomOverview.reduce<Record<string, number>>((acc, room: any) => {
+          roomStatus = roomOverview.reduce<Record<string, number>>((acc: Record<string, number>, room: { status?: string }) => {
             const status = String(room.status || "available")
             acc[status] = (acc[status] || 0) + 1
             return acc

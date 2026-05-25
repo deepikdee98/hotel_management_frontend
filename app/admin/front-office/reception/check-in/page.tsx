@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { CheckInForm } from "@/components/front-office/reception/check-in-form"
+import { CheckInFeature } from "@/features/checkin"
 
 export default function CheckInPage() {
   const searchParams = useSearchParams()
@@ -14,7 +14,7 @@ export default function CheckInPage() {
 
   return (
     <DashboardLayout requiredRole={["admin", "staff"]}>
-      <CheckInForm 
+      <CheckInFeature
         mode="check-in" 
         editId={checkInId} 
         isEditMode={isEditMode} 

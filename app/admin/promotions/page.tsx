@@ -43,7 +43,7 @@ export default function PromotionsPage() {
           getHotelPromotions(),
           getStaffGuests(),
         ])
-        setPromotions(promotionsResp.data)
+        setPromotions((Array.isArray(promotionsResp.data) ? promotionsResp.data : []) as unknown as Promotion[])
         setGuests(guestsResp.guests)
 
       } finally {
@@ -68,7 +68,7 @@ export default function PromotionsPage() {
 
       // Refresh promotions
       const resp = await getHotelPromotions()
-      setPromotions(resp.data)
+      setPromotions((Array.isArray(resp.data) ? resp.data : []) as unknown as Promotion[])
 
       // Reset form
       setShowCreateForm(false)

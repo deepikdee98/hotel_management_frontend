@@ -135,6 +135,7 @@ export interface Staff {
   name: string
   username?: string
   email: string
+  phone?: string
   role: "admin" | "staff"
   hotelId: string
   modules: ModuleType[]

@@ -37,9 +37,9 @@ export default function ModuleRequestPage() {
           getHotelModules(hotelId),
           getHotelModuleRequests(hotelId),
         ])
-        setAvailableModules(modulesResp.data)
-        setCurrentModules(currentResp.data?.modules || [])
-        setRequests(requestsResp.data)
+        setAvailableModules(Array.isArray(modulesResp.data) ? modulesResp.data : [])
+        setCurrentModules((currentResp.data as { modules?: ModuleType[] } | undefined)?.modules || [])
+        setRequests((Array.isArray(requestsResp.data) ? requestsResp.data : []) as unknown as ModuleRequest[])
       } finally {
         setLoading(false)
       }
@@ -87,7 +87,7 @@ export default function ModuleRequestPage() {
 
       // Refresh requests list
       const updatedRequests = await getHotelModuleRequests(hotelId)
-      setRequests(updatedRequests.data)
+      setRequests((Array.isArray(updatedRequests.data) ? updatedRequests.data : []) as unknown as ModuleRequest[])
 
       setTimeout(() => setSuccessMessage(''), 5000)
     } catch (error) {

@@ -22,7 +22,7 @@ import {
   sendAdminNotification,
   deleteNotification,
 } from '@/lib/backend-api'
-import type { Notification } from '@/lib/types'
+import type { Notification, NotificationRecipient, NotificationType } from '@/lib/types'
 
 export default function SuperAdminNotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -33,7 +33,7 @@ export default function SuperAdminNotificationsPage() {
   const [formData, setFormData] = useState({
     title: '',
     message: '',
-    type: 'system-update' as const,
+    type: 'system-update' as NotificationType,
     hotelId: '', // If empty, sends to all hotels
   })
 
@@ -41,7 +41,7 @@ export default function SuperAdminNotificationsPage() {
     const fetchNotifications = async () => {
       try {
         const resp = await getSuperAdminNotifications()
-        setNotifications(resp.data)
+        setNotifications((Array.isArray(resp.data) ? resp.data : []) as unknown as Notification[])
       } finally {
         setLoading(false)
       }
@@ -62,7 +62,7 @@ export default function SuperAdminNotificationsPage() {
         title: formData.title,
         message: formData.message,
         type: formData.type,
-        recipient: formData.hotelId ? 'hotel' : 'all',
+        recipient: (formData.hotelId ? 'hotel' : 'all') as NotificationRecipient,
         hotelId: formData.hotelId || undefined,
         senderId: 'super-admin-1', // Would come from auth context
         senderType: 'admin' as const,

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Input } from "@/components/ui/input"
@@ -45,161 +45,38 @@ import { useAuth } from "@/lib/auth-context"
 import { cn } from "@/lib/utils"
 import type { Room, Service } from "@/lib/types"
 import { calculateCheckoutDateTime, type CheckoutPlanMetadata } from "@/lib/pms-helpers"
-
-interface CheckInFormProps {
-  mode?: "check-in" | "pax"
-  editId?: string
-  isEditMode?: boolean
-  preSelectedRoomId?: string
-  preSelectedRoomNo?: string
-  reservationId?: string
-}
-
-type TabType = "guest-info" | "guest-id" | "companion" | "vehicle-company"
-
-type Companion = {
-  name: string
-  mobile: string
-  gender: string
-  type: string
-  idType: string
-  idNumber: string
-  separateBill: boolean
-}
-
-const createEmptyCompanion = (): Companion => ({
-  name: "",
-  mobile: "",
-  gender: "",
-  type: "",
-  idType: "",
-  idNumber: "",
-  separateBill: false,
-})
-
-const normalizeCompanion = (companion: Partial<Companion> = {}): Companion => ({
-  name: String(companion.name || ""),
-  mobile: String(companion.mobile || ""),
-  gender: String(companion.gender || ""),
-  type: String(companion.type || ""),
-  idType: String(companion.idType || ""),
-  idNumber: String(companion.idNumber || ""),
-  separateBill: Boolean(companion.separateBill),
-})
-
-const toMoneyString = (value: number | string) => (Number(value) || 0).toFixed(2)
-
-const normalizeRoomTypeName = (name: string) => {
-  if (!name) return "";
-  const n = name.trim().toLowerCase();
-  if (n === 'excutiv' || n === 'excutive') return 'Executive';
-  // Capitalize first letter as fallback
-  return name.charAt(0).toUpperCase() + name.slice(1);
-}
-
-const getNightlyCharge = (singleCharge: unknown, totalCharge: unknown, nights: unknown) => {
-  const single = Number(singleCharge)
-  if (Number.isFinite(single) && single > 0) return single
-
-  const total = Number(totalCharge)
-  const totalNights = Math.max(1, Number(nights) || 1)
-  if (Number.isFinite(total) && total > 0) return total / totalNights
-
-  return 0
-}
-
-const getCheckoutPlanMetadata = (
-  planValue: string,
-  optionMetadata?: CheckoutPlanMetadata
-): CheckoutPlanMetadata | undefined => {
-  const normalizedPlan = planValue.toLowerCase().replace(/[\s_-]+/g, "")
-
-  if (/(^|[^0-9])24([^0-9]|$)/.test(normalizedPlan) || normalizedPlan.includes("24hour")) {
-    return { type: "duration", hours: 24 }
-  }
-
-  if (normalizedPlan.includes("12noon") || normalizedPlan.includes("noon")) {
-    return { type: "fixed", time: "12:00" }
-  }
-
-  return optionMetadata
-}
-
-type ExistingGuest = {
-  id?: string
-  guestName?: string
-  fullName?: string
-  title?: string
-  email?: string
-  gender?: string
-  nationality?: string
-  address?: string
-  country?: string
-  state?: string
-  city?: string
-  zip?: string
-  company?: string
-  gstNumber?: string
-  gstIn?: string
-  referredByType?: string
-  referredById?: string
-  referredByName?: string
-  idProofType?: string
-  idProofNumber?: string
-}
-
-type SelectedService = {
-  serviceId: string
-  name: string
-  price: number
-  chargeType: string
-}
-
-const staffEditableFields = new Set([
-  "guestName",
-  "mobile",
-  "address",
-  "idProofType",
-  "idProofNumber",
-])
-
-const staffRestrictedFields = new Set([
-  "roomNo",
-  "roomType",
-  "planType",
-  "planCharges",
-  "foodCharges",
-  "discount",
-  "paymentMode",
-  "advanceAmount",
-  "ledgerAc",
-])
-
-const multiRoomEditableFields = new Set([
-  "roomNo",
-  "roomType",
-  "planType",
-  "planCharge",
-  "foodCharge",
-  "planCharges",
-  "foodCharges",
-  "paxAdultMale",
-  "paxAdultFemale",
-  "paxChildren",
-  "totalPax",
-  "occupancyType",
-])
-
-function FormField({ label, required, children, className }: { label: string; required?: boolean; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={className}>
-      <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-        {label}{required && <span className="text-destructive ml-0.5">*</span>}
-      </Label>
-      {children}
-    </div>
-  )
-}
+import { FormField } from "@/features/checkin/components/form-field"
+import {
+  multiRoomEditableFields,
+  staffEditableFields,
+  staffRestrictedFields,
+} from "@/features/checkin/constants/checkin.constants"
+import type {
+  CheckInFormProps,
+  Companion,
+  ExistingGuest,
+  SelectedService,
+  TabType,
+} from "@/features/checkin/types/checkin.types"
+import {
+  createEmptyCompanion,
+  getCheckoutPlanMetadata,
+  getNightlyCharge,
+  normalizeCompanion,
+  normalizeRoomTypeName,
+  toMoneyString,
+} from "@/features/checkin/utils/checkin-formatters"
+import {
+  buildCheckInPayload,
+  calculateBillingTotals,
+  createInitialCheckInForm,
+  findFoodService,
+  formatMoney,
+  getRoomTotal,
+  hasCurrentRoomDraft,
+  validateCheckInForm,
+  type MultiRoomContext,
+} from "@/features/checkin/utils/checkin-form-utils"
 
 export function CheckInForm({ 
   mode = "check-in", 
@@ -245,99 +122,15 @@ export function CheckInForm({
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [mainGuestInfo, setMainGuestInfo] = useState({ name: "", booking: "" })
   const [bookingPreview, setBookingPreview] = useState("Loading...")
-  const [multiRoomContext, setMultiRoomContext] = useState<{
-    bookingGroupId: string
-    parentGuestCheckin: string
-    linkedRooms: Array<{ roomNumber: string; bookingId?: string; checkinId?: string }>
-  } | null>(null)
+  const [multiRoomContext, setMultiRoomContext] = useState<MultiRoomContext>(null)
   const [isAddingLinkedRoom, setIsAddingLinkedRoom] = useState(false)
   const [pendingRooms, setPendingRooms] = useState<any[]>([])
   const [showAddMorePop, setShowAddMorePop] = useState(false)
 
-  const [form, setForm] = useState({
-    bookingNo: "Auto-generated",
-    reservationId: "",
-    registerNo: "",
-    title: "",
-    guestName: "",
-    mobile: "",
-    email: "",
-    dob: "",
-    gender: "",
-    address: "",
-    country: "",
-    state: "",
-    city: "",
-    zip: "",
-    nationality: "",
-    gstIn: "",
-    referredByType: "Walk-in",
-    referredById: "",
-    referredByName: "Walk-in",
-    arrivalFrom: "",
-    departureTo: "",
-    purposeOfVisit: "",
-    businessSource: "",
-    marketSegment: "",
-    company: "",
-    voucherNo: "",
-    checkInDate: new Date().toISOString().slice(0, 10),
-    checkInTime: new Date().toTimeString().slice(0, 5),
-    checkOutDate: "",
-    checkOutTime: "",
-    noOfNights: "1",
-    stayType: "Walk-in",
-    amount: "0",
-    occupancyType: "Single",
-    checkoutPlan: "",
-    guestClassification: "",
-    roomNo: "",
-    roomType: "",
-    planType: "",
-    planCharge: "0",
-    foodCharge: "0",
-    planCharges: "0",
-    foodCharges: "0",
-    discount: "0",
-    gstPercentage: "0",
-    gstType: "",
-    gstAmount: "0",
-    netAmount: "0",
-    guestType: mode === "pax" ? "PAX" : "Regular",
-    noOfBeds: "",
-    paxAdultMale: "0",
-    paxAdultFemale: "0",
-    paxChildren: "0",
-    totalPax: "0",
-    paymentMode: "",
-    advanceAmount: "",
-    remark: "",
-    idProofType: "",
-    idProofNumber: "",
-    ledgerAc: "",
-    vehicleNo: "",
-    vehicleType: "",
-    companyInfoCompanyName: "",
-    companyInfoLedgerGroup: "",
-    companyInfoPan: "",
-    companyInfoGst: "",
-    companyInfoBankAccountNo: "",
-    companyInfoIfscCode: "",
-    companyInfoCreditLimit: "",
-    companyInfoBookingCategory: "",
-    planTypeLabel: "",
-    mainCheckin: "",
-  })
+  const [form, setForm] = useState(() => createInitialCheckInForm(mode))
 
-  const hasCurrentRoomDraft = Boolean(form.roomNo || form.roomType || form.planType || Number(form.planCharges || 0) > 0)
-  const queuedRoomCount = pendingRooms.length + (hasCurrentRoomDraft ? 1 : 0)
-  const formatMoney = (value: unknown) => `₹${toMoneyString(Number(value) || 0)}`
-  const getRoomTotal = (room: any) => {
-    const plan = Number(room.planCharges || room.planCharge || room.amount || 0)
-    const food = Number(room.foodCharges || room.foodCharge || 0)
-    const discount = Number(room.discount || 0)
-    return Math.max(0, plan + food - discount)
-  }
+  const hasRoomDraft = hasCurrentRoomDraft(form)
+  const queuedRoomCount = pendingRooms.length + (hasRoomDraft ? 1 : 0)
 
   useEffect(() => {
     if (isEditMode) return
@@ -518,13 +311,7 @@ export function CheckInForm({
       const planCode = (plan?.code || "").toUpperCase()
 
       if (planCode !== "EP") {
-        const foodService = availableServices.find(s =>
-          s.isFood === true ||
-          s.category?.toUpperCase() === "FOOD" ||
-          s.category?.toUpperCase() === "FOOD & BEVERAGE" ||
-          s.category?.toUpperCase().includes("FOOD") ||
-          s.name?.toUpperCase().includes("FOOD")
-        )
+        const foodService = findFoodService(availableServices)
         if (foodService) {
           setForm(prev => ({ ...prev, foodCharge: foodService.defaultPrice.toString() }))
         }
@@ -845,8 +632,11 @@ export function CheckInForm({
     if (isEditMode && isEditing && isStaff && !isEditableForStaff(field)) return
 
     if (field === "mobile") {
+      const sanitized = value.replace(/[^\d+]/g, "")
       setLoadedGuestId("")
       lastCheckedMobile.current = ""
+      setForm(prev => ({ ...prev, mobile: sanitized }))
+      return
     }
 
     setForm(prev => ({ ...prev, [field]: value }))
@@ -1004,13 +794,7 @@ export function CheckInForm({
       })
       if (plan) {
         const planCode = (plan.code || "").toUpperCase()
-        const foodService = availableServices.find(s =>
-          s.isFood === true ||
-          s.category?.toUpperCase() === "FOOD" ||
-          s.category?.toUpperCase() === "FOOD & BEVERAGE" ||
-          s.category?.toUpperCase().includes("FOOD") ||
-          s.name?.toUpperCase().includes("FOOD")
-        )
+        const foodService = findFoodService(availableServices)
         let foodCharge = "0"
         if (foodService && planCode !== "EP") {
           foodCharge = toMoneyString(foodService.defaultPrice)
@@ -1021,48 +805,13 @@ export function CheckInForm({
   }
 
   useEffect(() => {
-    const roomGstPercent = Number(form.gstPercentage) || 0
-    const roomCharge = Math.max(0, Number(form.planCharge) || 0)
-    const foodCharge = Math.max(0, Number(form.foodCharge) || 0)
-    const nights = Math.max(1, Number(form.noOfNights) || 1)
-    const discountPercent = Math.min(100, Math.max(0, Number(form.discount) || 0))
-    const discountedRoomCharge = Math.max(0, roomCharge - (roomCharge * discountPercent / 100))
+    const totals = calculateBillingTotals(form, availableServices, gstInclusive)
 
-    // Find Food Service to get its GST settings
-    const foodService = availableServices.find(s =>
-      s.isFood === true ||
-      s.category?.toUpperCase() === "FOOD" ||
-      s.category?.toUpperCase() === "FOOD & BEVERAGE" ||
-      s.category?.toUpperCase().includes("FOOD") ||
-      s.name?.toUpperCase().includes("FOOD")
-    )
-    let foodGstAmount = 0
-    if (foodService?.gstApplicable) {
-      foodGstAmount = (foodCharge * (foodService.gstPercentage || 0)) / 100
-    }
-
-    const isInclusive = form.gstType === "INCLUSIVE" || gstInclusive
-    let roomGstAmount = 0
-    if (roomGstPercent > 0) {
-      if (isInclusive) {
-        roomGstAmount = discountedRoomCharge - discountedRoomCharge / (1 + roomGstPercent / 100)
-      } else {
-        roomGstAmount = discountedRoomCharge * (roomGstPercent / 100)
-      }
-    }
-
-    const nightlyNet = (isInclusive ? discountedRoomCharge : discountedRoomCharge + roomGstAmount) + foodCharge + foodGstAmount
-    const totalGst = (roomGstAmount + foodGstAmount) * nights
-    const net = nightlyNet * nights
-
-    const formattedGst = totalGst.toFixed(2)
-    const formattedNet = net.toFixed(2)
-
-    if (form.gstAmount !== formattedGst || form.netAmount !== formattedNet) {
+    if (form.gstAmount !== totals.gstAmount || form.netAmount !== totals.netAmount) {
       setForm(prev => ({
         ...prev,
-        gstAmount: formattedGst,
-        netAmount: formattedNet
+        gstAmount: totals.gstAmount,
+        netAmount: totals.netAmount
       }))
     }
   }, [form.planCharge, form.foodCharge, form.gstPercentage, form.gstType, gstInclusive, availableServices, form.discount, form.noOfNights, form.gstAmount, form.netAmount]);
@@ -1085,80 +834,7 @@ export function CheckInForm({
   }
 
   const handleReset = () => {
-    setForm({
-      bookingNo: "Auto-generated",
-      reservationId: "",
-      registerNo: "",
-      title: "",
-      guestName: "",
-      mobile: "",
-      email: "",
-      dob: "",
-      gender: "",
-      address: "",
-      country: "",
-      state: "",
-      city: "",
-      zip: "",
-      nationality: "",
-      gstIn: "",
-      referredByType: "Walk-in",
-      referredById: "",
-      referredByName: "Walk-in",
-      arrivalFrom: "",
-      departureTo: "",
-      purposeOfVisit: "",
-      businessSource: "",
-      marketSegment: "",
-      company: "",
-      voucherNo: "",
-      checkInDate: new Date().toISOString().slice(0, 10),
-      checkInTime: new Date().toTimeString().slice(0, 5),
-      checkOutDate: "",
-      checkOutTime: "",
-      noOfNights: "1",
-      stayType: "Walk-in",
-      amount: "0",
-      occupancyType: "Single",
-      checkoutPlan: "",
-      guestClassification: "",
-      roomNo: "",
-      roomType: "",
-      planType: "",
-      planCharge: "0",
-      foodCharge: "0",
-      planCharges: "0",
-      foodCharges: "0",
-      discount: "0",
-      gstPercentage: "0",
-      gstType: "",
-      gstAmount: "0",
-      netAmount: "0",
-      guestType: mode === "pax" ? "PAX" : "Regular",
-      noOfBeds: "",
-      paxAdultMale: "0",
-      paxAdultFemale: "0",
-      paxChildren: "0",
-      totalPax: "0",
-      paymentMode: "",
-      advanceAmount: "",
-      remark: "",
-      idProofType: "",
-      idProofNumber: "",
-      ledgerAc: "",
-      vehicleNo: "",
-      vehicleType: "",
-      companyInfoCompanyName: "",
-      companyInfoLedgerGroup: "",
-      companyInfoPan: "",
-      companyInfoGst: "",
-      companyInfoBankAccountNo: "",
-      companyInfoIfscCode: "",
-      companyInfoCreditLimit: "",
-      companyInfoBookingCategory: "",
-      planTypeLabel: "",
-      mainCheckin: "",
-    })
+    setForm(createInitialCheckInForm(mode))
     setGuestPhoto(null)
     setIdProofFront(null)
     setIdProofBack(null)
@@ -1186,136 +862,26 @@ export function CheckInForm({
   }
 
   const buildUpdatePayload = () => {
-    const nights = Math.max(1, Number(form.noOfNights) || 1)
-    const nightlyPlanCharge = Math.max(0, Number(form.planCharge) || 0)
-    const nightlyFoodCharge = Math.max(0, Number(form.foodCharge) || 0)
-    const discountPercent = Math.min(100, Math.max(0, Number(form.discount) || 0))
-    const totalPlanCharge = nightlyPlanCharge * nights
-    const totalFoodCharge = nightlyFoodCharge * nights
-    const discountAmount = totalPlanCharge * (discountPercent / 100)
-
-    return {
-      title: form.title,
-      guestName: form.guestName,
-      mobileNo: form.mobile,
-      mobile: form.mobile,
-      email: form.email,
-      dob: form.dob,
-      gender: form.gender,
-      address: form.address,
-      country: form.country,
-      state: form.state,
-      city: form.city,
-      zip: form.zip,
-      nationality: form.nationality,
-      gstNumber: form.gstIn,
-      referredByType: form.referredByType,
-      referredById: form.referredById || undefined,
-      referredByName: form.referredByName,
-      arrivalFrom: form.arrivalFrom,
-      departureTo: form.departureTo,
-      purposeOfVisit: form.purposeOfVisit,
-      businessSource: form.businessSource,
-      marketSegment: form.marketSegment,
-      company: form.company,
-      voucherNo: form.voucherNo,
-      checkInDate: form.checkInDate,
-      checkInTime: form.checkInTime,
-      checkOutDate: form.checkOutDate,
-      checkOutTime: form.checkOutTime,
-      nights,
-      stayType: form.stayType,
-      amount: Number(form.amount) || 0,
-      occupancyType: form.occupancyType,
-      checkoutPlan: form.checkoutPlan,
-      guestClassification: form.guestClassification,
-      roomNumber: form.roomNo,
-      planType: form.planType,
-      planCharge: nightlyPlanCharge,
-      foodCharge: nightlyFoodCharge,
-      planCharges: totalPlanCharge,
-      foodCharges: totalFoodCharge,
-      discount: discountAmount,
-      gstPercentage: Number(form.gstPercentage) || 0,
-      gstType: form.gstType,
-      gstAmount: Number(form.gstAmount) || 0,
-      netAmount: Number(form.netAmount) || 0,
-      guestType: form.guestType,
-      noOfBeds: Number(form.noOfBeds) || 0,
-      adultMale: Number(form.paxAdultMale) || 0,
-      adultFemale: Number(form.paxAdultFemale) || 0,
-      children: Number(form.paxChildren) || 0,
-      paymentMode: form.paymentMode,
-      advanceAmount: Number(form.advanceAmount) || 0,
-      ledgerAccount: form.ledgerAc,
-      remarks: form.remark,
-      idProofType: form.idProofType,
-      idProofNumber: form.idProofNumber,
-      vehicleNo: form.vehicleNo,
-      vehicleType: form.vehicleType,
+    return buildCheckInPayload({
+      form,
       gstInclusive,
-      services: selectedServices,
-      companions: companions
-        .filter(c => c.name || c.mobile || c.idType || c.idNumber || c.gender || c.type)
-        .map(normalizeCompanion),
-      companyInfo: {
-        companyName: form.companyInfoCompanyName,
-        ledgerGroup: form.companyInfoLedgerGroup || null,
-        pan: form.companyInfoPan,
-        gst: form.companyInfoGst,
-        bankAccountNo: form.companyInfoBankAccountNo,
-        ifscCode: form.companyInfoIfscCode,
-        creditLimit: Number(form.companyInfoCreditLimit) || 0,
-        bookingCategory: form.companyInfoBookingCategory || null,
-      },
-      mainCheckin: form.mainCheckin || undefined,
-      bookingGroupId: multiRoomContext?.bookingGroupId || undefined,
-      parentGuestCheckin: multiRoomContext?.parentGuestCheckin || undefined,
-      isPax: mode === "pax",
-    }
-  }
-
-  const requiredFields: Array<[keyof typeof form, string]> = [
-    ["guestName", "Guest Name"],
-    ["mobile", "Mobile Number"],
-    ["email", "Email"],
-    ["roomNo", "Room Number"],
-    ["checkInDate", "Check-in Date"],
-    ["checkInTime", "Check-in Time"],
-    ["title", "Title"],
-    ["referredByType", "Referred By"],
-    ["stayType", "Stay Type"],
-    ["occupancyType", "Occupancy Type"],
-    ["checkoutPlan", "Checkout Plan"],
-  ]
-
-  if (mode !== "pax") {
-    requiredFields.push(["planType", "Plan Type"])
-    requiredFields.push(["planCharge", "Plan Charge"])
-  }
-
-  const validationErrors = (() => {
-    const errors: Record<string, string> = {}
-    requiredFields.forEach(([field, label]) => {
-      if (!String(form[field] || "").trim()) {
-        errors[field] = `${label} is required`
-      }
+      selectedServices,
+      companions,
+      multiRoomContext,
+      mode,
     })
+  }
 
-    if (mode !== "pax") {
-      if (form.planCharge && Number(form.planCharge) <= 0) errors.planCharge = "Plan Charge must be greater than 0"
-      if (form.foodCharge && (Number(form.foodCharge) < 0 || Number.isNaN(Number(form.foodCharge)))) errors.foodCharge = "Food Charge must be greater than or equal to 0"
-      if (Number(form.discount || 0) < 0) errors.discount = "Discount % must not be negative"
-      if (Number(form.discount || 0) > 100) errors.discount = "Discount % must not exceed 100"
-      if (Number(form.netAmount || 0) < 0) errors.netAmount = "Net Amount must not be negative"
-      if (form.paxAdultMale && (Number(form.paxAdultMale) < 0 || Number.isNaN(Number(form.paxAdultMale)))) errors.paxAdultMale = "Adult Male must be greater than or equal to 0"
-    }
-
-    if (!isEditMode && !multiRoomContext && mobileLookupStatus === "found" && existingGuest && !loadedGuestId && mode !== "pax") {
-      errors.mobile = "Mobile number already exists"
-    }
-    return errors
-  })()
+  const validationErrors = validateCheckInForm({
+    form,
+    mode,
+    isEditMode,
+    multiRoomContext,
+    mobileLookupStatus,
+    existingGuest,
+    loadedGuestId,
+    companions,
+  })
 
   const isCheckInValid = Object.keys(validationErrors).length === 0
   const canCheckIn = isCheckInValid && mobileLookupStatus !== "loading"
@@ -1510,24 +1076,21 @@ export function CheckInForm({
   const handleUpdate = async () => {
     setSubmitAttempted(true)
     if (!canCheckIn) {
-      toast({ title: "Validation Error", description: Object.values(validationErrors)[0] || "Please complete all required fields", variant: "destructive" })
-      return
-    }
-
-    // Validate companions
-    for (let i = 0; i < companions.length; i++) {
-      const c = companions[i];
-      if (c.name || c.mobile || c.gender || c.type) {
-        if (!c.name || !c.gender || !c.type) {
-          toast({
-            title: "Companion Info Missing",
-            description: `Please provide name, gender, and type for companion #${i + 1}`,
-            variant: "destructive"
-          });
-          setActiveTab("companion");
-          return;
-        }
+      const firstErrorKey = Object.keys(validationErrors)[0]
+      const firstErrorMessage = validationErrors[firstErrorKey] || "Please complete all required fields"
+      
+      toast({ title: "Validation Error", description: firstErrorMessage, variant: "destructive" })
+      
+      if (firstErrorKey.startsWith("companion")) {
+        setActiveTab("companion")
+      } else if (["idProofType", "idProofNumber"].includes(firstErrorKey)) {
+        setActiveTab("guest-id")
+      } else if (["vehicleNo", "vehicleType", "companyInfoCompanyName"].includes(firstErrorKey)) {
+        setActiveTab("vehicle-company")
+      } else {
+        setActiveTab("guest-info")
       }
+      return
     }
 
     setIsLoading(true)
@@ -1547,30 +1110,26 @@ export function CheckInForm({
   const handleCheckInClick = () => {
     setSubmitAttempted(true)
     if (!canCheckIn) {
+      const firstErrorKey = Object.keys(validationErrors)[0]
       const firstError = mobileLookupStatus === "loading"
         ? "Please wait for mobile lookup to finish"
-        : Object.values(validationErrors)[0] || "Please complete all required fields"
+        : validationErrors[firstErrorKey] || "Please complete all required fields"
+      
       toast({ title: "Validation Error", description: firstError, variant: "destructive" });
+
+      if (firstErrorKey && firstErrorKey.startsWith("companion")) {
+        setActiveTab("companion")
+      } else if (["idProofType", "idProofNumber"].includes(firstErrorKey)) {
+        setActiveTab("guest-id")
+      } else if (["vehicleNo", "vehicleType", "companyInfoCompanyName"].includes(firstErrorKey)) {
+        setActiveTab("vehicle-company")
+      } else if (firstErrorKey) {
+        setActiveTab("guest-info")
+      }
       return;
     }
 
     if (!checkRoomCapacity()) return;
-
-    // Validate companions
-    for (let i = 0; i < companions.length; i++) {
-      const c = companions[i];
-      if (c.name || c.mobile || c.gender || c.type) {
-        if (!c.name || !c.gender || !c.type) {
-          toast({
-            title: "Companion Info Missing",
-            description: `Please provide name, gender, and type for companion #${i + 1}`,
-            variant: "destructive"
-          });
-          setActiveTab("companion");
-          return;
-        }
-      }
-    }
 
     if (isEditMode && !isAddingLinkedRoom) {
       if (isEditing) {
@@ -1745,7 +1304,7 @@ export function CheckInForm({
               </div>
               {pendingRooms.length > 0 && (
                 <Badge variant="secondary" className="w-fit">
-                  {pendingRooms.length} saved, {hasCurrentRoomDraft ? "1 current" : "0 current"}
+                  {pendingRooms.length} saved, {hasRoomDraft ? "1 current" : "0 current"}
                 </Badge>
               )}
             </div>
@@ -1782,7 +1341,7 @@ export function CheckInForm({
               </div>
             ))}
 
-            {hasCurrentRoomDraft && (
+            {hasRoomDraft && (
               <div className="rounded-md border border-dashed p-3">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="space-y-2">
@@ -2295,7 +1854,7 @@ export function CheckInForm({
                 <div key={idx} className="grid grid-cols-1 md:grid-cols-8 gap-3 p-3 border rounded-lg bg-muted/30 relative items-end">
                   <FormField label="Name" required>
                     <Input
-                      className="h-8 text-xs"
+                      className={cn("h-8 text-xs", validationErrors[`companion_${idx}`] && "border-destructive")}
                       value={comp.name}
                       onChange={e => { const nc = [...companions]; nc[idx].name = e.target.value; setCompanions(nc); }}
                       placeholder="Full name"
@@ -2304,12 +1863,20 @@ export function CheckInForm({
                   </FormField>
                   <FormField label="Mobile">
                     <Input
-                      className="h-8 text-xs"
+                      className={cn("h-8 text-xs", validationErrors[`companion_mobile_${idx}`] && "border-destructive")}
                       value={comp.mobile}
-                      onChange={e => { const nc = [...companions]; nc[idx].mobile = e.target.value; setCompanions(nc); }}
+                      onChange={e => { 
+                        const sanitized = e.target.value.replace(/[^\d+]/g, "");
+                        const nc = [...companions]; 
+                        nc[idx].mobile = sanitized; 
+                        setCompanions(nc); 
+                      }}
                       placeholder="Mobile"
                       disabled={isFieldDisabled("companion")}
                     />
+                    {validationErrors[`companion_mobile_${idx}`] && (
+                      <p className="text-[10px] text-destructive mt-1">{validationErrors[`companion_mobile_${idx}`]}</p>
+                    )}
                   </FormField>
                   <FormField label="Gender" required>
                     <Select
@@ -2317,7 +1884,7 @@ export function CheckInForm({
                       onValueChange={v => { const nc = [...companions]; nc[idx].gender = v; setCompanions(nc); }}
                       disabled={isFieldDisabled("companion")}
                     >
-                      <SelectTrigger className="h-8 text-xs">
+                      <SelectTrigger className={cn("h-8 text-xs", validationErrors[`companion_${idx}`] && "border-destructive")}>
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
@@ -2333,7 +1900,7 @@ export function CheckInForm({
                       onValueChange={v => { const nc = [...companions]; nc[idx].type = v; setCompanions(nc); }}
                       disabled={isFieldDisabled("companion")}
                     >
-                      <SelectTrigger className="h-8 text-xs">
+                      <SelectTrigger className={cn("h-8 text-xs", validationErrors[`companion_${idx}`] && "border-destructive")}>
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>

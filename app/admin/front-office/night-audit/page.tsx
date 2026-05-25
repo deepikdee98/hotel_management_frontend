@@ -193,7 +193,7 @@ export default function NightAuditPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {auditSteps.map((step, i) => (
+              {auditSteps.map((step: { label: string; status: string }, i: number) => (
                 <div key={step.label} className="flex items-center gap-3 py-2 border-b last:border-0">
                   <span className="text-xs font-mono text-muted-foreground w-6">{String(i + 1).padStart(2, "0")}</span>
                   {step.status === "done" ? (

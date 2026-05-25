@@ -21,7 +21,7 @@ export default function NotificationsPage() {
     const fetchNotifications = async () => {
       try {
         const resp = await getHotelNotifications(50)
-        setNotifications(resp.data)
+        setNotifications((Array.isArray(resp.data) ? resp.data : []) as unknown as Notification[])
       } finally {
         setLoading(false)
       }

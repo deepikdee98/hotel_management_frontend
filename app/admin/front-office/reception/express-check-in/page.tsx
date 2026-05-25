@@ -13,6 +13,7 @@ import { Save, RotateCcw, X, Loader2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useSetupOptions } from "@/hooks/use-setup-options"
 import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 import {
   Dialog,
   DialogContent,
@@ -101,8 +102,11 @@ export default function ExpressCheckInPage() {
 
   const handleChange = (field: string, value: string) => {
     if (field === "mobile") {
+      const sanitized = value.replace(/[^\d+]/g, "")
       setLoadedGuestId("")
       lastCheckedMobile.current = ""
+      setForm(prev => ({ ...prev, mobile: sanitized }))
+      return
     }
     if (field === "roomType") {
       setForm(prev => ({ ...prev, roomType: value, roomNo: "" }))
@@ -216,11 +220,33 @@ export default function ExpressCheckInPage() {
     setShowGuestDialog(false)
   }
 
+  const [submitAttempted, setSubmitAttempted] = useState(false)
+
+  const mobileDigits = form.mobile.replace(/\D/g, "")
+  const isIndianPrefix = form.mobile.trim().startsWith("+91")
+  const isMobileValid = isIndianPrefix 
+    ? mobileDigits.length === 12 
+    : (mobileDigits.length === 10 && !form.mobile.trim().startsWith("+")) || (mobileDigits.length >= 7 && mobileDigits.length <= 15)
+  
+  const mobileError = submitAttempted && form.mobile && !isMobileValid 
+    ? (isIndianPrefix ? "Indian mobile numbers (+91) must have 10 digits after the country code" : "Mobile number must be between 7 and 15 digits")
+    : null
+
   const handleCheckIn = async () => {
+    setSubmitAttempted(true)
     if (!form.title || !form.guestName || !form.mobile || !form.roomNo || !form.noOfNights) {
       toast({
         title: "Missing Fields",
         description: "Please fill all required fields marked with *",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!isMobileValid) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid mobile number (7-15 digits)",
         variant: "destructive",
       })
       return
@@ -291,7 +317,7 @@ export default function ExpressCheckInPage() {
                 <Label className="text-xs">Mobile Number <span className="text-destructive">*</span></Label>
                 <div className="relative">
                   <Input 
-                    className="h-8 text-xs pr-8" 
+                    className={cn("h-8 text-xs pr-8", mobileError && "border-destructive")}
                     value={form.mobile} 
                     onChange={e => handleChange("mobile", e.target.value)} 
                     placeholder="Enter mobile number" 
@@ -300,6 +326,9 @@ export default function ExpressCheckInPage() {
                     <Loader2 className="h-3 w-3 animate-spin absolute right-2.5 top-2.5 text-muted-foreground" />
                   )}
                 </div>
+                {mobileError && (
+                  <p className="text-[10px] text-destructive">{mobileError}</p>
+                )}
                 {loadedGuestId && (
                   <p className="text-[10px] text-green-600 font-medium">Existing guest loaded</p>
                 )}
