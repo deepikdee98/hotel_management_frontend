@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,39 +31,130 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus, Search, Download, Filter, Eye } from "lucide-react"
+import { Plus, Search, Download, Eye } from "lucide-react"
 import { useSetupOptions } from "@/hooks/use-setup-options"
-
-const mockTransactions = [
-  { id: "TXN-001", date: "2024-01-15", time: "14:30", description: "Room 101 - Checkout Payment", type: "income", category: "Room Revenue", paymentMode: "Credit Card", reference: "CC-4521", amount: 450.00, status: "completed", createdBy: "John Doe" },
-  { id: "TXN-002", date: "2024-01-15", time: "13:15", description: "Restaurant Bill - Table 5", type: "income", category: "F&B Revenue", paymentMode: "Cash", reference: "CASH-112", amount: 85.50, status: "completed", createdBy: "Jane Smith" },
-  { id: "TXN-003", date: "2024-01-15", time: "11:00", description: "Laundry Supplies Purchase", type: "expense", category: "Supplies", paymentMode: "Bank Transfer", reference: "BT-8834", amount: 120.00, status: "completed", createdBy: "Admin" },
-  { id: "TXN-004", date: "2024-01-14", time: "16:45", description: "Room 205 - Checkout Payment", type: "income", category: "Room Revenue", paymentMode: "UPI", reference: "UPI-9982", amount: 380.00, status: "completed", createdBy: "John Doe" },
-  { id: "TXN-005", date: "2024-01-14", time: "10:00", description: "Monthly Electricity Bill", type: "expense", category: "Utilities", paymentMode: "Bank Transfer", reference: "BT-8821", amount: 850.00, status: "pending", createdBy: "Admin" },
-  { id: "TXN-006", date: "2024-01-14", time: "15:30", description: "Spa Services - Guest 302", type: "income", category: "Other Services", paymentMode: "Cash", reference: "CASH-109", amount: 200.00, status: "completed", createdBy: "Sarah Lee" },
-  { id: "TXN-007", date: "2024-01-13", time: "09:00", description: "Staff Salary - January", type: "expense", category: "Payroll", paymentMode: "Bank Transfer", reference: "BT-8800", amount: 15000.00, status: "completed", createdBy: "Admin" },
-  { id: "TXN-008", date: "2024-01-13", time: "12:00", description: "Room 402 - Advance Payment", type: "income", category: "Room Revenue", paymentMode: "Credit Card", reference: "CC-4519", amount: 500.00, status: "completed", createdBy: "John Doe" },
-]
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
+import { useToast } from "@/hooks/use-toast"
+import {
+  createAccountsTransaction,
+  getAccountsTransactions,
+  type AccountsTransaction,
+  type AccountsTransactionSummary,
+} from "@/services/api/accounts.service"
 
 const categories = ["Room Revenue", "F&B Revenue", "Other Services", "Supplies", "Utilities", "Payroll", "Maintenance", "Marketing"]
+
+const initialForm = {
+  type: "Income",
+  category: "",
+  description: "",
+  amount: "",
+  paymentMode: "",
+  date: new Date().toISOString().slice(0, 10),
+  reference: "",
+  subCategory: "",
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return { date: "-", time: "" }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return { date: value, time: "" }
+  return {
+    date: date.toLocaleDateString(),
+    time: date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+  }
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
 export default function TransactionsPage() {
+  const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [isAddOpen, setIsAddOpen] = useState(false)
-  const [selectedTxn, setSelectedTxn] = useState<typeof mockTransactions[0] | null>(null)
+  const [selectedTxn, setSelectedTxn] = useState<AccountsTransaction | null>(null)
+  const [transactions, setTransactions] = useState<AccountsTransaction[]>([])
+  const [summary, setSummary] = useState<AccountsTransactionSummary>({ totalIncome: 0, totalExpense: 0, netAmount: 0 })
+  const [totalCount, setTotalCount] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
+  const [form, setForm] = useState(initialForm)
   const paymentModeOptions = useSetupOptions("paymentMode")
+  const debouncedSearch = useDebouncedValue(searchQuery, 350)
 
-  const filteredTransactions = mockTransactions.filter((txn) => {
-    const matchesSearch = txn.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      txn.id.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesType = typeFilter === "all" || txn.type === typeFilter
-    const matchesCategory = categoryFilter === "all" || txn.category === categoryFilter
-    return matchesSearch && matchesType && matchesCategory
-  })
+  const fetchTransactions = useCallback(async () => {
+    setLoading(true)
+    setError("")
+    try {
+      const result = await getAccountsTransactions({
+        search: debouncedSearch,
+        type: typeFilter,
+        category: categoryFilter,
+        page: 1,
+        limit: 50,
+      })
+      setTransactions(result.transactions)
+      setSummary(result.summary)
+      setTotalCount(result.pagination.total)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load transactions"
+      setError(message)
+      toast({ title: "Transactions not loaded", description: message, variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
+  }, [categoryFilter, debouncedSearch, toast, typeFilter])
 
-  const totalIncome = filteredTransactions.filter(t => t.type === "income").reduce((sum, t) => sum + t.amount, 0)
-  const totalExpense = filteredTransactions.filter(t => t.type === "expense").reduce((sum, t) => sum + t.amount, 0)
+  useEffect(() => {
+    fetchTransactions()
+  }, [fetchTransactions])
+
+  const categoryOptions = useMemo(() => {
+    const values = new Set(categories)
+    transactions.forEach((transaction) => {
+      if (transaction.category) values.add(transaction.category)
+    })
+    return Array.from(values)
+  }, [transactions])
+
+  async function handleCreateTransaction(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!form.category || !form.description || !form.amount) {
+      toast({ title: "Missing details", description: "Type, category, description, and amount are required.", variant: "destructive" })
+      return
+    }
+
+    setSaving(true)
+    try {
+      await createAccountsTransaction({
+        type: form.type,
+        category: form.category,
+        subCategory: form.subCategory || undefined,
+        description: form.description,
+        amount: Number(form.amount),
+        paymentMode: form.paymentMode || undefined,
+        date: form.date || undefined,
+        reference: form.reference || undefined,
+      })
+      setForm(initialForm)
+      setIsAddOpen(false)
+      toast({ title: "Transaction saved", description: "The accounts transaction was recorded." })
+      fetchTransactions()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to save transaction"
+      toast({ title: "Transaction not saved", description: message, variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -86,32 +177,36 @@ export default function TransactionsPage() {
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Add New Transaction</DialogTitle>
-                <DialogDescription>Record a new income or expense transaction</DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
+              <form onSubmit={handleCreateTransaction}>
+                <DialogHeader>
+                  <DialogTitle>Add New Transaction</DialogTitle>
+                  <DialogDescription>Record a new income or expense transaction</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Type *</Label>
-                    <Select>
+                    <Select value={form.type} onValueChange={(type) => setForm((current) => ({ ...current, type }))}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select type" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="income">Income</SelectItem>
-                        <SelectItem value="expense">Expense</SelectItem>
+                        <SelectItem value="Income">Income</SelectItem>
+                        <SelectItem value="Expense">Expense</SelectItem>
+                        <SelectItem value="Transfer">Transfer</SelectItem>
+                        <SelectItem value="Refund">Refund</SelectItem>
+                        <SelectItem value="Journal">Journal</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Category *</Label>
-                    <Select>
+                    <Select value={form.category} onValueChange={(category) => setForm((current) => ({ ...current, category }))}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select category" />
                       </SelectTrigger>
                       <SelectContent>
-                        {categories.map(cat => (
+                        {categoryOptions.map(cat => (
                           <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                         ))}
                       </SelectContent>
@@ -120,16 +215,29 @@ export default function TransactionsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Description *</Label>
-                  <Input placeholder="Transaction description" />
+                  <Input
+                    required
+                    placeholder="Transaction description"
+                    value={form.description}
+                    onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Amount *</Label>
-                    <Input type="number" placeholder="0.00" />
+                    <Input
+                      required
+                      min="0.01"
+                      step="0.01"
+                      type="number"
+                      placeholder="0.00"
+                      value={form.amount}
+                      onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Payment Mode *</Label>
-                    <Select>
+                    <Select value={form.paymentMode} onValueChange={(paymentMode) => setForm((current) => ({ ...current, paymentMode }))}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select mode" />
                       </SelectTrigger>
@@ -148,22 +256,37 @@ export default function TransactionsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Date *</Label>
-                    <Input type="date" />
+                    <Input
+                      required
+                      type="date"
+                      value={form.date}
+                      onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Reference No.</Label>
-                    <Input placeholder="Reference number" />
+                    <Input
+                      placeholder="Reference number"
+                      value={form.reference}
+                      onChange={(event) => setForm((current) => ({ ...current, reference: event.target.value }))}
+                    />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Remarks</Label>
-                  <Textarea placeholder="Additional notes..." rows={2} />
+                  <Label>Sub Category</Label>
+                  <Textarea
+                    placeholder="Optional sub category or notes..."
+                    rows={2}
+                    value={form.subCategory}
+                    onChange={(event) => setForm((current) => ({ ...current, subCategory: event.target.value }))}
+                  />
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                <Button onClick={() => setIsAddOpen(false)}>Save Transaction</Button>
+                <Button type="button" variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save Transaction"}</Button>
               </DialogFooter>
+              </form>
             </DialogContent>
           </Dialog>
         </div>
@@ -174,19 +297,19 @@ export default function TransactionsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Total Income</div>
-            <div className="text-2xl font-bold text-primary">${totalIncome.toFixed(2)}</div>
+            <div className="text-2xl font-bold text-primary">{formatCurrency(summary.totalIncome)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Total Expenses</div>
-            <div className="text-2xl font-bold text-destructive">${totalExpense.toFixed(2)}</div>
+            <div className="text-2xl font-bold text-destructive">{formatCurrency(summary.totalExpense)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Net Balance</div>
-            <div className="text-2xl font-bold">${(totalIncome - totalExpense).toFixed(2)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(summary.netAmount)}</div>
           </CardContent>
         </Card>
       </div>
@@ -197,7 +320,7 @@ export default function TransactionsPage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>All Transactions</CardTitle>
-              <CardDescription>{filteredTransactions.length} transactions found</CardDescription>
+              <CardDescription>{loading ? "Loading transactions..." : `${totalCount} transactions found`}</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
               <div className="relative">
@@ -215,8 +338,11 @@ export default function TransactionsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="income">Income</SelectItem>
-                  <SelectItem value="expense">Expense</SelectItem>
+                  <SelectItem value="Income">Income</SelectItem>
+                  <SelectItem value="Expense">Expense</SelectItem>
+                  <SelectItem value="Transfer">Transfer</SelectItem>
+                  <SelectItem value="Refund">Refund</SelectItem>
+                  <SelectItem value="Journal">Journal</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
@@ -225,7 +351,7 @@ export default function TransactionsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map(cat => (
+                  {categoryOptions.map(cat => (
                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                   ))}
                 </SelectContent>
@@ -248,18 +374,36 @@ export default function TransactionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredTransactions.map((txn) => (
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">Loading transactions...</TableCell>
+                </TableRow>
+              )}
+              {!loading && error && (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-8 text-center text-destructive">{error}</TableCell>
+                </TableRow>
+              )}
+              {!loading && !error && transactions.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No transactions found</TableCell>
+                </TableRow>
+              )}
+              {!loading && !error && transactions.map((txn) => {
+                const dateTime = formatDateTime(txn.date)
+                const isIncome = txn.type === "Income"
+                return (
                 <TableRow key={txn.id}>
-                  <TableCell className="font-medium">{txn.id}</TableCell>
+                  <TableCell className="font-medium">{txn.transactionNumber || txn.reference || txn.id.slice(-8)}</TableCell>
                   <TableCell>
-                    <div>{txn.date}</div>
-                    <div className="text-xs text-muted-foreground">{txn.time}</div>
+                    <div>{dateTime.date}</div>
+                    <div className="text-xs text-muted-foreground">{dateTime.time}</div>
                   </TableCell>
                   <TableCell>{txn.description}</TableCell>
                   <TableCell>{txn.category}</TableCell>
                   <TableCell>{txn.paymentMode}</TableCell>
-                  <TableCell className={txn.type === "income" ? "text-primary font-medium" : "text-destructive font-medium"}>
-                    {txn.type === "income" ? "+" : "-"}${txn.amount.toFixed(2)}
+                  <TableCell className={isIncome ? "text-primary font-medium" : "text-destructive font-medium"}>
+                    {isIncome ? "+" : "-"}{formatCurrency(txn.amount)}
                   </TableCell>
                   <TableCell>
                     <Badge variant={txn.status === "completed" ? "default" : "secondary"}>
@@ -272,7 +416,7 @@ export default function TransactionsPage() {
                     </Button>
                   </TableCell>
                 </TableRow>
-              ))}
+              )})}
             </TableBody>
           </Table>
         </CardContent>
@@ -289,11 +433,11 @@ export default function TransactionsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">Transaction ID</Label>
-                  <p className="font-medium">{selectedTxn.id}</p>
+                  <p className="font-medium">{selectedTxn.transactionNumber || selectedTxn.reference || selectedTxn.id}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Date & Time</Label>
-                  <p className="font-medium">{selectedTxn.date} {selectedTxn.time}</p>
+                  <p className="font-medium">{formatDateTime(selectedTxn.date).date} {formatDateTime(selectedTxn.date).time}</p>
                 </div>
               </div>
               <div>
@@ -303,7 +447,7 @@ export default function TransactionsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">Type</Label>
-                  <Badge variant={selectedTxn.type === "income" ? "default" : "destructive"} className="mt-1">
+                  <Badge variant={selectedTxn.type === "Income" ? "default" : "destructive"} className="mt-1">
                     {selectedTxn.type.toUpperCase()}
                   </Badge>
                 </div>
@@ -315,8 +459,8 @@ export default function TransactionsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">Amount</Label>
-                  <p className={`text-xl font-bold ${selectedTxn.type === "income" ? "text-primary" : "text-destructive"}`}>
-                    ${selectedTxn.amount.toFixed(2)}
+                  <p className={`text-xl font-bold ${selectedTxn.type === "Income" ? "text-primary" : "text-destructive"}`}>
+                    {formatCurrency(selectedTxn.amount)}
                   </p>
                 </div>
                 <div>

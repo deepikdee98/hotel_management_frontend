@@ -117,7 +117,7 @@ export default function ExpressCheckInPage() {
 
   const renderSetupItems = (options: { data: Array<{ _id: string; value: string }>; loading: boolean }) => {
     if (options.loading) return <SelectItem value="__loading__" disabled>Loading...</SelectItem>
-    if (!options.data.length) return <SelectItem value="__empty__" disabled>No options configured</SelectItem>
+    if (!options.data.length) return <SelectItem value="__empty__" disabled>No data available</SelectItem>
     return options.data.map((option) => <SelectItem key={option._id} value={option.value}>{option.value}</SelectItem>)
   }
 
@@ -385,7 +385,7 @@ export default function ExpressCheckInPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {filteredRooms.length === 0 ? (
-                      <SelectItem value="__empty__" disabled>No rooms available</SelectItem>
+                      <SelectItem value="__empty__" disabled>No data available</SelectItem>
                     ) : filteredRooms.map((room: any) => (
                       <SelectItem key={room.id} value={room.number}>
                         {room.number}

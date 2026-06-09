@@ -286,10 +286,22 @@ export default function UnifiedDashboard() {
                       className="flex items-center justify-between p-4 rounded-lg bg-muted/30 border border-border"
                     >
                       <div className="flex items-center gap-4">
-                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                          <span className="text-sm font-medium text-primary">
-                            {reservation.guestName.split(" ").map((n: string) => n[0]).join("")}
-                          </span>
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                          {reservation.guestPhotoUrl ? (
+                            <img 
+                              src={reservation.guestPhotoUrl} 
+                              alt={reservation.guestName} 
+                              className="h-full w-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                (e.target as HTMLImageElement).parentElement!.innerHTML = `<span class="text-sm font-medium text-primary">${reservation.guestName.split(" ").map((n: string) => n[0]).join("")}</span>`;
+                              }}
+                            />
+                          ) : (
+                            <span className="text-sm font-medium text-primary">
+                              {reservation.guestName.split(" ").map((n: string) => n[0]).join("")}
+                            </span>
+                          )}
                         </div>
                         <div>
                           <p className="font-medium text-foreground">{reservation.guestName}</p>

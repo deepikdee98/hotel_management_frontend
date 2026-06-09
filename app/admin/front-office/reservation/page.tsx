@@ -55,7 +55,7 @@ export default function ReservationPage() {
 
   const renderSetupItems = useCallback((options: { data: Array<{ _id: string; value: string }>; loading: boolean }) => {
     if (options.loading) return <SelectItem value="__loading__" disabled>Loading...</SelectItem>
-    if (!options.data.length) return <SelectItem value="__empty__" disabled>No options configured</SelectItem>
+    if (!options.data.length) return <SelectItem value="__empty__" disabled>No data available</SelectItem>
     return options.data.map((option) => <SelectItem key={option._id} value={option.value}>{option.value}</SelectItem>)
   }, [])
 

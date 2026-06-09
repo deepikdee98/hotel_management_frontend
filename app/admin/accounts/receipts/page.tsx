@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,21 +14,60 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Search, Download, Printer, Eye } from "lucide-react"
+import { getAccountsReceipts, type AccountsPayment } from "@/services/api/accounts.service"
+import { useToast } from "@/hooks/use-toast"
 
-const mockReceipts = [
-  { id: "RCP-001", date: "2024-01-15", time: "14:30", guest: "John Smith", invoiceId: "INV-001", amount: 450.00, paymentMode: "Credit Card", reference: "CC-4521", receivedBy: "John Doe" },
-  { id: "RCP-002", date: "2024-01-15", time: "13:15", guest: "Emma Wilson", invoiceId: "INV-002", amount: 200.00, paymentMode: "Cash", reference: "CASH-112", receivedBy: "Jane Smith" },
-  { id: "RCP-003", date: "2024-01-14", time: "16:45", guest: "Michael Brown", invoiceId: "INV-003", amount: 1169.00, paymentMode: "UPI", reference: "UPI-9982", receivedBy: "John Doe" },
-  { id: "RCP-004", date: "2024-01-14", time: "15:30", guest: "Robert Chen", invoiceId: "INV-005", amount: 500.00, paymentMode: "Credit Card", reference: "CC-4519", receivedBy: "Sarah Lee" },
-  { id: "RCP-005", date: "2024-01-13", time: "12:00", guest: "Walk-in Guest", invoiceId: "INV-006", amount: 350.00, paymentMode: "Cash", reference: "CASH-108", receivedBy: "John Doe" },
-]
+// Receipts loaded from API
+
+function formatCurrency(value: unknown) {
+  return `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
 
 export default function ReceiptsPage() {
+  const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  const [receipts, setReceipts] = useState<AccountsPayment[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const filteredReceipts = mockReceipts.filter((receipt) => {
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+
+    getAccountsReceipts({ search: searchQuery, fromDate: dateFrom, toDate: dateTo, limit: 100 })
+      .then((result) => {
+        if (!active) return
+        setReceipts(result.receipts)
+      })
+      .catch((err) => {
+        if (!active) return
+        const message = err instanceof Error ? err.message : "Failed to load receipts"
+        toast({ title: "Receipts unavailable", description: message, variant: "destructive" })
+        setReceipts([])
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [searchQuery, dateFrom, dateTo, toast])
+
+  const sourceReceipts = receipts.map((receipt) => ({
+    id: receipt.id,
+    date: receipt.date.slice(0, 10),
+    time: receipt.date.includes("T") ? receipt.date.slice(11, 16) : "",
+    guest: receipt.payer || receipt.payee,
+    invoiceId: receipt.reference || "-",
+    amount: receipt.amount,
+    paymentMode: receipt.mode,
+    reference: receipt.reference || "-",
+    receivedBy: "-",
+  }))
+
+  const filteredReceipts = sourceReceipts.filter((receipt) => {
     const matchesSearch = receipt.guest.toLowerCase().includes(searchQuery.toLowerCase()) ||
       receipt.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       receipt.invoiceId.toLowerCase().includes(searchQuery.toLowerCase())
@@ -62,13 +101,13 @@ export default function ReceiptsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Total Amount Collected</div>
-            <div className="text-2xl font-bold text-primary">${totalAmount.toFixed(2)}</div>
+            <div className="text-2xl font-bold text-primary">{formatCurrency(totalAmount)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Today's Collection</div>
-            <div className="text-2xl font-bold">$650.00</div>
+            <div className="text-2xl font-bold">{formatCurrency(receipts.filter((receipt) => receipt.date.slice(0, 10) === new Date().toISOString().slice(0, 10)).reduce((sum, receipt) => sum + receipt.amount, 0))}</div>
           </CardContent>
         </Card>
       </div>
@@ -121,7 +160,12 @@ export default function ReceiptsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredReceipts.map((receipt) => (
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">Loading receipts...</TableCell>
+                </TableRow>
+              )}
+              {!loading && filteredReceipts.map((receipt) => (
                 <TableRow key={receipt.id}>
                   <TableCell className="font-medium">{receipt.id}</TableCell>
                   <TableCell>
@@ -134,7 +178,7 @@ export default function ReceiptsPage() {
                     <Badge variant="outline">{receipt.paymentMode}</Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{receipt.reference}</TableCell>
-                  <TableCell className="font-medium text-primary">${receipt.amount.toFixed(2)}</TableCell>
+                  <TableCell className="font-medium text-primary">{formatCurrency(receipt.amount)}</TableCell>
                   <TableCell>{receipt.receivedBy}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
@@ -148,6 +192,11 @@ export default function ReceiptsPage() {
                   </TableCell>
                 </TableRow>
               ))}
+              {!loading && filteredReceipts.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">No receipts found.</TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>

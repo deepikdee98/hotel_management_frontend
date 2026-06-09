@@ -445,7 +445,7 @@ export default function HotelsPage() {
                     <p className="text-xs text-destructive">Phone number must contain 7 to 15 digits.</p>
                   )}
                   {isDuplicateHotelPhone && (
-                    <p className="text-xs text-destructive">Phone number already exists.</p>
+                    <p className="text-xs text-destructive">Phone number already exists in system.</p>
                   )}
                 </div>
                 <div className="space-y-2">

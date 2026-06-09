@@ -752,11 +752,24 @@ export default function FOSetupPage() {
       return;
     }
 
+    if (genericForm.foodIncluded && (!genericForm.mealType || Number(genericForm.foodCharge) < 0)) {
+      toast({
+        title: "Error",
+        description: "Meal Type and valid Food Charge are required when food is included",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
+      const foodIncluded = !!genericForm.foodIncluded
       await createSetupRatePlan({
         name: genericForm.name,
         code: genericForm.code,
         description: genericForm.description || "",
+        foodIncluded,
+        mealType: foodIncluded ? genericForm.mealType || "" : "",
+        foodCharge: foodIncluded ? Number(genericForm.foodCharge || 0) : 0,
       });
 
       toast({
@@ -855,11 +868,23 @@ export default function FOSetupPage() {
   }
 
   const handleUpdateRatePlan = async () => {
+    if (editForm.foodIncluded && (!editForm.mealType || Number(editForm.foodCharge) < 0)) {
+      toast({
+        title: "Error",
+        description: "Meal Type and valid Food Charge are required when food is included",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
       await updateSetupRatePlan(selectedRatePlan._id, {
         name: editForm.name,
         code: editForm.code,
         description: editForm.description,
+        foodIncluded: !!editForm.foodIncluded,
+        mealType: editForm.foodIncluded ? editForm.mealType || "" : "",
+        foodCharge: editForm.foodIncluded ? Number(editForm.foodCharge || 0) : 0,
         status: editForm.status || "active",
       })
 
@@ -1307,7 +1332,7 @@ export default function FOSetupPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <CardTitle className="text-lg">Rate Plans</CardTitle>
-              <Button size="sm" onClick={() => { setAddType("rate-plan"); setIsAddOpen(true) }}>
+              <Button size="sm" onClick={() => { setAddType("rate-plan"); setGenericForm({ foodIncluded: false }); setIsAddOpen(true) }}>
                 <Plus className="h-3.5 w-3.5 mr-1.5" />Add Rate Plan
               </Button>
             </CardHeader>
@@ -1318,6 +1343,9 @@ export default function FOSetupPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Code</TableHead>
                     <TableHead>Description</TableHead>
+                    <TableHead>Food Included</TableHead>
+                    <TableHead>Meal Type</TableHead>
+                    <TableHead>Food Charge</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -1328,6 +1356,9 @@ export default function FOSetupPage() {
                       <TableCell className="font-medium">{rp.name}</TableCell>
                       <TableCell><Badge variant="secondary">{rp.code}</Badge></TableCell>
                       <TableCell>{rp.description}</TableCell>
+                      <TableCell>{rp.foodIncluded ? <Badge variant="secondary">Yes</Badge> : <Badge variant="outline">No</Badge>}</TableCell>
+                      <TableCell>{rp.foodIncluded ? rp.mealType || "-" : "-"}</TableCell>
+                      <TableCell>{rp.foodIncluded ? Number(rp.foodCharge || 0).toFixed(2) : "-"}</TableCell>
                       <TableCell><Badge className="bg-primary/10 text-primary border-primary/20">{rp.status || "Active"}</Badge></TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -1337,6 +1368,9 @@ export default function FOSetupPage() {
                               name: rp.name,
                               code: rp.code,
                               description: rp.description,
+                              foodIncluded: !!rp.foodIncluded,
+                              mealType: rp.mealType || "",
+                              foodCharge: rp.foodCharge || 0,
                               status: rp.status || "active",
                             })
                             setIsEditOpen(true)
@@ -1953,15 +1987,54 @@ export default function FOSetupPage() {
               </div>
             )}
             {addType === "rate-plan" && (
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Input
-                  placeholder="e.g., European Plan, Bed & Breakfast"
-                  value={genericForm.description || ""}
-                  onChange={(e) =>
-                    setGenericForm({ ...genericForm, description: e.target.value })
-                  }
-                />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <Input
+                    placeholder="e.g., European Plan, Bed & Breakfast"
+                    value={genericForm.description || ""}
+                    onChange={(e) =>
+                      setGenericForm({ ...genericForm, description: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="rate-plan-food-included"
+                    checked={!!genericForm.foodIncluded}
+                    onCheckedChange={(value) =>
+                      setGenericForm({
+                        ...genericForm,
+                        foodIncluded: value,
+                        mealType: value ? genericForm.mealType || "" : "",
+                        foodCharge: value ? genericForm.foodCharge || "" : "",
+                      })
+                    }
+                  />
+                  <Label htmlFor="rate-plan-food-included">Food Included</Label>
+                </div>
+                {genericForm.foodIncluded && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Meal Type</Label>
+                      <Input
+                        placeholder="e.g., CP, MAP, AP"
+                        value={genericForm.mealType || ""}
+                        onChange={(e) => setGenericForm({ ...genericForm, mealType: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Food Charge</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="0.00"
+                        value={genericForm.foodCharge || ""}
+                        onChange={(e) => setGenericForm({ ...genericForm, foodCharge: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2070,6 +2143,47 @@ export default function FOSetupPage() {
                   </SelectContent>
                 </Select>
               </div>
+            )}
+            {selectedRatePlan && (
+              <>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="edit-rate-plan-food-included"
+                    checked={!!editForm.foodIncluded}
+                    onCheckedChange={(value) =>
+                      setEditForm({
+                        ...editForm,
+                        foodIncluded: value,
+                        mealType: value ? editForm.mealType || "" : "",
+                        foodCharge: value ? editForm.foodCharge || "" : "",
+                      })
+                    }
+                  />
+                  <Label htmlFor="edit-rate-plan-food-included">Food Included</Label>
+                </div>
+                {editForm.foodIncluded && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Meal Type</Label>
+                      <Input
+                        placeholder="e.g., CP, MAP, AP"
+                        value={editForm.mealType || ""}
+                        onChange={(e) => setEditForm({ ...editForm, mealType: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Food Charge</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="0.00"
+                        value={editForm.foodCharge || ""}
+                        onChange={(e) => setEditForm({ ...editForm, foodCharge: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             <div className="space-y-2">
               <Label>Status</Label>

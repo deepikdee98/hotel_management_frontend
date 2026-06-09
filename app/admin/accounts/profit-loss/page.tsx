@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -11,46 +12,55 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Download, TrendingUp, TrendingDown } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import { getAccountsProfitLoss } from "@/services/api/accounts.service"
 
-const plData = {
-  period: "January 2024",
-  revenue: [
-    { category: "Room Revenue", amount: 185200.00, lastPeriod: 168500.00 },
-    { category: "Food & Beverage", amount: 42800.00, lastPeriod: 38200.00 },
-    { category: "Spa & Wellness", amount: 12500.00, lastPeriod: 11800.00 },
-    { category: "Laundry Services", amount: 3200.00, lastPeriod: 2900.00 },
-    { category: "Banquet & Events", amount: 18500.00, lastPeriod: 15000.00 },
-    { category: "Other Income", amount: 2800.00, lastPeriod: 2400.00 },
-  ],
-  expenses: [
-    { category: "Salaries & Wages", amount: 45000.00, lastPeriod: 43000.00 },
-    { category: "Food & Beverage Cost", amount: 17120.00, lastPeriod: 15280.00 },
-    { category: "Utilities", amount: 8500.00, lastPeriod: 7800.00 },
-    { category: "Housekeeping Supplies", amount: 4200.00, lastPeriod: 3900.00 },
-    { category: "Maintenance & Repairs", amount: 6500.00, lastPeriod: 5200.00 },
-    { category: "Marketing & Advertising", amount: 3500.00, lastPeriod: 4000.00 },
-    { category: "Insurance", amount: 2500.00, lastPeriod: 2500.00 },
-    { category: "Depreciation", amount: 8000.00, lastPeriod: 8000.00 },
-    { category: "Administrative Expenses", amount: 3200.00, lastPeriod: 2800.00 },
-    { category: "Other Expenses", amount: 1880.00, lastPeriod: 1600.00 },
-  ]
+type ProfitLossLine = {
+  category?: string
+  amount?: number
+  lastPeriod?: number
 }
 
-export default function ProfitLossPage() {
-  const [period, setPeriod] = useState("01-2024")
-  const [compareWith, setCompareWith] = useState("last-month")
+function formatCurrency(value: unknown) {
+  return `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
 
-  const totalRevenue = plData.revenue.reduce((sum, item) => sum + item.amount, 0)
-  const totalLastRevenue = plData.revenue.reduce((sum, item) => sum + item.lastPeriod, 0)
-  const totalExpenses = plData.expenses.reduce((sum, item) => sum + item.amount, 0)
-  const totalLastExpenses = plData.expenses.reduce((sum, item) => sum + item.lastPeriod, 0)
+// P&L data loaded from API
+export default function ProfitLossPage() {
+  const { toast } = useToast()
+  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7))
+  const [compareWith, setCompareWith] = useState("last-month")
+  const [plData, setPlData] = useState<any>({ period: "", revenue: [], expenses: [] })
+  const [loading, setLoading] = useState(true)
+
+  const loadProfitLoss = async (periodStr: string) => {
+    setLoading(true)
+    try {
+      const [year, month] = String(periodStr || "").split("-").map(Number)
+      const data = await getAccountsProfitLoss({ month, year })
+      setPlData(data || { period: periodStr, revenue: [], expenses: [] })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load P&L statement"
+      toast({ title: "P&L unavailable", description: message, variant: "destructive" })
+      setPlData({ period, revenue: [], expenses: [] })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadProfitLoss(period) }, [period])
+
+  const totalRevenue = (plData.revenue || []).reduce((sum: number, item: any) => sum + Number(item.amount || 0), 0)
+  const totalLastRevenue = (plData.revenue || []).reduce((sum: number, item: any) => sum + Number(item.lastPeriod || 0), 0)
+  const totalExpenses = (plData.expenses || []).reduce((sum: number, item: any) => sum + Number(item.amount || 0), 0)
+  const totalLastExpenses = (plData.expenses || []).reduce((sum: number, item: any) => sum + Number(item.lastPeriod || 0), 0)
   const netProfit = totalRevenue - totalExpenses
   const lastNetProfit = totalLastRevenue - totalLastExpenses
-  const profitMargin = (netProfit / totalRevenue) * 100
+  const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0
 
-  const revenueChange = ((totalRevenue - totalLastRevenue) / totalLastRevenue) * 100
-  const expenseChange = ((totalExpenses - totalLastExpenses) / totalLastExpenses) * 100
-  const profitChange = ((netProfit - lastNetProfit) / lastNetProfit) * 100
+  const revenueChange = totalLastRevenue > 0 ? ((totalRevenue - totalLastRevenue) / totalLastRevenue) * 100 : 0
+  const expenseChange = totalLastExpenses > 0 ? ((totalExpenses - totalLastExpenses) / totalLastExpenses) * 100 : 0
+  const profitChange = lastNetProfit !== 0 ? ((netProfit - lastNetProfit) / lastNetProfit) * 100 : 0
 
   return (
     <div className="space-y-6">
@@ -61,16 +71,7 @@ export default function ProfitLossPage() {
           <p className="text-muted-foreground">Income statement for {plData.period}</p>
         </div>
         <div className="flex gap-2">
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Period" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="01-2024">January 2024</SelectItem>
-              <SelectItem value="Q4-2023">Q4 2023</SelectItem>
-              <SelectItem value="FY-2023">FY 2023-24</SelectItem>
-            </SelectContent>
-          </Select>
+          <Input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} className="w-40" />
           <Select value={compareWith} onValueChange={setCompareWith}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Compare" />
@@ -93,7 +94,7 @@ export default function ProfitLossPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Total Revenue</div>
-            <div className="text-2xl font-bold">${totalRevenue.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalRevenue)}</div>
             <div className={`flex items-center text-xs ${revenueChange >= 0 ? "text-primary" : "text-destructive"}`}>
               {revenueChange >= 0 ? <TrendingUp className="mr-1 h-3 w-3" /> : <TrendingDown className="mr-1 h-3 w-3" />}
               {revenueChange >= 0 ? "+" : ""}{revenueChange.toFixed(1)}% vs last period
@@ -103,7 +104,7 @@ export default function ProfitLossPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Total Expenses</div>
-            <div className="text-2xl font-bold">${totalExpenses.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalExpenses)}</div>
             <div className={`flex items-center text-xs ${expenseChange <= 0 ? "text-primary" : "text-destructive"}`}>
               {expenseChange <= 0 ? <TrendingDown className="mr-1 h-3 w-3" /> : <TrendingUp className="mr-1 h-3 w-3" />}
               {expenseChange >= 0 ? "+" : ""}{expenseChange.toFixed(1)}% vs last period
@@ -114,7 +115,7 @@ export default function ProfitLossPage() {
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Net Profit</div>
             <div className={`text-2xl font-bold ${netProfit >= 0 ? "text-primary" : "text-destructive"}`}>
-              ${netProfit.toLocaleString()}
+              {formatCurrency(netProfit)}
             </div>
             <div className={`flex items-center text-xs ${profitChange >= 0 ? "text-primary" : "text-destructive"}`}>
               {profitChange >= 0 ? <TrendingUp className="mr-1 h-3 w-3" /> : <TrendingDown className="mr-1 h-3 w-3" />}
@@ -143,12 +144,14 @@ export default function ProfitLossPage() {
             <div>
               <h3 className="font-semibold text-lg mb-3 text-primary">REVENUE</h3>
               <div className="space-y-2">
-                {plData.revenue.map((item, idx) => {
-                  const change = ((item.amount - item.lastPeriod) / item.lastPeriod) * 100
+                {(plData.revenue || []).map((item: ProfitLossLine, idx: number) => {
+                  const amount = Number(item.amount || 0)
+                  const lastPeriod = Number(item.lastPeriod || 0)
+                  const change = lastPeriod ? ((amount - lastPeriod) / lastPeriod) * 100 : 0
                   return (
                     <div key={idx} className="grid grid-cols-4 py-2 border-b">
-                      <span className="col-span-2">{item.category}</span>
-                      <span className="text-right font-medium">${item.amount.toLocaleString()}</span>
+                      <span className="col-span-2">{item.category || "-"}</span>
+                      <span className="text-right font-medium">{formatCurrency(amount)}</span>
                       <span className={`text-right text-sm ${change >= 0 ? "text-primary" : "text-destructive"}`}>
                         {change >= 0 ? "+" : ""}{change.toFixed(1)}%
                       </span>
@@ -157,7 +160,7 @@ export default function ProfitLossPage() {
                 })}
                 <div className="grid grid-cols-4 py-3 font-bold bg-primary/5 rounded px-2">
                   <span className="col-span-2">Total Revenue</span>
-                  <span className="text-right">${totalRevenue.toLocaleString()}</span>
+                  <span className="text-right">{formatCurrency(totalRevenue)}</span>
                   <span className={`text-right ${revenueChange >= 0 ? "text-primary" : "text-destructive"}`}>
                     {revenueChange >= 0 ? "+" : ""}{revenueChange.toFixed(1)}%
                   </span>
@@ -169,12 +172,14 @@ export default function ProfitLossPage() {
             <div>
               <h3 className="font-semibold text-lg mb-3 text-destructive">EXPENSES</h3>
               <div className="space-y-2">
-                {plData.expenses.map((item, idx) => {
-                  const change = ((item.amount - item.lastPeriod) / item.lastPeriod) * 100
+                {(plData.expenses || []).map((item: ProfitLossLine, idx: number) => {
+                  const amount = Number(item.amount || 0)
+                  const lastPeriod = Number(item.lastPeriod || 0)
+                  const change = lastPeriod ? ((amount - lastPeriod) / lastPeriod) * 100 : 0
                   return (
                     <div key={idx} className="grid grid-cols-4 py-2 border-b">
-                      <span className="col-span-2">{item.category}</span>
-                      <span className="text-right font-medium">${item.amount.toLocaleString()}</span>
+                      <span className="col-span-2">{item.category || "-"}</span>
+                      <span className="text-right font-medium">{formatCurrency(amount)}</span>
                       <span className={`text-right text-sm ${change <= 0 ? "text-primary" : "text-destructive"}`}>
                         {change >= 0 ? "+" : ""}{change.toFixed(1)}%
                       </span>
@@ -183,7 +188,7 @@ export default function ProfitLossPage() {
                 })}
                 <div className="grid grid-cols-4 py-3 font-bold bg-destructive/5 rounded px-2">
                   <span className="col-span-2">Total Expenses</span>
-                  <span className="text-right">${totalExpenses.toLocaleString()}</span>
+                  <span className="text-right">{formatCurrency(totalExpenses)}</span>
                   <span className={`text-right ${expenseChange <= 0 ? "text-primary" : "text-destructive"}`}>
                     {expenseChange >= 0 ? "+" : ""}{expenseChange.toFixed(1)}%
                   </span>
@@ -196,7 +201,7 @@ export default function ProfitLossPage() {
               <div className="grid grid-cols-4 py-4 font-bold text-xl">
                 <span className="col-span-2">NET PROFIT / (LOSS)</span>
                 <span className={`text-right ${netProfit >= 0 ? "text-primary" : "text-destructive"}`}>
-                  ${netProfit.toLocaleString()}
+                  {formatCurrency(netProfit)}
                 </span>
                 <span className={`text-right ${profitChange >= 0 ? "text-primary" : "text-destructive"}`}>
                   {profitChange >= 0 ? "+" : ""}{profitChange.toFixed(1)}%

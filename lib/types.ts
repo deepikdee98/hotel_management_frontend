@@ -280,6 +280,7 @@ export interface Reservation {
   guestName: string
   guestEmail: string
   guestPhone: string
+  guestPhotoUrl?: string
   idProofType?: string
   idProofNumber?: string
   roomId: string
@@ -309,6 +310,7 @@ export interface Guest {
   name: string
   email: string
   phone: string
+  photo?: string
   idType: string
   idNumber: string
   address: string

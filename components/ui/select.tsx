@@ -56,6 +56,9 @@ function SelectContent({
   position = 'popper',
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
+  const renderedChildren = React.Children.toArray(children)
+  const hasOptions = renderedChildren.length > 0
+
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
@@ -77,7 +80,18 @@ function SelectContent({
               'h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1',
           )}
         >
-          {children}
+          {hasOptions ? (
+            children
+          ) : (
+            <SelectPrimitive.Item
+              value="__no_data_available__"
+              disabled
+              data-slot="select-item"
+              className="text-muted-foreground relative flex w-full cursor-default select-none items-center rounded-sm py-2 pr-8 pl-2 text-sm"
+            >
+              <SelectPrimitive.ItemText>No data available</SelectPrimitive.ItemText>
+            </SelectPrimitive.Item>
+          )}
         </SelectPrimitive.Viewport>
         <SelectScrollDownButton />
       </SelectPrimitive.Content>

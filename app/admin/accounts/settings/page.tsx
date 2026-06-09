@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,7 +18,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -33,36 +32,85 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Plus, Pencil, Trash2, Save } from "lucide-react"
+import { getAccountsSettings, updateAccountsSettings, type AccountSettings } from "@/services/api/accounts.service"
+import { useToast } from "@/hooks/use-toast"
 
-const taxRates = [
-  { id: 1, name: "GST 18%", rate: 18, type: "GST", cgst: 9, sgst: 9, active: true },
-  { id: 2, name: "GST 12%", rate: 12, type: "GST", cgst: 6, sgst: 6, active: true },
-  { id: 3, name: "GST 5%", rate: 5, type: "GST", cgst: 2.5, sgst: 2.5, active: true },
-  { id: 4, name: "Service Tax", rate: 10, type: "Service", cgst: 0, sgst: 0, active: false },
-]
+type SettingsRow = {
+  id?: string | number
+  name?: string
+  rate?: number
+  type?: string
+  cgst?: number
+  sgst?: number
+  code?: string
+  ledgerAccount?: string
+  active?: boolean
+}
 
-const paymentMethods = [
-  { id: 1, name: "Cash", code: "CASH", ledgerAccount: "1001 - Cash in Hand", active: true },
-  { id: 2, name: "Credit Card", code: "CC", ledgerAccount: "1002 - Bank Account", active: true },
-  { id: 3, name: "Debit Card", code: "DC", ledgerAccount: "1002 - Bank Account", active: true },
-  { id: 4, name: "UPI", code: "UPI", ledgerAccount: "1002 - Bank Account", active: true },
-  { id: 5, name: "Bank Transfer", code: "BT", ledgerAccount: "1002 - Bank Account", active: true },
-  { id: 6, name: "Cheque", code: "CHQ", ledgerAccount: "1002 - Bank Account", active: true },
-]
-
-const expenseCategories = [
-  { id: 1, name: "Utilities", code: "UTL", ledgerAccount: "5002 - Utilities", active: true },
-  { id: 2, name: "Supplies", code: "SUP", ledgerAccount: "5003 - Supplies", active: true },
-  { id: 3, name: "Maintenance", code: "MNT", ledgerAccount: "5004 - Maintenance", active: true },
-  { id: 4, name: "Payroll", code: "PAY", ledgerAccount: "5001 - Salaries", active: true },
-  { id: 5, name: "Marketing", code: "MKT", ledgerAccount: "5005 - Marketing", active: true },
-  { id: 6, name: "Insurance", code: "INS", ledgerAccount: "5006 - Insurance", active: true },
-]
+function rows(value: unknown): SettingsRow[] {
+  return Array.isArray(value) ? value as SettingsRow[] : []
+}
 
 export default function AccountsSettingsPage() {
+  const { toast } = useToast()
   const [isAddTaxOpen, setIsAddTaxOpen] = useState(false)
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false)
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false)
+  const [settings, setSettings] = useState<AccountSettings>({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+
+    getAccountsSettings()
+      .then((data) => {
+        if (active) setSettings(data || {})
+      })
+      .catch((err) => {
+        if (!active) return
+        const message = err instanceof Error ? err.message : "Failed to load accounts settings"
+        toast({ title: "Settings unavailable", description: message, variant: "destructive" })
+        setSettings({})
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [toast])
+
+  const updateSetting = <K extends keyof AccountSettings>(key: K, value: AccountSettings[K]) => {
+    setSettings((current) => ({ ...current, [key]: value }))
+  }
+
+  const updateAutomation = (key: keyof NonNullable<AccountSettings["automation"]>, value: boolean) => {
+    setSettings((current) => ({
+      ...current,
+      automation: { ...current.automation, [key]: value },
+    }))
+  }
+
+  const saveSettings = async () => {
+    setSaving(true)
+    try {
+      const updated = await updateAccountsSettings(settings)
+      setSettings(updated || settings)
+      toast({ title: "Settings saved" })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to save accounts settings"
+      toast({ title: "Save failed", description: message, variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const taxRates = rows(settings.taxRates)
+  const paymentMethods = rows(settings.paymentMethods)
+  const expenseCategories = rows(settings.expenseCategories)
 
   return (
     <div className="space-y-6">
@@ -90,7 +138,7 @@ export default function AccountsSettingsPage() {
               <div className="grid gap-6 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Financial Year Start</Label>
-                  <Select defaultValue="april">
+                  <Select value={settings.financialYearStart || ""} onValueChange={(value) => updateSetting("financialYearStart", value)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -103,13 +151,12 @@ export default function AccountsSettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Currency</Label>
-                  <Select defaultValue="usd">
+                  <Select value={settings.currency || ""} onValueChange={(value) => updateSetting("currency", value)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="usd">USD ($)</SelectItem>
-                      <SelectItem value="inr">INR (Rs)</SelectItem>
+                      <SelectItem value="inr">INR (₹)</SelectItem>
                       <SelectItem value="eur">EUR (Euro)</SelectItem>
                       <SelectItem value="gbp">GBP (Pound)</SelectItem>
                     </SelectContent>
@@ -117,11 +164,11 @@ export default function AccountsSettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Invoice Prefix</Label>
-                  <Input defaultValue="INV-" />
+                  <Input value={settings.invoicePrefix || ""} onChange={(event) => updateSetting("invoicePrefix", event.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label>Receipt Prefix</Label>
-                  <Input defaultValue="RCP-" />
+                  <Input value={settings.receiptPrefix || ""} onChange={(event) => updateSetting("receiptPrefix", event.target.value)} />
                 </div>
               </div>
 
@@ -133,28 +180,28 @@ export default function AccountsSettingsPage() {
                       <Label>Auto-generate Invoice on Checkout</Label>
                       <p className="text-sm text-muted-foreground">Automatically create invoice when guest checks out</p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch checked={Boolean(settings.automation?.autoGenerateInvoiceOnCheckout)} onCheckedChange={(checked) => updateAutomation("autoGenerateInvoiceOnCheckout", checked)} />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <Label>Send Invoice via Email</Label>
                       <p className="text-sm text-muted-foreground">Email invoice to guest after checkout</p>
                     </div>
-                    <Switch defaultChecked />
+                    <Switch checked={Boolean(settings.automation?.sendInvoiceViaEmail)} onCheckedChange={(checked) => updateAutomation("sendInvoiceViaEmail", checked)} />
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
                       <Label>Round Off Amounts</Label>
                       <p className="text-sm text-muted-foreground">Round invoice totals to nearest whole number</p>
                     </div>
-                    <Switch />
+                    <Switch checked={Boolean(settings.automation?.roundOffAmounts)} onCheckedChange={(checked) => updateAutomation("roundOffAmounts", checked)} />
                   </div>
                 </div>
               </div>
 
-              <Button>
+              <Button onClick={saveSettings} disabled={saving || loading}>
                 <Save className="mr-2 h-4 w-4" />
-                Save Settings
+                {saving ? "Saving..." : "Save Settings"}
               </Button>
             </CardContent>
           </Card>
@@ -168,24 +215,24 @@ export default function AccountsSettingsPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>GST Number</Label>
-                  <Input defaultValue="22AAAAA0000A1Z5" />
+                  <Input value={settings.gstNumber || ""} onChange={(event) => updateSetting("gstNumber", event.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label>PAN Number</Label>
-                  <Input defaultValue="AAAAA0000A" />
+                  <Input value={settings.panNumber || ""} onChange={(event) => updateSetting("panNumber", event.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label>TAN Number</Label>
-                  <Input defaultValue="AAAA00000A" />
+                  <Input value={settings.tanNumber || ""} onChange={(event) => updateSetting("tanNumber", event.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label>State Code</Label>
-                  <Input defaultValue="22" />
+                  <Input value={settings.stateCode || ""} onChange={(event) => updateSetting("stateCode", event.target.value)} />
                 </div>
               </div>
-              <Button>
+              <Button onClick={saveSettings} disabled={saving || loading}>
                 <Save className="mr-2 h-4 w-4" />
-                Save Tax Details
+                {saving ? "Saving..." : "Save Tax Details"}
               </Button>
             </CardContent>
           </Card>
@@ -267,13 +314,13 @@ export default function AccountsSettingsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {taxRates.map((tax) => (
-                    <TableRow key={tax.id}>
-                      <TableCell className="font-medium">{tax.name}</TableCell>
-                      <TableCell>{tax.type}</TableCell>
-                      <TableCell>{tax.cgst}%</TableCell>
-                      <TableCell>{tax.sgst}%</TableCell>
-                      <TableCell>{tax.rate}%</TableCell>
+                  {taxRates.map((tax, index) => (
+                    <TableRow key={tax.id || tax.name || index}>
+                      <TableCell className="font-medium">{tax.name || "-"}</TableCell>
+                      <TableCell>{tax.type || "-"}</TableCell>
+                      <TableCell>{Number(tax.cgst || 0)}%</TableCell>
+                      <TableCell>{Number(tax.sgst || 0)}%</TableCell>
+                      <TableCell>{Number(tax.rate || 0)}%</TableCell>
                       <TableCell>
                         <Badge variant={tax.active ? "default" : "secondary"}>
                           {tax.active ? "Active" : "Inactive"}
@@ -289,6 +336,11 @@ export default function AccountsSettingsPage() {
                       </TableCell>
                     </TableRow>
                   ))}
+                  {!loading && taxRates.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No tax rates configured.</TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -329,10 +381,7 @@ export default function AccountsSettingsPage() {
                           <SelectTrigger>
                             <SelectValue placeholder="Select account" />
                           </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1001">1001 - Cash in Hand</SelectItem>
-                            <SelectItem value="1002">1002 - Bank Account</SelectItem>
-                          </SelectContent>
+                          <SelectContent />
                         </Select>
                       </div>
                     </div>
@@ -356,11 +405,11 @@ export default function AccountsSettingsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paymentMethods.map((method) => (
-                    <TableRow key={method.id}>
-                      <TableCell className="font-medium">{method.name}</TableCell>
-                      <TableCell>{method.code}</TableCell>
-                      <TableCell>{method.ledgerAccount}</TableCell>
+                  {paymentMethods.map((method, index) => (
+                    <TableRow key={method.id || method.code || method.name || index}>
+                      <TableCell className="font-medium">{method.name || "-"}</TableCell>
+                      <TableCell>{method.code || "-"}</TableCell>
+                      <TableCell>{method.ledgerAccount || "-"}</TableCell>
                       <TableCell>
                         <Badge variant={method.active ? "default" : "secondary"}>
                           {method.active ? "Active" : "Inactive"}
@@ -373,6 +422,11 @@ export default function AccountsSettingsPage() {
                       </TableCell>
                     </TableRow>
                   ))}
+                  {!loading && paymentMethods.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">No payment methods configured.</TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -413,13 +467,7 @@ export default function AccountsSettingsPage() {
                           <SelectTrigger>
                             <SelectValue placeholder="Select account" />
                           </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="5001">5001 - Salaries</SelectItem>
-                            <SelectItem value="5002">5002 - Utilities</SelectItem>
-                            <SelectItem value="5003">5003 - Supplies</SelectItem>
-                            <SelectItem value="5004">5004 - Maintenance</SelectItem>
-                            <SelectItem value="5005">5005 - Marketing</SelectItem>
-                          </SelectContent>
+                          <SelectContent />
                         </Select>
                       </div>
                     </div>
@@ -443,11 +491,11 @@ export default function AccountsSettingsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {expenseCategories.map((category) => (
-                    <TableRow key={category.id}>
-                      <TableCell className="font-medium">{category.name}</TableCell>
-                      <TableCell>{category.code}</TableCell>
-                      <TableCell>{category.ledgerAccount}</TableCell>
+                  {expenseCategories.map((category, index) => (
+                    <TableRow key={category.id || category.code || category.name || index}>
+                      <TableCell className="font-medium">{category.name || "-"}</TableCell>
+                      <TableCell>{category.code || "-"}</TableCell>
+                      <TableCell>{category.ledgerAccount || "-"}</TableCell>
                       <TableCell>
                         <Badge variant={category.active ? "default" : "secondary"}>
                           {category.active ? "Active" : "Inactive"}
@@ -463,6 +511,11 @@ export default function AccountsSettingsPage() {
                       </TableCell>
                     </TableRow>
                   ))}
+                  {!loading && expenseCategories.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">No expense categories configured.</TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>

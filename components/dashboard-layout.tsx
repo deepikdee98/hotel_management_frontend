@@ -127,7 +127,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
             </Button>
             <span className="text-sm font-semibold">HotelManager</span>
           </header>
-          <main className="w-full p-4 sm:p-5 lg:p-6">
+          <main className="admin-content w-full min-w-0 overflow-x-hidden p-3 sm:p-5 lg:p-6">
             {subscriptionStatus === "WARNING" && subscriptionInfo?.message && (
               <div className="mb-4 flex items-start gap-3 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 shadow-sm">
                 <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />

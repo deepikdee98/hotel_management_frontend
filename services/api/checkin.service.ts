@@ -32,6 +32,69 @@ export async function createCheckIn(payload: JsonRecord) {
   })
 }
 
+export async function uploadCheckInImage(
+  file: File | Blob,
+  uploadType: "guest-photo" | "id-proof-front" | "id-proof-back",
+  fileName = "capture.jpg",
+  customerName?: string
+) {
+  const contentType = file.type || "image/jpeg"
+  const fileSize = "size" in file ? file.size : undefined
+  const presign = await apiRequest<{
+    success: boolean
+    data: {
+      uploadUrl: string
+      fileUrl: string
+      key: string
+      contentType: string
+    }
+  }>("/admin/reception/check-in/uploads/presign", {
+    method: "POST",
+    body: JSON.stringify({
+      fileName,
+      contentType,
+      uploadType,
+      fileSize,
+      storageScope: "customer",
+      customerName,
+    }),
+  })
+
+  const upload = await fetch(presign.data.uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": presign.data.contentType || contentType,
+    },
+    body: file,
+  })
+
+  if (!upload.ok) {
+    const text = await upload.text().catch(() => "")
+    throw new Error(text || "Failed to upload image to S3")
+  }
+
+  return {
+    url: presign.data.fileUrl,
+    key: presign.data.key,
+  }
+}
+
+export async function getCheckInFileReadUrl(key: string) {
+  const response = await apiRequest<{
+    success: boolean
+    data: {
+      readUrl: string
+      key: string
+      expiresIn: number
+    }
+  }>("/admin/reception/check-in/uploads/read-url", {
+    method: "POST",
+    body: JSON.stringify({ key }),
+  })
+
+  return response.data.readUrl
+}
+
 export async function getCheckInById(id: string) {
   return apiRequest<{ success: boolean; data: JsonRecord }>(`/admin/reception/check-in/${id}`)
 }
@@ -110,6 +173,17 @@ export async function downloadCheckoutInvoice(invoiceId: string) {
     const text = await response.text()
     throw new Error(text || "Failed to download invoice")
   }
+  const contentType = response.headers.get("content-type") || ""
+  if (contentType.includes("application/json")) {
+    const payload = await response.json()
+    const downloadUrl = payload?.data?.downloadUrl || payload?.data?.invoiceUrl
+    if (!downloadUrl) {
+      throw new Error("Invoice download URL missing")
+    }
+    window.open(downloadUrl, "_blank", "noopener,noreferrer")
+    return
+  }
+
   const blob = await response.blob()
   const url = window.URL.createObjectURL(blob)
   const link = document.createElement("a")
