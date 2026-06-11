@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -46,6 +47,22 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import type { UserRole, ModuleType } from "@/lib/types"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import Image from "next/image"
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3002"
+const AUTH_TOKEN_STORAGE_KEY = "hotel_manager_tokens"
+
+function getStoredAccessToken(): string | null {
+  try {
+    const tokensRaw = sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+    if (!tokensRaw) return null
+
+    const { accessToken } = JSON.parse(tokensRaw)
+    return typeof accessToken === "string" && accessToken ? accessToken : null
+  } catch {
+    return null
+  }
+}
 
 interface SubNavItem {
   label: string
@@ -167,6 +184,71 @@ export function DashboardSidebar({
   const pathname = usePathname()
   const router = useRouter()
   const { user, logout, hasAccess } = useAuth()
+  const [hotelLogoUrl, setHotelLogoUrl] = useState("")
+
+  useEffect(() => {
+    if (!user || user.role === "super-admin") {
+      setHotelLogoUrl("")
+      return
+    }
+
+    let isCancelled = false
+
+    const loadHotelLogo = async () => {
+      const accessToken = getStoredAccessToken()
+      if (!accessToken) return
+
+      try {
+        const configResponse = await fetch(`${API_BASE_URL}/admin/setup/hotel-config`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          cache: "no-store",
+        })
+
+        if (!configResponse.ok) return
+
+        const hotelConfig = await configResponse.json()
+        const logoKey = hotelConfig?.logo?.key
+        const fallbackLogoUrl = hotelConfig?.logo?.url || user.avatar || ""
+        let nextLogoUrl = fallbackLogoUrl
+
+        if (logoKey) {
+          const readResponse = await fetch(`${API_BASE_URL}/uploads/read-url`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ key: logoKey }),
+          })
+
+          if (readResponse.ok) {
+            const readPayload = await readResponse.json()
+            nextLogoUrl = readPayload?.data?.readUrl || nextLogoUrl
+          }
+        }
+
+        if (!isCancelled) setHotelLogoUrl(nextLogoUrl)
+      } catch {
+        if (!isCancelled) setHotelLogoUrl(user.avatar || "")
+      }
+    }
+
+    loadHotelLogo()
+
+    const handleLogoUpdated = (event: Event) => {
+      const logoUrl = (event as CustomEvent<{ logoUrl?: string }>).detail?.logoUrl
+      if (logoUrl) setHotelLogoUrl(logoUrl)
+    }
+
+    window.addEventListener("hotel-logo-updated", handleLogoUpdated)
+
+    return () => {
+      isCancelled = true
+      window.removeEventListener("hotel-logo-updated", handleLogoUpdated)
+    }
+  }, [user])
 
   const navItems = getNavItems(role).filter((item) => {
     // Check role access if defined
@@ -207,14 +289,29 @@ export function DashboardSidebar({
             className={cn("flex items-center gap-2", collapsed && "lg:hidden")}
             onClick={closeMobileSidebar}
           >
-            <div className="p-1.5 bg-sidebar-primary rounded-lg">
-              <Building2 className="h-5 w-5 text-sidebar-primary-foreground" />
+            <div className="rounded-lg overflow-hidden">
+              <Image
+                src="/logo.png"
+                alt="Zentric HMS"
+                width={32}
+                height={32}
+                className="object-contain"
+              />
             </div>
-            <span className="font-semibold text-sidebar-foreground">HotelManager</span>
+
+            <span className="font-semibold text-sidebar-foreground">
+              Zentric HMS
+            </span>
           </Link>
           {collapsed && (
-            <div className="hidden p-1.5 bg-sidebar-primary rounded-lg mx-auto lg:block">
-              <Building2 className="h-5 w-5 text-sidebar-primary-foreground" />
+            <div className="hidden mx-auto lg:block">
+              <Image
+                src="/logo.png"
+                alt="Zentric HMS"
+                width={32}
+                height={32}
+                className="object-contain"
+              />
             </div>
           )}
           <Button
@@ -244,13 +341,17 @@ export function DashboardSidebar({
         {user && (
           <div className={cn("border-b border-sidebar-border p-4", collapsed && "lg:hidden")}>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-sidebar-accent flex items-center justify-center">
-                <span className="text-sm font-medium text-sidebar-accent-foreground">
-                  {user.name
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")}
-                </span>
+              <div className="h-10 w-10 overflow-hidden rounded-full bg-sidebar-accent flex items-center justify-center">
+                {hotelLogoUrl ? (
+                  <img src={hotelLogoUrl} alt={user.hotelName || "Hotel logo"} className="h-full w-full object-contain" />
+                ) : (
+                  <span className="text-sm font-medium text-sidebar-accent-foreground">
+                    {user.name
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")}
+                  </span>
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>

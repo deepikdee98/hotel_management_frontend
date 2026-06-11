@@ -234,6 +234,9 @@ export interface Room {
   adults?: number
   children?: number
   remainingDays?: number
+  planCharges?: number
+  foodCharges?: number
+  discount?: number
   guestDetails?: {
     name?: string
     phone?: string

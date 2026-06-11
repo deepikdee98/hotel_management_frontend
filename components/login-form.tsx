@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/lib/auth-context"
+import Image from "next/image"
 
 export function LoginForm() {
   const router = useRouter()
@@ -69,11 +70,17 @@ export function LoginForm() {
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="p-2 bg-primary rounded-lg">
-              <Building2 className="h-8 w-8 text-primary-foreground" />
+            <div className="flex justify-center mb-4">
+              <Image
+                src="/logo.png"
+                alt="Zentric HMS Logo"
+                width={150}
+                height={150}
+                priority
+              />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">HotelManager Pro</h1>
+          <h1 className="text-2xl font-bold text-foreground">Zentric HMS</h1>
           
         </div>
 
