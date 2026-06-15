@@ -36,7 +36,9 @@ import {
   getLookupGuests,
   getSetupRoomTypes,
   getBookingNumberPreview,
-  removeLinkedCheckInRoom
+  removeLinkedCheckInRoom,
+  getCheckInFileReadUrl,
+  uploadCheckInImage
 } from "@/lib/backend-api"
 import { saveGRCardPrintData } from "@/lib/gr-card-utils"
 import { useToast } from "@/hooks/use-toast"
@@ -70,7 +72,6 @@ import {
   buildCheckInPayload,
   calculateBillingTotals,
   createInitialCheckInForm,
-  findFoodService,
   formatMoney,
   getRoomTotal,
   hasCurrentRoomDraft,
@@ -78,9 +79,9 @@ import {
   type MultiRoomContext,
 } from "@/features/checkin/utils/checkin-form-utils"
 
-export function CheckInForm({ 
-  mode = "check-in", 
-  editId = "", 
+export function CheckInForm({
+  mode = "check-in",
+  editId = "",
   isEditMode = false,
   preSelectedRoomId = "",
   preSelectedRoomNo = "",
@@ -95,8 +96,26 @@ export function CheckInForm({
   const [isEditing, setIsEditing] = useState(isEditMode)
   const [activeTab, setActiveTab] = useState<TabType>("guest-info")
   const [guestPhoto, setGuestPhoto] = useState<string | null>(null)
+  const [guestPhotoKey, setGuestPhotoKey] = useState("")
   const [idProofFront, setIdProofFront] = useState<string | null>(null)
+  const [idProofFrontKey, setIdProofFrontKey] = useState("")
   const [idProofBack, setIdProofBack] = useState<string | null>(null)
+  const [idProofBackKey, setIdProofBackKey] = useState("")
+  const [guestPhotoPreview, setGuestPhotoPreview] = useState<string | null>(null)
+  const [idProofFrontPreview, setIdProofFrontPreview] = useState<string | null>(null)
+  const [idProofBackPreview, setIdProofBackPreview] = useState<string | null>(null)
+  const [pendingGuestPhotoUpload, setPendingGuestPhotoUpload] = useState<{ file: File | Blob; fileName: string } | null>(null)
+  const [pendingIdProofFrontUpload, setPendingIdProofFrontUpload] = useState<{ file: File | Blob; fileName: string } | null>(null)
+  const [pendingIdProofBackUpload, setPendingIdProofBackUpload] = useState<{ file: File | Blob; fileName: string } | null>(null)
+  const [hasPhotoError, setHasPhotoError] = useState(false)
+  const [isPhotoUploading, setIsPhotoUploading] = useState(false)
+  const [idProofUploadingSide, setIdProofUploadingSide] = useState<"front" | "back" | null>(null)
+  const [isWebcamOpen, setIsWebcamOpen] = useState(false)
+  const [isCameraStarting, setIsCameraStarting] = useState(false)
+  const [isCameraReady, setIsCameraReady] = useState(false)
+  const [pendingWebcamStream, setPendingWebcamStream] = useState<MediaStream | null>(null)
+  const [webcamPreview, setWebcamPreview] = useState<string | null>(null)
+  const [webcamBlob, setWebcamBlob] = useState<Blob | null>(null)
   const [selectedRoomType, setSelectedRoomType] = useState("")
   const [gstInclusive, setGstInclusive] = useState(false)
   const [availableServices, setAvailableServices] = useState<Service[]>([])
@@ -116,6 +135,9 @@ export function CheckInForm({
   const [showGuestDialog, setShowGuestDialog] = useState(false)
   const [showPaxSuccessDialog, setShowPaxSuccessDialog] = useState(false)
   const lastCheckedMobile = useRef("")
+  const guestPhotoInputRef = useRef<HTMLInputElement | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const webcamStreamRef = useRef<MediaStream | null>(null)
   const idProofFrontInputRef = useRef<HTMLInputElement | null>(null)
   const idProofBackInputRef = useRef<HTMLInputElement | null>(null)
   const [loadedGuestId, setLoadedGuestId] = useState("")
@@ -149,7 +171,53 @@ export function CheckInForm({
     }
   }, [isEditMode])
 
+  useEffect(() => {
+    return () => {
+      webcamStreamRef.current?.getTracks().forEach((track) => track.stop())
+      webcamStreamRef.current = null
+    }
+  }, [])
+
   const [originalData, setOriginalData] = useState<typeof form | null>(null)
+
+  useEffect(() => {
+    setHasPhotoError(false);
+  }, [guestPhoto, guestPhotoPreview]);
+
+  const isImage = (urlOrKey: string | null, fileName?: string | null) => {
+    const target = (fileName || urlOrKey || "").split("?")[0].toLowerCase();
+    if (!target) return false;
+    const images = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
+    return images.some(ext => target.endsWith(ext)) || 
+           target.includes("image/") || 
+           target.startsWith("blob:") || 
+           target.includes("capture.jpg") || 
+           target.includes("webcam-photo");
+  };
+
+  const resolveStoredFilePreview = async (key: string, fallbackUrl?: string | null) => {
+    if (!key) return fallbackUrl || null
+
+    try {
+      return await getCheckInFileReadUrl(key)
+    } catch {
+      return fallbackUrl || null
+    }
+  }
+
+  const getStoredFileKey = (key?: string | null, url?: string | null) => {
+    if (key) return key
+    if (!url) return ""
+
+    try {
+      const parsed = new URL(url)
+      const keyFromPath = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""))
+      return keyFromPath.startsWith("hotels/") ? keyFromPath : ""
+    } catch {
+      const hotelsIndex = url.indexOf("hotels/")
+      return hotelsIndex >= 0 ? url.slice(hotelsIndex).split("?")[0] : ""
+    }
+  }
 
   const titleOptions = useSetupOptions("title")
   const genderOptions = useSetupOptions("gender")
@@ -241,7 +309,7 @@ export function CheckInForm({
       if (room) {
         const roomTypeDisplay = room.type || ""
         const selectedType = roomTypes.find(rt => rt.name === roomTypeDisplay || rt.code === roomTypeDisplay || rt._id === room.roomTypeId)
-        
+
         setForm(prev => ({
           ...prev,
           roomNo: room.number,
@@ -301,23 +369,6 @@ export function CheckInForm({
     }
     fetchData()
   }, [mode])
-
-  useEffect(() => {
-    if (availableServices.length > 0 && form.foodCharge === "0" && form.planType && !isEditMode) {
-      const plan = ratePlans.find((p, index) => {
-        const planValue = p._id ?? p.id ?? p.code ?? `${p.name ?? "plan"}-${index}`
-        return planValue === form.planType
-      })
-      const planCode = (plan?.code || "").toUpperCase()
-
-      if (planCode !== "EP") {
-        const foodService = findFoodService(availableServices)
-        if (foodService) {
-          setForm(prev => ({ ...prev, foodCharge: foodService.defaultPrice.toString() }))
-        }
-      }
-    }
-  }, [availableServices, form.planType, ratePlans, isEditMode]);
 
   useEffect(() => {
     const fetchReferralData = async () => {
@@ -497,6 +548,36 @@ export function CheckInForm({
     setSelectedRoomType(roomTypeDisplay)
     setGstInclusive(Boolean(booking.gstInclusive))
     setCompanions(Array.isArray(booking.companions) ? booking.companions.map(normalizeCompanion) : [])
+    setGuestPhoto(booking.guestPhotoUrl || null)
+    setGuestPhotoKey(booking.guestPhotoKey || "")
+    setGuestPhotoPreview(null)
+    setPendingGuestPhotoUpload(null)
+    const guestPhotoStoredKey = getStoredFileKey(booking.guestPhotoKey, booking.guestPhotoUrl)
+    if (guestPhotoStoredKey) {
+      resolveStoredFilePreview(guestPhotoStoredKey, booking.guestPhotoUrl).then((url) => {
+        if (url) setGuestPhotoPreview(url)
+      })
+    }
+    setIdProofFront(booking.idProofFrontUrl || null)
+    setIdProofFrontKey(booking.idProofFrontKey || "")
+    setIdProofFrontPreview(null)
+    setPendingIdProofFrontUpload(null)
+    const idProofFrontStoredKey = getStoredFileKey(booking.idProofFrontKey, booking.idProofFrontUrl)
+    if (idProofFrontStoredKey) {
+      resolveStoredFilePreview(idProofFrontStoredKey, booking.idProofFrontUrl).then((url) => {
+        if (url) setIdProofFrontPreview(url)
+      })
+    }
+    setIdProofBack(booking.idProofBackUrl || null)
+    setIdProofBackKey(booking.idProofBackKey || "")
+    setIdProofBackPreview(null)
+    setPendingIdProofBackUpload(null)
+    const idProofBackStoredKey = getStoredFileKey(booking.idProofBackKey, booking.idProofBackUrl)
+    if (idProofBackStoredKey) {
+      resolveStoredFilePreview(idProofBackStoredKey, booking.idProofBackUrl).then((url) => {
+        if (url) setIdProofBackPreview(url)
+      })
+    }
     if (booking.bookingGroupId) {
       setMultiRoomContext({
         bookingGroupId: String(booking.bookingGroupId),
@@ -656,7 +737,7 @@ export function CheckInForm({
       if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
         const diffTime = end.getTime() - start.getTime()
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-        setForm(prev => ({ ...prev, noOfNights: Math.max(0, diffDays).toString() }))
+        setForm(prev => ({ ...prev, noOfNights: Math.max(1, diffDays).toString() }))
       }
     }
 
@@ -793,12 +874,7 @@ export function CheckInForm({
         return planValue === value
       })
       if (plan) {
-        const planCode = (plan.code || "").toUpperCase()
-        const foodService = findFoodService(availableServices)
-        let foodCharge = "0"
-        if (foodService && planCode !== "EP") {
-          foodCharge = toMoneyString(foodService.defaultPrice)
-        }
+        const foodCharge = plan.foodIncluded ? toMoneyString(plan.foodCharge || 0) : "0"
         setForm(prev => ({ ...prev, planType: value, foodCharge, planTypeLabel: plan.name || "" }))
       }
     }
@@ -806,38 +882,298 @@ export function CheckInForm({
 
   useEffect(() => {
     const totals = calculateBillingTotals(form, availableServices, gstInclusive)
+    const nights = Math.max(1, Number(form.noOfNights) || 1)
+    const planCharges = toMoneyString((Number(form.planCharge) || 0) * nights)
+    const foodCharges = toMoneyString((Number(form.foodCharge) || 0) * nights)
 
-    if (form.gstAmount !== totals.gstAmount || form.netAmount !== totals.netAmount) {
+    if (
+      form.gstAmount !== totals.gstAmount ||
+      form.netAmount !== totals.netAmount ||
+      form.planCharges !== planCharges ||
+      form.foodCharges !== foodCharges
+    ) {
       setForm(prev => ({
         ...prev,
+        planCharges,
+        foodCharges,
         gstAmount: totals.gstAmount,
         netAmount: totals.netAmount
       }))
     }
-  }, [form.planCharge, form.foodCharge, form.gstPercentage, form.gstType, gstInclusive, availableServices, form.discount, form.noOfNights, form.gstAmount, form.netAmount]);
+  }, [form.planCharge, form.foodCharge, form.gstPercentage, form.gstType, gstInclusive, availableServices, form.discount, form.noOfNights, form.gstAmount, form.netAmount, form.planCharges, form.foodCharges]);
 
 
+
+  const uploadImageToS3 = async (
+    file: File | Blob,
+    uploadType: "guest-photo" | "id-proof-front" | "id-proof-back",
+    fileName: string
+  ) => {
+    const result = await uploadCheckInImage(file, uploadType, fileName, form.guestName || "customer-NA")
+    return result
+  }
+
+  const getPendingUploads = () => ({
+    guestPhoto: pendingGuestPhotoUpload,
+    idProofFront: pendingIdProofFrontUpload,
+    idProofBack: pendingIdProofBackUpload,
+  })
+
+  const clearPendingUploads = () => {
+    setPendingGuestPhotoUpload(null)
+    setPendingIdProofFrontUpload(null)
+    setPendingIdProofBackUpload(null)
+  }
+
+  const uploadPendingAttachments = async (
+    checkinId: string,
+    pendingUploads = getPendingUploads()
+  ) => {
+    const attachmentPayload: Record<string, string> = {}
+
+    try {
+      const uploads = [
+        {
+          pending: pendingUploads.guestPhoto,
+          uploadType: "guest-photo" as const,
+          urlField: "guestPhotoUrl",
+          keyField: "guestPhotoKey",
+        },
+        {
+          pending: pendingUploads.idProofFront,
+          uploadType: "id-proof-front" as const,
+          urlField: "idProofFrontUrl",
+          keyField: "idProofFrontKey",
+        },
+        {
+          pending: pendingUploads.idProofBack,
+          uploadType: "id-proof-back" as const,
+          urlField: "idProofBackUrl",
+          keyField: "idProofBackKey",
+        },
+      ]
+
+      for (const item of uploads) {
+        if (!item.pending) continue
+        const uploaded = await uploadImageToS3(item.pending.file, item.uploadType, item.pending.fileName)
+        attachmentPayload[item.urlField] = uploaded.url
+        attachmentPayload[item.keyField] = uploaded.key
+      }
+
+      if (Object.keys(attachmentPayload).length > 0) {
+        await updateCheckIn(checkinId, attachmentPayload, user?.role)
+        if (attachmentPayload.guestPhotoUrl) {
+          setGuestPhoto(attachmentPayload.guestPhotoUrl)
+          setGuestPhotoKey(attachmentPayload.guestPhotoKey || "")
+        }
+        if (attachmentPayload.idProofFrontUrl) {
+          setIdProofFront(attachmentPayload.idProofFrontUrl)
+          setIdProofFrontKey(attachmentPayload.idProofFrontKey || "")
+        }
+        if (attachmentPayload.idProofBackUrl) {
+          setIdProofBack(attachmentPayload.idProofBackUrl)
+          setIdProofBackKey(attachmentPayload.idProofBackKey || "")
+        }
+      }
+
+      return true
+    } catch (error: any) {
+      toast({
+        title: "Upload Failed",
+        description: error.message || "Check-in saved, but the photo/document upload failed.",
+        variant: "destructive",
+      })
+      return false
+    }
+  }
+
+  const handleGuestPhotoUpload = (file?: File) => {
+    if (!file) return
+
+    const previewUrl = URL.createObjectURL(file)
+    setGuestPhotoPreview(previewUrl)
+    setGuestPhoto(null)
+    setGuestPhotoKey(file.name)
+    setPendingGuestPhotoUpload({ file, fileName: file.name })
+    if (guestPhotoInputRef.current) guestPhotoInputRef.current.value = ""
+  }
 
   const handleIdProofUpload = (side: "front" | "back", file?: File) => {
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = () => {
-      const preview = typeof reader.result === "string" ? reader.result : null
-      if (side === "front") {
-        setIdProofFront(preview)
-      } else {
-        setIdProofBack(preview)
+    const previewUrl = URL.createObjectURL(file)
+    if (side === "front") {
+      setIdProofFrontPreview(previewUrl)
+      setIdProofFrontKey(file.name)
+      setIdProofFront(null)
+      setPendingIdProofFrontUpload({ file, fileName: file.name })
+    } else {
+      setIdProofBackPreview(previewUrl)
+      setIdProofBackKey(file.name)
+      setIdProofBack(null)
+      setPendingIdProofBackUpload({ file, fileName: file.name })
+    }
+    const inputRef = side === "front" ? idProofFrontInputRef : idProofBackInputRef
+    if (inputRef.current) inputRef.current.value = ""
+  }
+
+  const stopWebcam = () => {
+    webcamStreamRef.current?.getTracks().forEach((track) => track.stop())
+    webcamStreamRef.current = null
+  }
+
+  const clearWebcamPreview = () => {
+    if (webcamPreview) {
+      URL.revokeObjectURL(webcamPreview)
+    }
+    setWebcamPreview(null)
+    setWebcamBlob(null)
+  }
+
+  const openWebcam = () => {
+    clearWebcamPreview()
+    setIsWebcamOpen(true)
+  }
+
+  const closeWebcam = () => {
+    setIsWebcamOpen(false)
+    stopWebcam()
+    clearWebcamPreview()
+    setIsCameraReady(false)
+  }
+
+  useEffect(() => {
+    if (!isWebcamOpen) return
+
+    let cancelled = false
+    const startCamera = async () => {
+      setIsCameraStarting(true)
+      setIsCameraReady(false)
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop())
+          return
+        }
+
+        webcamStreamRef.current = stream
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          await videoRef.current.play()
+          setIsCameraReady(true)
+        } else {
+          setPendingWebcamStream(stream)
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          setIsWebcamOpen(false)
+          toast({ title: "Camera Unavailable", description: error.message || "Unable to access webcam", variant: "destructive" })
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCameraStarting(false)
+        }
       }
     }
-    reader.readAsDataURL(file)
+
+    startCamera()
+
+    return () => {
+      cancelled = true
+      stopWebcam()
+      setPendingWebcamStream(null)
+      setIsCameraReady(false)
+      setIsCameraStarting(false)
+    }
+  }, [isWebcamOpen])
+
+  useEffect(() => {
+    if (!pendingWebcamStream || !videoRef.current) return
+
+    let cancelled = false
+    const attachStream = async () => {
+      try {
+        videoRef.current!.srcObject = pendingWebcamStream
+        await videoRef.current!.play()
+        if (!cancelled) {
+          setIsCameraReady(true)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast({ title: "Camera Unavailable", description: "Unable to display webcam feed.", variant: "destructive" })
+          setIsWebcamOpen(false)
+          stopWebcam()
+        }
+      } finally {
+        setPendingWebcamStream(null)
+      }
+    }
+
+    attachStream()
+
+    return () => {
+      cancelled = true
+    }
+  }, [pendingWebcamStream])
+
+  const captureWebcamPhoto = async () => {
+    const video = videoRef.current
+    if (!video) return
+
+    if (!isCameraReady || video.videoWidth === 0 || video.videoHeight === 0) {
+      toast({ title: "Camera not ready", description: "Please wait until the webcam feed is visible before capturing." })
+      return
+    }
+
+    const canvas = document.createElement("canvas")
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const context = canvas.getContext("2d")
+    if (!context) return
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9))
+    if (!blob) return
+
+    const previewUrl = URL.createObjectURL(blob)
+    setWebcamBlob(blob)
+    setWebcamPreview(previewUrl)
+    stopWebcam()
+  }
+
+  const retakeWebcamPhoto = async () => {
+    clearWebcamPreview()
+    await openWebcam()
+  }
+
+  const uploadCapturedPhoto = async () => {
+    if (!webcamBlob) return
+
+    if (webcamPreview) {
+      setGuestPhotoPreview(webcamPreview)
+    }
+    setGuestPhoto(null)
+    setGuestPhotoKey("webcam-photo.jpg")
+    setPendingGuestPhotoUpload({ file: webcamBlob, fileName: "webcam-photo.jpg" })
+    setIsWebcamOpen(false)
+    stopWebcam()
+    setWebcamPreview(null)
+    setWebcamBlob(null)
+    setIsCameraReady(false)
   }
 
   const handleReset = () => {
     setForm(createInitialCheckInForm(mode))
     setGuestPhoto(null)
+    setGuestPhotoKey("")
+    setGuestPhotoPreview(null)
     setIdProofFront(null)
+    setIdProofFrontKey("")
+    setIdProofFrontPreview(null)
     setIdProofBack(null)
+    setIdProofBackKey("")
+    setIdProofBackPreview(null)
+    clearPendingUploads()
     setCompanions([])
     setExistingGuest(null)
     setLoadedGuestId("")
@@ -862,14 +1198,22 @@ export function CheckInForm({
   }
 
   const buildUpdatePayload = () => {
-    return buildCheckInPayload({
-      form,
-      gstInclusive,
-      selectedServices,
-      companions,
-      multiRoomContext,
-      mode,
-    })
+    return {
+      ...buildCheckInPayload({
+        form,
+        gstInclusive,
+        selectedServices,
+        companions,
+        multiRoomContext,
+        mode,
+      }),
+      guestPhotoUrl: guestPhoto || undefined,
+      guestPhotoKey: guestPhoto ? guestPhotoKey || undefined : undefined,
+      idProofFrontUrl: idProofFront || undefined,
+      idProofFrontKey: idProofFront ? idProofFrontKey || undefined : undefined,
+      idProofBackUrl: idProofBack || undefined,
+      idProofBackKey: idProofBack ? idProofBackKey || undefined : undefined,
+    }
   }
 
   const validationErrors = validateCheckInForm({
@@ -885,6 +1229,11 @@ export function CheckInForm({
 
   const isCheckInValid = Object.keys(validationErrors).length === 0
   const canCheckIn = isCheckInValid && mobileLookupStatus !== "loading"
+  const billingNights = Math.max(1, Number(form.noOfNights) || 1)
+  const nightlyPlanCharge = Number(form.planCharge) || 0
+  const nightlyFoodCharge = Number(form.foodCharge) || 0
+  const totalPlanCharge = nightlyPlanCharge * billingNights
+  const totalFoodCharge = nightlyFoodCharge * billingNights
   const showError = (field: keyof typeof form) => submitAttempted || Boolean(form[field])
   const activeValidationErrors = validationErrors
   const fieldError = (field: keyof typeof form) => showError(field) ? activeValidationErrors[field] : undefined
@@ -916,14 +1265,20 @@ export function CheckInForm({
 
   const handleSave = async () => {
     setIsLoading(true)
+    setIsPhotoUploading(true)
+    let attachmentUploadFailed = false
     try {
-      const allRooms = [...pendingRooms, buildUpdatePayload()]
+      const allRooms = [
+        ...pendingRooms,
+        { ...buildUpdatePayload(), __pendingUploads: getPendingUploads() },
+      ]
       let currentBookingGroupId = multiRoomContext?.bookingGroupId || ""
       let currentParentGuestCheckin = multiRoomContext?.parentGuestCheckin || ""
 
       for (let i = 0; i < allRooms.length; i++) {
+        const { __pendingUploads, ...roomPayload } = allRooms[i] as any
         const payload = {
-          ...allRooms[i],
+          ...roomPayload,
           bookingGroupId: currentBookingGroupId || undefined,
           parentGuestCheckin: currentParentGuestCheckin || undefined,
           guestId: loadedGuestId || undefined,
@@ -937,19 +1292,28 @@ export function CheckInForm({
           currentBookingGroupId = result.bookingGroupId || ""
           currentParentGuestCheckin = result.parentGuestCheckin || result.checkinId || ""
         }
+
+        if (result.checkinId && __pendingUploads) {
+          const uploaded = await uploadPendingAttachments(String(result.checkinId), __pendingUploads)
+          attachmentUploadFailed = attachmentUploadFailed || !uploaded
+        }
       }
 
       if (mode === "check-in") sessionStorage.removeItem("hotel_checkin_form")
 
       if (mode === "pax") {
+        clearPendingUploads()
         setShowPaxSuccessDialog(true);
       } else {
         toast({
           title: "Success",
           description: allRooms.length > 1
             ? `Successfully checked-in ${allRooms.length} rooms.`
-            : "Guest checked-in successfully.",
+            : attachmentUploadFailed
+              ? "Guest checked-in successfully. Photo/document upload needs retry."
+              : "Guest checked-in successfully.",
         })
+        clearPendingUploads()
         setPendingRooms([])
         setIsAddingLinkedRoom(false)
         router.push("/admin/front-office/in-house")
@@ -958,11 +1322,12 @@ export function CheckInForm({
       toast({ title: "Error", description: error.message || "Failed to complete check-in", variant: "destructive" })
     } finally {
       setIsLoading(false)
+      setIsPhotoUploading(false)
     }
   }
 
   const confirmAddMore = () => {
-    const currentPayload = buildUpdatePayload()
+    const currentPayload = { ...buildUpdatePayload(), __pendingUploads: getPendingUploads() }
     setPendingRooms(prev => [...prev, currentPayload])
     handleAddAnotherRoom()
     setShowAddMorePop(false)
@@ -1078,9 +1443,9 @@ export function CheckInForm({
     if (!canCheckIn) {
       const firstErrorKey = Object.keys(validationErrors)[0]
       const firstErrorMessage = validationErrors[firstErrorKey] || "Please complete all required fields"
-      
+
       toast({ title: "Validation Error", description: firstErrorMessage, variant: "destructive" })
-      
+
       if (firstErrorKey.startsWith("companion")) {
         setActiveTab("companion")
       } else if (["idProofType", "idProofNumber"].includes(firstErrorKey)) {
@@ -1094,8 +1459,11 @@ export function CheckInForm({
     }
 
     setIsLoading(true)
+    setIsPhotoUploading(true)
     try {
       await updateCheckIn(editId, buildUpdatePayload(), user?.role)
+      const uploaded = await uploadPendingAttachments(editId)
+      if (uploaded) clearPendingUploads()
       setOriginalData({ ...form })
       setIsEditing(false)
       toast({ title: "Success", description: "Check-in details updated successfully." })
@@ -1104,6 +1472,7 @@ export function CheckInForm({
       toast({ title: "Error", description: error.message || "Failed to update check-in", variant: "destructive" })
     } finally {
       setIsLoading(false)
+      setIsPhotoUploading(false)
     }
   }
 
@@ -1114,7 +1483,7 @@ export function CheckInForm({
       const firstError = mobileLookupStatus === "loading"
         ? "Please wait for mobile lookup to finish"
         : validationErrors[firstErrorKey] || "Please complete all required fields"
-      
+
       toast({ title: "Validation Error", description: firstError, variant: "destructive" });
 
       if (firstErrorKey && firstErrorKey.startsWith("companion")) {
@@ -1193,16 +1562,16 @@ export function CheckInForm({
 
   const renderSetupItems = (options: { data: Array<{ _id: string; value: string }>; loading: boolean }) => {
     if (options.loading) return <SelectItem value="__loading__" disabled>Loading...</SelectItem>
-    if (!options.data.length) return <SelectItem value="__empty__" disabled>No options configured</SelectItem>
+    if (!options.data.length) return <SelectItem value="__empty__" disabled>No data available</SelectItem>
     return options.data.map((option) => <SelectItem key={option._id} value={option.value}>{option.value}</SelectItem>)
   }
 
   return (
-    <div className="space-y-4 w-full">
+    <div className="check-in-form space-y-4 w-full min-w-0">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-foreground sm:text-2xl">
             {mode === "pax" ? "PAX Check-In" : "Check-In"}
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -1211,14 +1580,14 @@ export function CheckInForm({
                 "Register guest arrival and assign room"}
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
           {!isEditMode && mode !== "pax" && (
-            <div className="flex items-center gap-2">
-              <Label htmlFor="reservation-search" className="text-base font-semibold whitespace-nowrap">Reservation ID:</Label>
-              <div className="relative">
+            <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+              <Label htmlFor="reservation-search" className="text-sm font-semibold sm:text-base sm:whitespace-nowrap">Reservation ID:</Label>
+              <div className="relative min-w-0">
                 <Input
                   id="reservation-search"
-                  className="h-8 w-60 md:w-80 lg:w-96 text-xs pr-8"
+                  className="h-9 w-full min-w-0 pr-8 text-sm sm:h-8 sm:w-60 sm:text-xs md:w-80 lg:w-96"
                   placeholder="Enter ID..."
                   value={reservationSearchId}
                   onChange={(e) => setReservationIdSearch(e.target.value)}
@@ -1235,7 +1604,7 @@ export function CheckInForm({
               {isEditing ? "Editing..." : "View Mode"}
             </Badge>
           )}
-          <Badge variant="outline" className="text-xs font-semibold">
+          <Badge variant="outline" className="w-fit max-w-full text-xs font-semibold">
             Booking ID: {isEditMode ? form.bookingNo || "Pending" : bookingPreview}
           </Badge>
         </div>
@@ -1371,7 +1740,7 @@ export function CheckInForm({
             <CardTitle className="text-sm">Room Selection (Occupied Rooms Only)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <FormField label="Room No" required>
                 <Select value={form.roomNo} onValueChange={v => handleChange("roomNo", v)} disabled={form.roomNo !== ""}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select occupied room" /></SelectTrigger>
@@ -1397,7 +1766,7 @@ export function CheckInForm({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabType)}>
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="check-in-tabs grid w-full grid-cols-2 overflow-x-auto sm:grid-cols-4">
           <TabsTrigger value="guest-info">Guest Info</TabsTrigger>
           <TabsTrigger value="guest-id">ID Proof</TabsTrigger>
           <TabsTrigger value="companion">Companions</TabsTrigger>
@@ -1411,18 +1780,41 @@ export function CheckInForm({
                 <CardTitle className="text-base">Personal Details</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex gap-6">
+                <div className="check-in-personal-grid flex gap-6">
                   <div className="flex flex-col items-center gap-3 shrink-0">
-                    <div className="h-28 w-28 rounded-lg border-2 border-dashed border-border flex items-center justify-center bg-muted overflow-hidden">
-                      {guestPhoto ? <img src={guestPhoto} alt="Guest" className="h-full w-full object-cover" /> : <UserCircle className="h-12 w-12 text-muted-foreground/40" />}
+                    <div className="h-28 w-28 rounded-lg border-2 border-dashed border-border flex items-center justify-center bg-muted overflow-hidden sm:h-28 sm:w-28">
+                      {isPhotoUploading ? (
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      ) : (guestPhotoPreview || guestPhoto) && !hasPhotoError && isImage(guestPhotoPreview || guestPhoto, guestPhotoKey) ? (
+                        <img 
+                          src={guestPhotoPreview || guestPhoto || ""} 
+                          alt="Guest" 
+                          className="h-full w-full object-cover" 
+                          onError={() => {
+                            setHasPhotoError(true);
+                          }}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <UserCircle className="h-12 w-12 text-muted-foreground/40" />
+                          {(guestPhotoPreview || guestPhoto) && !isImage(guestPhotoPreview || guestPhoto, guestPhotoKey) && (
+                             <span className="text-[10px] text-muted-foreground">Non-image file</span>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="gap-1 text-xs h-7 px-2"><Upload className="h-3 w-3" /> Upload</Button>
-                      <Button variant="outline" size="sm" className="gap-1 text-xs h-7 px-2"><Camera className="h-3 w-3" /> Webcam</Button>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <input ref={guestPhotoInputRef} type="file" accept="image/*" className="hidden" onChange={e => handleGuestPhotoUpload(e.target.files?.[0])} />
+                      <Button type="button" variant="outline" size="sm" className="gap-1 text-xs h-7 px-2" onClick={() => guestPhotoInputRef.current?.click()} disabled={isPhotoUploading}>
+                        {isPhotoUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />} Upload
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="gap-1 text-xs h-7 px-2" onClick={openWebcam} disabled={isPhotoUploading}>
+                        <Camera className="h-3 w-3" /> Webcam
+                      </Button>
                     </div>
                   </div>
 
-                  <div className="flex-1 space-y-6">
+                  <div className="min-w-0 flex-1 space-y-6">
                     {/* Name & Contact */}
                     <div>
                       <div className="grid grid-cols-4 gap-4">
@@ -1557,7 +1949,7 @@ export function CheckInForm({
                         <FormField label="State">
                           <Input value={form.state} onChange={e => handleChange("state", e.target.value)} placeholder="State" disabled={isFieldDisabled("state")} />
                         </FormField>
-                        
+
                         <FormField label="City">
                           <Input value={form.city} onChange={e => handleChange("city", e.target.value)} placeholder="City" disabled={isFieldDisabled("city")} />
                         </FormField>
@@ -1608,7 +2000,7 @@ export function CheckInForm({
                     </div>
 
                     {/* Referral & References */}
-                   
+
                   </div>
                 </div>
               </CardContent>
@@ -1658,7 +2050,12 @@ export function CheckInForm({
                             const optionLabel = selectedPlan
                               ? selectedPlan.name ? `${selectedPlan.name}${selectedPlan.code ? ` (${selectedPlan.code})` : ""}` : selectedPlan.code || selectedPlan.id || v
                               : v
-                            setForm(prev => ({ ...prev, planType: v, planTypeLabel: optionLabel }))
+                            setForm(prev => ({
+                              ...prev,
+                              planType: v,
+                              planTypeLabel: optionLabel,
+                              foodCharge: selectedPlan?.foodIncluded ? toMoneyString(selectedPlan.foodCharge || 0) : "0",
+                            }))
                           }}
                           disabled={isFieldDisabled("planType")}
                         >
@@ -1710,7 +2107,7 @@ export function CheckInForm({
                   {/* Billing Details */}
                   <div>
                     <div className="grid grid-cols-5 gap-4">
-                      <FormField label="Plan Charge" required>
+                      <FormField label="Plan Charge / Night" required>
                         <Input className={errorClass("planCharge")} type="number" min="0" value={form.planCharge} onChange={e => handleChange("planCharge", e.target.value)} placeholder="0.00" disabled={isFieldDisabled("planCharge")} title={restrictedFieldTitle("planCharge")} />
                         {fieldError("planCharge") && <p className="mt-1 text-xs text-destructive">{fieldError("planCharge")}</p>}
                       </FormField>
@@ -1718,8 +2115,9 @@ export function CheckInForm({
                         <Input className={errorClass("discount")} type="number" min="0" max="100" value={form.discount} onChange={e => handleChange("discount", e.target.value)} placeholder="0.00" disabled={isFieldDisabled("discount")} title={restrictedFieldTitle("discount")} />
                         {fieldError("discount") && <p className="mt-1 text-xs text-destructive">{fieldError("discount")}</p>}
                       </FormField>
-                      <FormField label="Food Charge">
+                      <FormField label="Food Charge / Night">
                         <Input className={errorClass("foodCharge")} type="number" min="0" value={form.foodCharge} onChange={e => handleChange("foodCharge", e.target.value)} placeholder="0.00" disabled={isFieldDisabled("foodCharge")} title={restrictedFieldTitle("foodCharge")} />
+                        
                         {fieldError("foodCharge") && <p className="mt-1 text-xs text-destructive">{fieldError("foodCharge")}</p>}
                       </FormField>
                       <FormField label="GST %">
@@ -1730,7 +2128,7 @@ export function CheckInForm({
                         <p className="mt-1 text-xs text-muted-foreground">Total for {Math.max(1, Number(form.noOfNights) || 1)} night(s)</p>
                       </FormField>
                     </div>
-                    
+
                     <div className="grid grid-cols-2 gap-4 mt-4 bg-muted/30 p-3 rounded-lg border border-border/50">
                       <FormField label="GST Type">
                         <Input value={form.gstType} readOnly className="bg-muted text-muted-foreground" />
@@ -1810,13 +2208,13 @@ export function CheckInForm({
               <div className="space-y-3">
                 <Label className="text-xs font-medium text-muted-foreground">Scan / Upload ID Image</Label>
                 <div className="flex flex-wrap gap-3">
-                  <input ref={idProofFrontInputRef} type="file" accept="image/*" className="hidden" onChange={e => handleIdProofUpload("front", e.target.files?.[0])} />
-                  <input ref={idProofBackInputRef} type="file" accept="image/*" className="hidden" onChange={e => handleIdProofUpload("back", e.target.files?.[0])} />
-                  <Button type="button" variant="outline" className="gap-2" onClick={() => idProofFrontInputRef.current?.click()} disabled={isFieldDisabled("idProofType")}>
-                    <Upload className="h-4 w-4" /> Upload Front
+                  <input ref={idProofFrontInputRef} type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv" className="hidden" onChange={e => handleIdProofUpload("front", e.target.files?.[0])} />
+                  <input ref={idProofBackInputRef} type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv" className="hidden" onChange={e => handleIdProofUpload("back", e.target.files?.[0])} />
+                  <Button type="button" variant="outline" className="gap-2" onClick={() => idProofFrontInputRef.current?.click()} disabled={isFieldDisabled("idProofType") || idProofUploadingSide === "front"}>
+                    {idProofUploadingSide === "front" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Upload Front
                   </Button>
-                  <Button type="button" variant="outline" className="gap-2" onClick={() => idProofBackInputRef.current?.click()} disabled={isFieldDisabled("idProofType")}>
-                    <Upload className="h-4 w-4" /> Upload Back
+                  <Button type="button" variant="outline" className="gap-2" onClick={() => idProofBackInputRef.current?.click()} disabled={isFieldDisabled("idProofType") || idProofUploadingSide === "back"}>
+                    {idProofUploadingSide === "back" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Upload Back
                   </Button>
                   <Button type="button" variant="outline" className="gap-2" disabled={isFieldDisabled("idProofType")}>
                     <Camera className="h-4 w-4" /> Scan
@@ -1825,11 +2223,29 @@ export function CheckInForm({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="h-48 rounded-lg border border-dashed border-border bg-muted/70 flex items-center justify-center overflow-hidden text-sm text-muted-foreground">
-                  {idProofFront ? <img src={idProofFront} alt="ID proof front" className="h-full w-full object-contain" /> : "ID Front"}
+                <div className="h-48 rounded-lg border border-dashed border-border bg-muted/70 flex items-center justify-center overflow-hidden text-sm text-muted-foreground relative">
+                  {(idProofFrontPreview || idProofFront) ? (
+                    isImage(idProofFrontPreview || idProofFront, idProofFrontKey) ? (
+                      <img src={idProofFrontPreview || idProofFront || ""} alt="ID proof front" className="h-full w-full object-contain" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-2">
+                        <FileText className="h-12 w-12 text-primary/40" />
+                        <span className="text-[10px] px-2 text-center break-all">{idProofFrontKey || "File Uploaded"}</span>
+                      </div>
+                    )
+                  ) : "ID Front"}
                 </div>
-                <div className="h-48 rounded-lg border border-dashed border-border bg-muted/70 flex items-center justify-center overflow-hidden text-sm text-muted-foreground">
-                  {idProofBack ? <img src={idProofBack} alt="ID proof back" className="h-full w-full object-contain" /> : "ID Back"}
+                <div className="h-48 rounded-lg border border-dashed border-border bg-muted/70 flex items-center justify-center overflow-hidden text-sm text-muted-foreground relative">
+                  {(idProofBackPreview || idProofBack) ? (
+                    isImage(idProofBackPreview || idProofBack, idProofBackKey) ? (
+                      <img src={idProofBackPreview || idProofBack || ""} alt="ID proof back" className="h-full w-full object-contain" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-2">
+                        <FileText className="h-12 w-12 text-primary/40" />
+                        <span className="text-[10px] px-2 text-center break-all">{idProofBackKey || "File Uploaded"}</span>
+                      </div>
+                    )
+                  ) : "ID Back"}
                 </div>
               </div>
             </CardContent>
@@ -1865,11 +2281,11 @@ export function CheckInForm({
                     <Input
                       className={cn("h-8 text-xs", validationErrors[`companion_mobile_${idx}`] && "border-destructive")}
                       value={comp.mobile}
-                      onChange={e => { 
+                      onChange={e => {
                         const sanitized = e.target.value.replace(/[^\d+]/g, "");
-                        const nc = [...companions]; 
-                        nc[idx].mobile = sanitized; 
-                        setCompanions(nc); 
+                        const nc = [...companions];
+                        nc[idx].mobile = sanitized;
+                        setCompanions(nc);
                       }}
                       placeholder="Mobile"
                       disabled={isFieldDisabled("companion")}
@@ -2096,7 +2512,7 @@ export function CheckInForm({
         </TabsContent>
       </Tabs>
 
-      <div className="flex items-center gap-3 justify-end pt-4">
+      <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
         {isEditMode && !isAddingLinkedRoom ? (
           <>
             {isEditing ? (
@@ -2138,6 +2554,45 @@ export function CheckInForm({
           <DialogFooter className="flex flex-col sm:flex-row gap-2 mt-4">
             <Button variant="outline" onClick={() => setShowGuestDialog(false)} className="w-full sm:w-auto">No, continue as new</Button>
             <Button onClick={handleLoadExistingGuest} className="w-full sm:w-auto">Yes, load details</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isWebcamOpen} onOpenChange={(open) => open ? openWebcam() : closeWebcam()}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Capture Guest Photo</DialogTitle>
+            <DialogDescription>Photo will be uploaded after check-in is saved.</DialogDescription>
+          </DialogHeader>
+          <div className="aspect-video overflow-hidden rounded-md border bg-muted flex items-center justify-center">
+            {isCameraStarting ? (
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            ) : webcamPreview ? (
+              <img src={webcamPreview} alt="Captured preview" className="h-full w-full object-cover" />
+            ) : (
+              <video ref={videoRef} className="h-full w-full object-cover" playsInline muted />
+            )}
+          </div>
+          <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={closeWebcam} disabled={isPhotoUploading}>
+              Cancel
+            </Button>
+            {webcamPreview ? (
+              <>
+                <Button type="button" variant="outline" onClick={retakeWebcamPhoto} disabled={isPhotoUploading}>
+                  Retake
+                </Button>
+                <Button type="button" onClick={uploadCapturedPhoto} disabled={isPhotoUploading}>
+                  {isPhotoUploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Camera className="h-4 w-4 mr-2" />}
+                  Use Photo
+                </Button>
+              </>
+            ) : (
+              <Button type="button" onClick={captureWebcamPhoto} disabled={isCameraStarting || isPhotoUploading}>
+                {isPhotoUploading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Camera className="h-4 w-4 mr-2" />}
+                Capture
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

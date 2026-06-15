@@ -41,22 +41,40 @@ import {
   Phone,
 } from "lucide-react"
 
-// Mock guests data
-const mockGuests = [
-  { id: "G-001", name: "John Smith", email: "john@email.com", phone: "+1 234-567-8901", visits: 5, status: "vip", lastVisit: "Jan 15, 2024" },
-  { id: "G-002", name: "Emma Wilson", email: "emma@email.com", phone: "+1 234-567-8902", visits: 2, status: "regular", lastVisit: "Jan 16, 2024" },
-  { id: "G-003", name: "Michael Brown", email: "michael@email.com", phone: "+1 234-567-8903", visits: 8, status: "vip", lastVisit: "Jan 17, 2024" },
-  { id: "G-004", name: "Sarah Davis", email: "sarah@email.com", phone: "+1 234-567-8904", visits: 1, status: "new", lastVisit: "Jan 18, 2024" },
-  { id: "G-005", name: "Robert Johnson", email: "robert@email.com", phone: "+1 234-567-8905", visits: 3, status: "regular", lastVisit: "Jan 14, 2024" },
-  { id: "G-006", name: "Lisa Anderson", email: "lisa@email.com", phone: "+1 234-567-8906", visits: 12, status: "vip", lastVisit: "Jan 10, 2024" },
-]
+// Guests are loaded from the backend lookup API
+import { useEffect } from "react"
+import { getLookupGuests } from "@/services/api/setup.service"
 
 export default function AdminGuestsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState("all")
   const [isAddGuestOpen, setIsAddGuestOpen] = useState(false)
 
-  const filteredGuests = mockGuests.filter((guest) => {
+  const [guests, setGuests] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let mounted = true
+    setLoading(true)
+    getLookupGuests().then((data) => {
+      if (!mounted) return
+      // normalize expected shape if necessary
+      const items = Array.isArray(data) ? data.map((g: any) => ({
+        id: String(g._id || g.id || g.guestId || ""),
+        name: String(g.name || g.fullName || g.guestName || ""),
+        email: String(g.email || g.contactEmail || ""),
+        phone: String(g.phone || g.contactPhone || g.mobile || ""),
+        photo: String(g.guestPhotoUrl || g.avatar || ""),
+        visits: Number(g.visits || 0),
+        status: String(g.status || "regular"),
+        lastVisit: String(g.lastVisit || g.updatedAt || ""),
+      })) : []
+      setGuests(items)
+    }).catch(() => setGuests([])).finally(() => setLoading(false))
+    return () => { mounted = false }
+  }, [])
+
+  const filteredGuests = guests.filter((guest) => {
     const matchesSearch =
       guest.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       guest.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -79,10 +97,10 @@ export default function AdminGuestsPage() {
   }
 
   const stats = {
-    total: mockGuests.length,
-    vip: mockGuests.filter((g) => g.status === "vip").length,
-    regular: mockGuests.filter((g) => g.status === "regular").length,
-    new: mockGuests.filter((g) => g.status === "new").length,
+    total: guests.length,
+    vip: guests.filter((g) => g.status === "vip").length,
+    regular: guests.filter((g) => g.status === "regular").length,
+    new: guests.filter((g) => g.status === "new").length,
   }
 
   return (
@@ -236,6 +254,7 @@ export default function AdminGuestsPage() {
             <Table>
               <TableHeader>
                 <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="w-[50px]"></TableHead>
                   <TableHead className="text-muted-foreground">Guest ID</TableHead>
                   <TableHead className="text-muted-foreground">Name</TableHead>
                   <TableHead className="text-muted-foreground">Contact</TableHead>
@@ -248,6 +267,23 @@ export default function AdminGuestsPage() {
               <TableBody>
                 {filteredGuests.map((guest) => (
                   <TableRow key={guest.id} className="border-border">
+                    <TableCell>
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 overflow-hidden">
+                        {guest.photo ? (
+                          <img 
+                            src={guest.photo} 
+                            alt={guest.name} 
+                            className="h-full w-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                              (e.target as HTMLImageElement).parentElement!.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user h-4 w-4 text-primary"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>';
+                            }}
+                          />
+                        ) : (
+                          <UserCircle className="h-4 w-4 text-primary" />
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="font-medium text-foreground">{guest.id}</TableCell>
                     <TableCell className="text-foreground">{guest.name}</TableCell>
                     <TableCell>

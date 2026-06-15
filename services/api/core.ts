@@ -1,10 +1,13 @@
 import type { Guest, Hotel, Reservation, Room, Staff, Company, TravelAgent, GRCardData, Folio, HousekeepingTask, InventoryItem, POSItem, POSOrder, Service } from "@/lib/types"
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001"
+export const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3002"
 const TOKEN_STORAGE_KEY = "hotel_manager_tokens"
+const AUTH_STORAGE_KEY = "hotel_manager_auth"
+const SUBSCRIPTION_STORAGE_KEY = "hotel_manager_subscription"
 
 export type JsonRecord = Record<string, unknown>
 const REGISTRATION_CACHE_KEY = "front_office_company_registrations"
+let refreshTokenPromise: Promise<string | null> | null = null
 
 export interface SetupOption {
   _id: string
@@ -34,17 +37,101 @@ export function getStoredAccessToken(): string | null {
   }
 }
 
-export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getStoredAccessToken()
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers || {}),
-    },
+function getStoredRefreshToken(): string | null {
+  if (typeof window === "undefined") return null
+  const raw = sessionStorage.getItem(TOKEN_STORAGE_KEY)
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as { refreshToken?: string }
+    return parsed.refreshToken || null
+  } catch {
+    return null
+  }
+}
+
+function storeTokens(accessToken: string, refreshToken?: string) {
+  if (typeof window === "undefined") return
+  const currentRefreshToken = refreshToken || getStoredRefreshToken()
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ accessToken, refreshToken: currentRefreshToken }))
+}
+
+function clearAuthAndRedirect(message?: string) {
+  if (typeof window === "undefined") return
+  sessionStorage.removeItem(AUTH_STORAGE_KEY)
+  sessionStorage.removeItem(TOKEN_STORAGE_KEY)
+  sessionStorage.removeItem(SUBSCRIPTION_STORAGE_KEY)
+  window.location.href = message ? `/?error=${encodeURIComponent(message)}` : "/"
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = getStoredRefreshToken()
+  if (!refreshToken) return null
+
+  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
     cache: "no-store",
   })
+
+  if (!response.ok) return null
+
+  const payload = await response.json() as {
+    accessToken?: string
+    refreshToken?: string
+    data?: {
+      accessToken?: string
+      refreshToken?: string
+    }
+  }
+
+  const nextAccessToken = payload.accessToken || payload.data?.accessToken
+  const nextRefreshToken = payload.refreshToken || payload.data?.refreshToken
+
+  if (!nextAccessToken) return null
+
+  storeTokens(nextAccessToken, nextRefreshToken)
+  return nextAccessToken
+}
+
+async function getFreshAccessToken() {
+  if (!refreshTokenPromise) {
+    refreshTokenPromise = refreshAccessToken().finally(() => {
+      refreshTokenPromise = null
+    })
+  }
+
+  return refreshTokenPromise
+}
+
+async function requestWithToken(path: string, init: RequestInit | undefined, token: string | null) {
+  const url = `${API_BASE_URL}${path}`
+  try {
+    return await fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init?.headers || {}),
+      },
+      cache: "no-store",
+    })
+  } catch (error) {
+    throw new Error(`Unable to reach backend at ${url}. Check that the API server is running and CORS allows this origin.`)
+  }
+}
+
+export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getStoredAccessToken()
+  let response = await requestWithToken(path, init, token)
+
+  if (response.status === 401 && path !== "/auth/refresh") {
+    const nextAccessToken = await getFreshAccessToken()
+    if (nextAccessToken) {
+      response = await requestWithToken(path, init, nextAccessToken)
+    }
+  }
 
   if (!response.ok) {
     if ((response.status === 401 || response.status === 403) && typeof window !== "undefined") {
@@ -63,13 +150,7 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
         errorData.message?.toLowerCase().includes("expired")
 
       if (response.status === 401 || shouldShowLoginError) {
-
-        sessionStorage.removeItem("hotel_manager_auth")
-        sessionStorage.removeItem(TOKEN_STORAGE_KEY)
-        sessionStorage.removeItem("hotel_manager_subscription")
-        window.location.href = shouldShowLoginError
-          ? `/?error=${encodeURIComponent(errorData.message || "Session expired")}`
-          : "/"
+        clearAuthAndRedirect(shouldShowLoginError ? errorData.message || "Session expired" : undefined)
       }
 
       throw new Error(errorData.message || `Request failed: ${response.status}`)
@@ -253,6 +334,7 @@ export function mapReservation(raw: JsonRecord): Reservation {
     guestName: String(raw.guestName || ""),
     guestEmail: String(raw.email || raw.guestEmail || ""),
     guestPhone: String(raw.phone || raw.guestPhone || ""),
+    guestPhotoUrl: String(raw.guestPhotoUrl || raw.avatar || ""),
     roomId,
     roomNumber,
     roomType: getRoomTypeName(raw.roomType || raw.type || raw.roomTypeId, raw.room as JsonRecord | undefined),
@@ -308,6 +390,7 @@ export function mapStaff(raw: JsonRecord): Staff {
     username: String(raw.username || ""),
     email: String(raw.email || ""),
     phone: String(raw.phone || ""),
+    avatar: String(raw.avatar || ""),
     role: roleValue === "hoteladmin" ? "admin" : "staff",
     hotelId: String(raw.hotelId || ""),
     modules: Array.isArray(raw.modules) ? (raw.modules as Staff["modules"]) : [],
@@ -323,6 +406,7 @@ export function mapGuest(raw: JsonRecord): Guest {
     name: String(raw.name || raw.fullName || ""),
     email: String(raw.email || ""),
     phone: String(raw.phone || ""),
+    photo: String(raw.guestPhotoUrl || raw.avatar || ""),
     idType: String(raw.idType || ""),
     idNumber: String(raw.idNumber || ""),
     address: String(raw.address || ""),

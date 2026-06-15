@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,26 +31,55 @@ import {
 } from "@/components/ui/select"
 import { Plus, Search, Download, Eye, Printer, Send, CreditCard } from "lucide-react"
 import { useSetupOptions } from "@/hooks/use-setup-options"
+import { useToast } from "@/hooks/use-toast"
+import {
+  collectAccountsInvoicePayment,
+  getAccountsInvoices,
+  sendAccountsInvoice,
+  type AccountsInvoice,
+} from "@/services/api/accounts.service"
 
-const mockInvoices = [
-  { id: "INV-001", guestName: "John Smith", room: "101", checkIn: "2024-01-10", checkOut: "2024-01-15", roomCharges: 600.00, services: 150.00, taxes: 112.50, discount: 0, total: 862.50, paid: 862.50, balance: 0, status: "paid" },
-  { id: "INV-002", guestName: "Emma Wilson", room: "205", checkIn: "2024-01-12", checkOut: "2024-01-16", roomCharges: 480.00, services: 40.00, taxes: 78.00, discount: 0, total: 598.00, paid: 200.00, balance: 398.00, status: "partial" },
-  { id: "INV-003", guestName: "Michael Brown", room: "302", checkIn: "2024-01-08", checkOut: "2024-01-14", roomCharges: 840.00, services: 220.00, taxes: 159.00, discount: 50.00, total: 1169.00, paid: 1169.00, balance: 0, status: "paid" },
-  { id: "INV-004", guestName: "Sarah Davis", room: "118", checkIn: "2024-01-14", checkOut: "2024-01-18", roomCharges: 560.00, services: 80.00, taxes: 96.00, discount: 0, total: 736.00, paid: 0, balance: 736.00, status: "pending" },
-  { id: "INV-005", guestName: "Robert Chen", room: "401", checkIn: "2024-01-11", checkOut: "2024-01-15", roomCharges: 720.00, services: 180.00, taxes: 135.00, discount: 100.00, total: 935.00, paid: 500.00, balance: 435.00, status: "partial" },
-  { id: "INV-006", guestName: "Lisa Wang", room: "215", checkIn: "2024-01-09", checkOut: "2024-01-12", roomCharges: 360.00, services: 0, taxes: 54.00, discount: 0, total: 414.00, paid: 0, balance: 414.00, status: "overdue" },
-]
+function formatCurrency(value: unknown) {
+  return `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
 
 export default function InvoicesPage() {
+  const { toast } = useToast()
   const paymentModeOptions = useSetupOptions("paymentMode")
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [selectedInvoice, setSelectedInvoice] = useState<typeof mockInvoices[0] | null>(null)
+  const [invoices, setInvoices] = useState<AccountsInvoice[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedInvoice, setSelectedInvoice] = useState<AccountsInvoice | null>(null)
   const [isPaymentOpen, setIsPaymentOpen] = useState(false)
+  const [paymentAmount, setPaymentAmount] = useState("")
+  const [paymentMode, setPaymentMode] = useState("")
+  const [paymentReference, setPaymentReference] = useState("")
 
-  const filteredInvoices = mockInvoices.filter((inv) => {
+  const loadInvoices = async () => {
+    setLoading(true)
+    try {
+      const result = await getAccountsInvoices({ search: searchQuery, status: statusFilter, limit: 100 })
+      setInvoices(result.invoices)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load invoices"
+      toast({ title: "Invoices unavailable", description: message, variant: "destructive" })
+      setInvoices([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadInvoices()
+  }, [searchQuery, statusFilter])
+
+  // Use API-provided invoices directly
+  const sourceInvoices: AccountsInvoice[] = invoices
+
+  const filteredInvoices = sourceInvoices.filter((inv) => {
     const matchesSearch = inv.guestName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      inv.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (inv.invoiceNumber || inv.id).toLowerCase().includes(searchQuery.toLowerCase()) ||
       inv.room.includes(searchQuery)
     const matchesStatus = statusFilter === "all" || inv.status === statusFilter
     return matchesSearch && matchesStatus
@@ -72,6 +101,49 @@ export default function InvoicesPage() {
   }
 
   const totalPending = filteredInvoices.filter(i => i.status !== "paid").reduce((sum, i) => sum + i.balance, 0)
+
+  const openPayment = (invoice: AccountsInvoice) => {
+    setSelectedInvoice(invoice)
+    setPaymentAmount(String(invoice.balance || ""))
+    setPaymentMode("")
+    setPaymentReference("")
+    setIsPaymentOpen(true)
+  }
+
+  const recordPayment = async () => {
+    if (!selectedInvoice || !paymentAmount || !paymentMode) {
+      toast({ title: "Missing details", description: "Amount and payment mode are required.", variant: "destructive" })
+      return
+    }
+
+    try {
+      await collectAccountsInvoicePayment(selectedInvoice._id, {
+        customerName: selectedInvoice.guestName,
+        amount: Number(paymentAmount),
+        paymentMode,
+        reference: paymentReference,
+      })
+      toast({ title: "Payment recorded", description: "Invoice payment was collected." })
+      setIsPaymentOpen(false)
+      setSelectedInvoice(null)
+      loadInvoices()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to record payment"
+      toast({ title: "Payment failed", description: message, variant: "destructive" })
+    }
+  }
+
+  const handleSendInvoice = async () => {
+    if (!selectedInvoice) return
+    try {
+      await sendAccountsInvoice(selectedInvoice._id)
+      toast({ title: "Invoice sent", description: "Invoice was marked as sent." })
+      loadInvoices()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to send invoice"
+      toast({ title: "Send failed", description: message, variant: "destructive" })
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -116,7 +188,7 @@ export default function InvoicesPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Outstanding Amount</div>
-            <div className="text-2xl font-bold text-destructive">${totalPending.toFixed(2)}</div>
+            <div className="text-2xl font-bold text-destructive">{formatCurrency(totalPending)}</div>
           </CardContent>
         </Card>
       </div>
@@ -167,19 +239,24 @@ export default function InvoicesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredInvoices.map((inv) => (
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">Loading invoices...</TableCell>
+                </TableRow>
+              )}
+              {!loading && filteredInvoices.map((inv) => (
                 <TableRow key={inv.id}>
-                  <TableCell className="font-medium">{inv.id}</TableCell>
+                  <TableCell className="font-medium">{inv.invoiceNumber || inv.id}</TableCell>
                   <TableCell>{inv.guestName}</TableCell>
                   <TableCell>{inv.room}</TableCell>
                   <TableCell>
-                    <div className="text-sm">{inv.checkIn}</div>
-                    <div className="text-xs text-muted-foreground">to {inv.checkOut}</div>
+                    <div className="text-sm">{String(inv.checkIn || "").slice(0, 10) || "-"}</div>
+                    <div className="text-xs text-muted-foreground">to {String(inv.checkOut || "").slice(0, 10) || "-"}</div>
                   </TableCell>
-                  <TableCell className="font-medium">${inv.total.toFixed(2)}</TableCell>
-                  <TableCell className="text-primary">${inv.paid.toFixed(2)}</TableCell>
+                  <TableCell className="font-medium">{formatCurrency(inv.total)}</TableCell>
+                  <TableCell className="text-primary">{formatCurrency(inv.paid)}</TableCell>
                   <TableCell className={inv.balance > 0 ? "text-destructive font-medium" : ""}>
-                    ${inv.balance.toFixed(2)}
+                    {formatCurrency(inv.balance)}
                   </TableCell>
                   <TableCell>{getStatusBadge(inv.status)}</TableCell>
                   <TableCell>
@@ -191,7 +268,7 @@ export default function InvoicesPage() {
                         <Printer className="h-4 w-4" />
                       </Button>
                       {inv.balance > 0 && (
-                        <Button variant="ghost" size="sm" onClick={() => { setSelectedInvoice(inv); setIsPaymentOpen(true); }}>
+                        <Button variant="ghost" size="sm" onClick={() => openPayment(inv)}>
                           <CreditCard className="h-4 w-4" />
                         </Button>
                       )}
@@ -209,7 +286,7 @@ export default function InvoicesPage() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Invoice Details</DialogTitle>
-            <DialogDescription>{selectedInvoice?.id}</DialogDescription>
+            <DialogDescription>{selectedInvoice?.invoiceNumber || selectedInvoice?.id}</DialogDescription>
           </DialogHeader>
           {selectedInvoice && (
             <div className="space-y-4">
@@ -224,44 +301,38 @@ export default function InvoicesPage() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Check-In</Label>
-                  <p className="font-medium">{selectedInvoice.checkIn}</p>
+                  <p className="font-medium">{String(selectedInvoice.checkIn || "").slice(0, 10) || "-"}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Check-Out</Label>
-                  <p className="font-medium">{selectedInvoice.checkOut}</p>
+                  <p className="font-medium">{String(selectedInvoice.checkOut || "").slice(0, 10) || "-"}</p>
                 </div>
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between py-2 border-b">
                   <span>Room Charges</span>
-                  <span>${selectedInvoice.roomCharges.toFixed(2)}</span>
+                  <span>{formatCurrency(selectedInvoice.subtotal)}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span>Services</span>
-                  <span>${selectedInvoice.services.toFixed(2)}</span>
+                  <span>{formatCurrency(0)}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span>Taxes</span>
-                  <span>${selectedInvoice.taxes.toFixed(2)}</span>
+                  <span>{formatCurrency(selectedInvoice.taxes || selectedInvoice.totalTax)}</span>
                 </div>
-                {selectedInvoice.discount > 0 && (
-                  <div className="flex justify-between py-2 border-b text-primary">
-                    <span>Discount</span>
-                    <span>-${selectedInvoice.discount.toFixed(2)}</span>
-                  </div>
-                )}
                 <div className="flex justify-between py-2 font-bold text-lg">
                   <span>Total</span>
-                  <span>${selectedInvoice.total.toFixed(2)}</span>
+                  <span>{formatCurrency(selectedInvoice.total)}</span>
                 </div>
                 <div className="flex justify-between py-2">
                   <span>Amount Paid</span>
-                  <span className="text-primary">${selectedInvoice.paid.toFixed(2)}</span>
+                  <span className="text-primary">{formatCurrency(selectedInvoice.paid)}</span>
                 </div>
                 <div className="flex justify-between py-2 font-bold">
                   <span>Balance Due</span>
                   <span className={selectedInvoice.balance > 0 ? "text-destructive" : "text-primary"}>
-                    ${selectedInvoice.balance.toFixed(2)}
+                    {formatCurrency(selectedInvoice.balance)}
                   </span>
                 </div>
               </div>
@@ -269,7 +340,7 @@ export default function InvoicesPage() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setSelectedInvoice(null)}>Close</Button>
-            <Button variant="outline"><Send className="mr-2 h-4 w-4" /> Email</Button>
+            <Button variant="outline" onClick={handleSendInvoice}><Send className="mr-2 h-4 w-4" /> Email</Button>
             <Button><Printer className="mr-2 h-4 w-4" /> Print</Button>
           </DialogFooter>
         </DialogContent>
@@ -280,23 +351,23 @@ export default function InvoicesPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Collect Payment</DialogTitle>
-            <DialogDescription>Record payment for {selectedInvoice?.id}</DialogDescription>
+            <DialogDescription>Record payment for {selectedInvoice?.invoiceNumber || selectedInvoice?.id}</DialogDescription>
           </DialogHeader>
           {selectedInvoice && (
             <div className="space-y-4 py-4">
               <div className="p-4 bg-muted rounded-lg">
                 <div className="flex justify-between">
                   <span>Balance Due</span>
-                  <span className="font-bold text-destructive">${selectedInvoice.balance.toFixed(2)}</span>
+                  <span className="font-bold text-destructive">{formatCurrency(selectedInvoice.balance)}</span>
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Payment Amount *</Label>
-                <Input type="number" placeholder="0.00" defaultValue={selectedInvoice.balance} />
+                <Input type="number" placeholder="0.00" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>Payment Mode *</Label>
-                <Select>
+                <Select value={paymentMode} onValueChange={setPaymentMode}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select payment mode" />
                   </SelectTrigger>
@@ -307,13 +378,13 @@ export default function InvoicesPage() {
               </div>
               <div className="space-y-2">
                 <Label>Reference No.</Label>
-                <Input placeholder="Transaction reference" />
+                <Input placeholder="Transaction reference" value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} />
               </div>
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsPaymentOpen(false)}>Cancel</Button>
-            <Button onClick={() => setIsPaymentOpen(false)}>Record Payment</Button>
+            <Button onClick={recordPayment}>Record Payment</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

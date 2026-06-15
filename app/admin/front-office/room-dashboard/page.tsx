@@ -84,20 +84,13 @@ const calculateRemainingDays = (checkOut?: string) => {
   )
 }
 
-const getCheckoutStayStatus = (checkOut?: string, fallbackRemainingDays?: number) => {
-  if (!checkOut) {
-    const remainingDays = Number.isFinite(fallbackRemainingDays) ? Number(fallbackRemainingDays) : 0
-    return {
-      remainingDays,
-      isCheckoutToday: remainingDays === 0,
-      isOverstay: false,
-      label: remainingDays === 0 ? "Checkout Today" : `${remainingDays} ${remainingDays === 1 ? "Day" : "Days"} Left`,
-      className: remainingDays === 0 ? "text-amber-600" : "text-primary",
-    }
-  }
+const getCheckoutStayStatus = (checkOut?: string, fallbackRemainingDays?: number, planCharges?: number, foodCharges?: number, discount?: number) => {
+  const checkOutDate = checkOut ? new Date(checkOut) : null
+  const timeStr = checkOutDate && !isNaN(checkOutDate.getTime())
+    ? checkOutDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })
+    : ""
 
-  const checkOutDate = new Date(checkOut)
-  if (isNaN(checkOutDate.getTime())) {
+  if (!checkOut || !checkOutDate || isNaN(checkOutDate.getTime())) {
     const remainingDays = Number.isFinite(fallbackRemainingDays) ? Number(fallbackRemainingDays) : 0
     return {
       remainingDays,
@@ -110,17 +103,25 @@ const getCheckoutStayStatus = (checkOut?: string, fallbackRemainingDays?: number
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  checkOutDate.setHours(0, 0, 0, 0)
 
-  const dayDifference = Math.ceil((checkOutDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+  const checkOutDateNoTime = new Date(checkOutDate)
+  checkOutDateNoTime.setHours(0, 0, 0, 0)
+
+  const dayDifference = Math.ceil((checkOutDateNoTime.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 
   if (dayDifference < 0) {
+    const overstayNights = Math.abs(dayDifference)
+    const nightlyRate = (Number(planCharges || 0) + Number(foodCharges || 0)) - Number(discount || 0)
+    const overstayCost = overstayNights * nightlyRate
+
     return {
       remainingDays: dayDifference,
       isCheckoutToday: false,
       isOverstay: true,
-      label: "Overstay",
+      label: `Overstay: ${overstayNights} ${overstayNights === 1 ? "Night" : "Nights"} (${overstayCost > 0 ? `₹${overstayCost.toLocaleString()}` : "N/A"})`,
       className: "text-destructive",
+      overstayNights,
+      overstayCost
     }
   }
 
@@ -129,8 +130,18 @@ const getCheckoutStayStatus = (checkOut?: string, fallbackRemainingDays?: number
       remainingDays: 0,
       isCheckoutToday: true,
       isOverstay: false,
-      label: "Checkout Today",
+      label: `Checkout Today ${timeStr ? `(${timeStr})` : ""}`,
       className: "text-amber-600",
+    }
+  }
+
+  if (dayDifference === 1) {
+    return {
+      remainingDays: 1,
+      isCheckoutToday: false,
+      isOverstay: false,
+      label: `1 Day Left ${timeStr ? `(${timeStr})` : ""}`,
+      className: "text-primary",
     }
   }
 
@@ -138,7 +149,7 @@ const getCheckoutStayStatus = (checkOut?: string, fallbackRemainingDays?: number
     remainingDays: dayDifference,
     isCheckoutToday: false,
     isOverstay: false,
-    label: `${dayDifference} ${dayDifference === 1 ? "Day" : "Days"} Left`,
+    label: `${dayDifference} Days Left`,
     className: "text-primary",
   }
 }
@@ -429,7 +440,10 @@ export default function RoomDashboardPage() {
                 const roomNote = activeTask?.notes?.trim()
                 const checkoutStayStatus = getCheckoutStayStatus(
                   room.guestDetails?.checkOut || room.checkOut,
-                  room.remainingDays
+                  room.remainingDays,
+                  room.planCharges,
+                  room.foodCharges,
+                  room.discount
                 )
                 const card = (
                   <Card

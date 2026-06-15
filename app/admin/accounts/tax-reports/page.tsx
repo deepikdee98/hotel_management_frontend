@@ -12,45 +12,91 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Download, FileText, Calculator } from "lucide-react"
 
-const gstSummary = {
-  period: "January 2024",
-  outputGST: [
-    { description: "Room Revenue", taxableValue: 185200.00, cgst: 8334.00, sgst: 8334.00, igst: 0, totalGST: 16668.00 },
-    { description: "F&B Revenue", taxableValue: 42800.00, cgst: 2140.00, sgst: 2140.00, igst: 0, totalGST: 4280.00 },
-    { description: "Other Services", taxableValue: 20500.00, cgst: 922.50, sgst: 922.50, igst: 0, totalGST: 1845.00 },
-  ],
-  inputGST: [
-    { description: "Supplies & Materials", taxableValue: 15000.00, cgst: 1350.00, sgst: 1350.00, igst: 0, totalGST: 2700.00 },
-    { description: "Utilities", taxableValue: 8500.00, cgst: 765.00, sgst: 765.00, igst: 0, totalGST: 1530.00 },
-    { description: "Maintenance Services", taxableValue: 6500.00, cgst: 585.00, sgst: 585.00, igst: 0, totalGST: 1170.00 },
-  ]
+// Tax reports are loaded from API
+import { useEffect } from "react"
+import { useToast } from "@/hooks/use-toast"
+import { getAccountsGstReport, getAccountsTdsReport } from "@/services/api/accounts.service"
+
+type GstLine = {
+  description?: string
+  taxableValue?: number
+  cgst?: number
+  sgst?: number
+  igst?: number
+  totalGST?: number
+  total?: number
 }
 
-const tdsReport = [
-  { section: "194C", payee: "ABC Maintenance", nature: "Contractor Payment", amount: 50000.00, tdsRate: 1, tdsAmount: 500.00, status: "Deposited" },
-  { section: "194J", payee: "Tech Solutions", nature: "Professional Fees", amount: 25000.00, tdsRate: 10, tdsAmount: 2500.00, status: "Deposited" },
-  { section: "194I", payee: "Property Owner", nature: "Rent", amount: 100000.00, tdsRate: 10, tdsAmount: 10000.00, status: "Pending" },
-  { section: "194C", payee: "Clean Pro Services", nature: "Contractor Payment", amount: 30000.00, tdsRate: 1, tdsAmount: 300.00, status: "Deposited" },
-]
+type TdsLine = {
+  section?: string
+  payee?: string
+  nature?: string
+  amount?: number
+  tdsRate?: number
+  tdsAmount?: number
+  tds?: number
+  status?: string
+}
+
+function formatCurrency(value: unknown) {
+  return `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function formatPeriod(value: unknown, fallback: string) {
+  if (!value) return fallback
+  if (typeof value === "string") return value
+  if (typeof value === "object") {
+    const period = value as { month?: string | number; year?: string | number }
+    if (period.month && period.year) return `${period.month}-${period.year}`
+  }
+  return fallback
+}
 
 export default function TaxReportsPage() {
-  const [period, setPeriod] = useState("01-2024")
+  const { toast } = useToast()
+  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7))
+  const [gstSummary, setGstSummary] = useState<any>({ period: "", outputGST: [], inputGST: [] })
+  const [tdsReport, setTdsReport] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const totalOutputGST = gstSummary.outputGST.reduce((sum, item) => sum + item.totalGST, 0)
-  const totalInputGST = gstSummary.inputGST.reduce((sum, item) => sum + item.totalGST, 0)
+  const loadReports = async (periodStr: string) => {
+    setLoading(true)
+    try {
+      let month: number | undefined
+      let year: number | undefined
+      const parts = String(periodStr || "").split("-")
+      if (parts.length === 2) {
+        year = Number(parts[0])
+        month = Number(parts[1])
+      }
+      const gst = await getAccountsGstReport({ month, year })
+      const tds = await getAccountsTdsReport({ month, year })
+      setGstSummary(gst || { period: periodStr, outputGST: [], inputGST: [] })
+      const tdsItems = Array.isArray(tds?.tds) ? tds.tds : Array.isArray(tds) ? tds : []
+      setTdsReport(tdsItems)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load tax reports"
+      toast({ title: "Tax reports unavailable", description: message, variant: "destructive" })
+      setGstSummary({ period: period, outputGST: [], inputGST: [] })
+      setTdsReport([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadReports(period) }, [period])
+
+  const outputGST: GstLine[] = Array.isArray(gstSummary.outputGST) ? gstSummary.outputGST : []
+  const inputGST: GstLine[] = Array.isArray(gstSummary.inputGST) ? gstSummary.inputGST : []
+  const totalOutputGST = outputGST.reduce((sum, item) => sum + Number(item.totalGST || item.total || 0), 0)
+  const totalInputGST = inputGST.reduce((sum, item) => sum + Number(item.totalGST || item.total || 0), 0)
   const netGSTPayable = totalOutputGST - totalInputGST
 
-  const totalTDS = tdsReport.reduce((sum, item) => sum + item.tdsAmount, 0)
+  const totalTDS = tdsReport.reduce((sum, item: TdsLine) => sum + Number(item.tdsAmount || item.tds || 0), 0)
+  const displayPeriod = formatPeriod(gstSummary.period, period)
 
   return (
     <div className="space-y-6">
@@ -61,18 +107,7 @@ export default function TaxReportsPage() {
           <p className="text-muted-foreground">GST, TDS and other tax reports</p>
         </div>
         <div className="flex gap-2">
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Period" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="01-2024">January 2024</SelectItem>
-              <SelectItem value="12-2023">December 2023</SelectItem>
-              <SelectItem value="11-2023">November 2023</SelectItem>
-              <SelectItem value="Q3-2023">Q3 2023</SelectItem>
-              <SelectItem value="FY-2023">FY 2023-24</SelectItem>
-            </SelectContent>
-          </Select>
+          <Input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} className="w-40" />
           <Button variant="outline">
             <Download className="mr-2 h-4 w-4" />
             Export
@@ -88,25 +123,25 @@ export default function TaxReportsPage() {
               <Calculator className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Output GST</span>
             </div>
-            <div className="text-2xl font-bold">${totalOutputGST.toFixed(2)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalOutputGST)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Input GST (Credit)</div>
-            <div className="text-2xl font-bold text-primary">${totalInputGST.toFixed(2)}</div>
+            <div className="text-2xl font-bold text-primary">{formatCurrency(totalInputGST)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Net GST Payable</div>
-            <div className="text-2xl font-bold text-destructive">${netGSTPayable.toFixed(2)}</div>
+            <div className="text-2xl font-bold text-destructive">{formatCurrency(netGSTPayable)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">TDS Deducted</div>
-            <div className="text-2xl font-bold">${totalTDS.toFixed(2)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalTDS)}</div>
           </CardContent>
         </Card>
       </div>
@@ -122,7 +157,7 @@ export default function TaxReportsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Output GST (Sales)</CardTitle>
-              <CardDescription>GST collected on sales - {gstSummary.period}</CardDescription>
+              <CardDescription>GST collected on sales - {displayPeriod}</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -137,23 +172,23 @@ export default function TaxReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {gstSummary.outputGST.map((item, idx) => (
+                  {outputGST.map((item, idx) => (
                     <TableRow key={idx}>
-                      <TableCell>{item.description}</TableCell>
-                      <TableCell className="text-right">${item.taxableValue.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">${item.cgst.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">${item.sgst.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">${item.igst.toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-medium">${item.totalGST.toFixed(2)}</TableCell>
+                      <TableCell>{item.description || "-"}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.taxableValue)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.cgst)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.sgst)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.igst)}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(item.totalGST || item.total)}</TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="bg-muted font-bold">
                     <TableCell>TOTAL OUTPUT GST</TableCell>
-                    <TableCell className="text-right">${gstSummary.outputGST.reduce((s, i) => s + i.taxableValue, 0).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">${gstSummary.outputGST.reduce((s, i) => s + i.cgst, 0).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">${gstSummary.outputGST.reduce((s, i) => s + i.sgst, 0).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">$0.00</TableCell>
-                    <TableCell className="text-right">${totalOutputGST.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(outputGST.reduce((s, i) => s + Number(i.taxableValue || 0), 0))}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(outputGST.reduce((s, i) => s + Number(i.cgst || 0), 0))}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(outputGST.reduce((s, i) => s + Number(i.sgst || 0), 0))}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(0)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(totalOutputGST)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -179,23 +214,23 @@ export default function TaxReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {gstSummary.inputGST.map((item, idx) => (
+                  {inputGST.map((item, idx) => (
                     <TableRow key={idx}>
-                      <TableCell>{item.description}</TableCell>
-                      <TableCell className="text-right">${item.taxableValue.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">${item.cgst.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">${item.sgst.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">${item.igst.toFixed(2)}</TableCell>
-                      <TableCell className="text-right font-medium text-primary">${item.totalGST.toFixed(2)}</TableCell>
+                      <TableCell>{item.description || "-"}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.taxableValue)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.cgst)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.sgst)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.igst)}</TableCell>
+                      <TableCell className="text-right font-medium text-primary">{formatCurrency(item.totalGST || item.total)}</TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="bg-muted font-bold">
                     <TableCell>TOTAL INPUT GST (Credit)</TableCell>
-                    <TableCell className="text-right">${gstSummary.inputGST.reduce((s, i) => s + i.taxableValue, 0).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">${gstSummary.inputGST.reduce((s, i) => s + i.cgst, 0).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">${gstSummary.inputGST.reduce((s, i) => s + i.sgst, 0).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">$0.00</TableCell>
-                    <TableCell className="text-right text-primary">${totalInputGST.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(inputGST.reduce((s, i) => s + Number(i.taxableValue || 0), 0))}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(inputGST.reduce((s, i) => s + Number(i.cgst || 0), 0))}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(inputGST.reduce((s, i) => s + Number(i.sgst || 0), 0))}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(0)}</TableCell>
+                    <TableCell className="text-right text-primary">{formatCurrency(totalInputGST)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -211,15 +246,15 @@ export default function TaxReportsPage() {
               <div className="space-y-3 max-w-md">
                 <div className="flex justify-between py-2 border-b">
                   <span>Total Output GST</span>
-                  <span className="font-medium">${totalOutputGST.toFixed(2)}</span>
+                  <span className="font-medium">{formatCurrency(totalOutputGST)}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b">
                   <span>Less: Input Tax Credit</span>
-                  <span className="font-medium text-primary">-${totalInputGST.toFixed(2)}</span>
+                  <span className="font-medium text-primary">-{formatCurrency(totalInputGST)}</span>
                 </div>
                 <div className="flex justify-between py-2 font-bold text-lg">
                   <span>Net GST Payable</span>
-                  <span className="text-destructive">${netGSTPayable.toFixed(2)}</span>
+                  <span className="text-destructive">{formatCurrency(netGSTPayable)}</span>
                 </div>
               </div>
             </CardContent>
@@ -232,7 +267,7 @@ export default function TaxReportsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>TDS Deductions</CardTitle>
-                  <CardDescription>Tax Deducted at Source - {gstSummary.period}</CardDescription>
+                  <CardDescription>Tax Deducted at Source - {displayPeriod}</CardDescription>
                 </div>
                 <Button variant="outline">
                   <FileText className="mr-2 h-4 w-4" />
@@ -254,24 +289,24 @@ export default function TaxReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {tdsReport.map((item, idx) => (
+                  {tdsReport.map((item: TdsLine, idx: number) => (
                     <TableRow key={idx}>
-                      <TableCell className="font-medium">{item.section}</TableCell>
-                      <TableCell>{item.payee}</TableCell>
-                      <TableCell>{item.nature}</TableCell>
-                      <TableCell className="text-right">${item.amount.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">{item.tdsRate}%</TableCell>
-                      <TableCell className="text-right font-medium">${item.tdsAmount.toFixed(2)}</TableCell>
+                      <TableCell className="font-medium">{item.section || "-"}</TableCell>
+                      <TableCell>{item.payee || "-"}</TableCell>
+                      <TableCell>{item.nature || "-"}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.amount)}</TableCell>
+                      <TableCell className="text-right">{Number(item.tdsRate || 0)}%</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(item.tdsAmount || item.tds)}</TableCell>
                       <TableCell>
                         <span className={`px-2 py-1 rounded text-xs ${item.status === "Deposited" ? "bg-primary/20 text-primary" : "bg-warning/20 text-warning"}`}>
-                          {item.status}
+                          {item.status || "-"}
                         </span>
                       </TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="bg-muted font-bold">
                     <TableCell colSpan={5}>TOTAL TDS</TableCell>
-                    <TableCell className="text-right">${totalTDS.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(totalTDS)}</TableCell>
                     <TableCell></TableCell>
                   </TableRow>
                 </TableBody>

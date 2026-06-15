@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -32,16 +32,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Plus, Search, Download, TrendingDown } from "lucide-react"
+import { createAccountsExpense, getAccountsExpenses, type AccountsExpense } from "@/services/api/accounts.service"
+import { useToast } from "@/hooks/use-toast"
 
-const mockExpenses = [
-  { id: "EXP-001", date: "2024-01-15", category: "Utilities", subCategory: "Electricity", description: "Monthly electricity bill", vendor: "City Power Corp", amount: 850.00, approvedBy: "Admin", status: "approved" },
-  { id: "EXP-002", date: "2024-01-15", category: "Supplies", subCategory: "Kitchen", description: "Kitchen supplies & groceries", vendor: "Fresh Foods Ltd", amount: 1200.00, approvedBy: "Admin", status: "approved" },
-  { id: "EXP-003", date: "2024-01-14", category: "Maintenance", subCategory: "HVAC", description: "AC servicing - all floors", vendor: "ABC Maintenance", amount: 450.00, approvedBy: "Admin", status: "approved" },
-  { id: "EXP-004", date: "2024-01-14", category: "Supplies", subCategory: "Housekeeping", description: "Cleaning supplies", vendor: "Clean Pro", amount: 320.00, approvedBy: "Admin", status: "approved" },
-  { id: "EXP-005", date: "2024-01-13", category: "Utilities", subCategory: "Water", description: "Monthly water bill", vendor: "Municipal Corp", amount: 280.00, approvedBy: "Admin", status: "approved" },
-  { id: "EXP-006", date: "2024-01-13", category: "Marketing", subCategory: "Online Ads", description: "Google Ads - January", vendor: "Google", amount: 500.00, approvedBy: "Admin", status: "pending" },
-  { id: "EXP-007", date: "2024-01-12", category: "Repairs", subCategory: "Plumbing", description: "Bathroom repairs - Room 302", vendor: "Quick Fix Plumbers", amount: 180.00, approvedBy: "John Doe", status: "approved" },
-]
+function formatCurrency(value: unknown) {
+  return `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
 
 const categories = [
   { name: "Utilities", subCategories: ["Electricity", "Water", "Gas", "Internet"] },
@@ -54,12 +50,44 @@ const categories = [
 ]
 
 export default function ExpensesPage() {
+  const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<string>("")
+  const [selectedSubCategory, setSelectedSubCategory] = useState("")
+  const [expenses, setExpenses] = useState<AccountsExpense[]>([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({
+    vendor: "",
+    description: "",
+    amount: "",
+    date: new Date().toISOString().slice(0, 10),
+    billNumber: "",
+    notes: "",
+  })
 
-  const filteredExpenses = mockExpenses.filter((exp) => {
+  const loadExpenses = async () => {
+    setLoading(true)
+    try {
+      const result = await getAccountsExpenses({ search: searchQuery, category: categoryFilter, limit: 100 })
+      setExpenses(result.expenses)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load expenses"
+      toast({ title: "Expenses unavailable", description: message, variant: "destructive" })
+      setExpenses([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadExpenses()
+  }, [searchQuery, categoryFilter])
+
+  const sourceExpenses = expenses
+
+  const filteredExpenses = sourceExpenses.filter((exp) => {
     const matchesSearch = exp.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       exp.vendor.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory = categoryFilter === "all" || exp.category === categoryFilter
@@ -71,6 +99,35 @@ export default function ExpensesPage() {
     acc[e.category] = (acc[e.category] || 0) + e.amount
     return acc
   }, {} as Record<string, number>)
+
+  const saveExpense = async () => {
+    if (!selectedCategory || !form.description || !form.amount) {
+      toast({ title: "Missing details", description: "Category, description, and amount are required.", variant: "destructive" })
+      return
+    }
+
+    try {
+      await createAccountsExpense({
+        category: selectedCategory,
+        subCategory: selectedSubCategory,
+        paidTo: form.vendor,
+        description: form.description,
+        amount: Number(form.amount),
+        date: form.date,
+        billNumber: form.billNumber,
+        notes: form.notes,
+      })
+      toast({ title: "Expense saved", description: "The expense was recorded." })
+      setIsAddOpen(false)
+      setSelectedCategory("")
+      setSelectedSubCategory("")
+      setForm({ vendor: "", description: "", amount: "", date: new Date().toISOString().slice(0, 10), billNumber: "", notes: "" })
+      loadExpenses()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to save expense"
+      toast({ title: "Save failed", description: message, variant: "destructive" })
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -101,7 +158,7 @@ export default function ExpensesPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Category *</Label>
-                    <Select onValueChange={setSelectedCategory}>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select category" />
                       </SelectTrigger>
@@ -114,7 +171,7 @@ export default function ExpensesPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Sub-Category *</Label>
-                    <Select>
+                    <Select value={selectedSubCategory} onValueChange={setSelectedSubCategory}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
@@ -128,34 +185,34 @@ export default function ExpensesPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Vendor/Supplier *</Label>
-                  <Input placeholder="Vendor name" />
+                  <Input placeholder="Vendor name" value={form.vendor} onChange={(event) => setForm((current) => ({ ...current, vendor: event.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Description *</Label>
-                  <Input placeholder="Expense description" />
+                  <Input placeholder="Expense description" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Amount *</Label>
-                    <Input type="number" placeholder="0.00" />
+                    <Input type="number" placeholder="0.00" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} />
                   </div>
                   <div className="space-y-2">
                     <Label>Date *</Label>
-                    <Input type="date" />
+                    <Input type="date" value={form.date} onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))} />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Invoice/Bill No.</Label>
-                  <Input placeholder="Reference number" />
+                  <Input placeholder="Reference number" value={form.billNumber} onChange={(event) => setForm((current) => ({ ...current, billNumber: event.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Notes</Label>
-                  <Textarea placeholder="Additional notes..." rows={2} />
+                  <Textarea placeholder="Additional notes..." rows={2} value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} />
                 </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                <Button onClick={() => setIsAddOpen(false)}>Save Expense</Button>
+                <Button onClick={saveExpense}>Save Expense</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -170,14 +227,14 @@ export default function ExpensesPage() {
               <TrendingDown className="h-4 w-4 text-destructive" />
               <span className="text-sm text-muted-foreground">Total Expenses</span>
             </div>
-            <div className="text-2xl font-bold text-destructive">${totalExpenses.toFixed(2)}</div>
+            <div className="text-2xl font-bold text-destructive">{formatCurrency(totalExpenses)}</div>
           </CardContent>
         </Card>
         {Object.entries(categoryTotals).slice(0, 3).map(([category, total]) => (
           <Card key={category}>
             <CardContent className="pt-6">
               <div className="text-sm text-muted-foreground">{category}</div>
-              <div className="text-2xl font-bold">${total.toFixed(2)}</div>
+              <div className="text-2xl font-bold">{formatCurrency(total)}</div>
             </CardContent>
           </Card>
         ))}
@@ -226,7 +283,12 @@ export default function ExpensesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredExpenses.map((expense) => (
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Loading expenses...</TableCell>
+                </TableRow>
+              )}
+              {!loading && filteredExpenses.map((expense) => (
                 <TableRow key={expense.id}>
                   <TableCell className="font-medium">{expense.id}</TableCell>
                   <TableCell>{expense.date}</TableCell>
@@ -236,7 +298,7 @@ export default function ExpensesPage() {
                   </TableCell>
                   <TableCell>{expense.vendor}</TableCell>
                   <TableCell className="max-w-[200px] truncate">{expense.description}</TableCell>
-                  <TableCell className="font-medium text-destructive">${expense.amount.toFixed(2)}</TableCell>
+                  <TableCell className="font-medium text-destructive">{formatCurrency(expense.amount)}</TableCell>
                   <TableCell>
                     <Badge variant={expense.status === "approved" ? "default" : "secondary"}>
                       {expense.status}

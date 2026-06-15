@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import type { ChangeEvent } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Check, Settings, Plus, Pencil, Trash2, BedDouble, CreditCard, Tags, Building, Layers, ChevronDown, ChevronRight, Loader2, RotateCcw, X, User } from "lucide-react"
+import { Check, Settings, Plus, Pencil, Trash2, BedDouble, CreditCard, Tags, Building, Layers, ChevronDown, ChevronRight, Loader2, RotateCcw, X, User, ImageIcon, Upload } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import EditDetailsModal from "@/components/common/EditDetailsModal"
 import { useAuth } from "@/lib/auth-context"
@@ -35,6 +36,8 @@ import {
   updateSetupRatePlan,
   deleteSetupRatePlan,
   updateSetupHotelConfig,
+  uploadHotelLogo,
+  getHotelLogoReadUrl,
   deleteSetupRoomConfig,
   createSetupOption,
   deactivateSetupOption,
@@ -352,6 +355,9 @@ export default function FOSetupPage() {
   const [floors, setFloors] = useState<Floor[]>([])
   const [hotelConfig, setHotelConfig] = useState<any>(null)
   const [hotelConfigForm, setHotelConfigForm] = useState<any>({})
+  const [hotelLogoFile, setHotelLogoFile] = useState<File | null>(null)
+  const [hotelLogoPreview, setHotelLogoPreview] = useState("")
+  const [isHotelLogoUploading, setIsHotelLogoUploading] = useState(false)
 
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [addType, setAddType] = useState("")
@@ -482,28 +488,38 @@ export default function FOSetupPage() {
       if (mappedFloors.length > 0) {
         setExpandedFloors([mappedFloors[0]._id])
       }
-      setHotelConfig(hc)
+      const loadedHotelConfig = hc as any
+      setHotelConfig(loadedHotelConfig)
       setHotelConfigForm({
-        name: hc?.name || "",
-        address: hc?.address || "",
-        phone: hc?.phone || "",
-        email: hc?.email || "",
-        gstNumber: hc?.gstNumber || "",
-        checkInTime: hc?.checkInTime || "14:00",
-        checkOutTime: hc?.checkOutTime || "11:00",
-        currency: String(hc?.currency || "INR").toUpperCase(),
-        dateFormat: String(hc?.dateFormat || "DD-MM-YYYY").toUpperCase(),
-        nightAuditTime: hc?.nightAuditTime || "00:00",
-        nightAuditEnabled: hc?.nightAuditEnabled ?? true,
-        lastNightAuditAt: hc?.lastNightAuditAt || null,
-        bookingPrefix: hc?.bookingPrefix || "NOV",
-        startNumber: hc?.startNumber ?? 1,
-        digitLength: hc?.digitLength ?? 4,
-        resetFinancialYear: hc?.resetFinancialYear ?? true,
-        currentNumber: hc?.currentNumber ?? 1,
-        currentFinancialYear: hc?.currentFinancialYear || "",
-        financialYearFormat: hc?.financialYearFormat || "YYYY-YY",
+        name: loadedHotelConfig?.name || "",
+        address: loadedHotelConfig?.address || "",
+        phone: loadedHotelConfig?.phone || "",
+        email: loadedHotelConfig?.email || "",
+        gstNumber: loadedHotelConfig?.gstNumber || "",
+        checkInTime: loadedHotelConfig?.checkInTime || "14:00",
+        checkOutTime: loadedHotelConfig?.checkOutTime || "11:00",
+        currency: String(loadedHotelConfig?.currency || "INR").toUpperCase(),
+        dateFormat: String(loadedHotelConfig?.dateFormat || "DD-MM-YYYY").toUpperCase(),
+        nightAuditTime: loadedHotelConfig?.nightAuditTime || "00:00",
+        nightAuditEnabled: loadedHotelConfig?.nightAuditEnabled ?? true,
+        lastNightAuditAt: loadedHotelConfig?.lastNightAuditAt || null,
+        bookingPrefix: loadedHotelConfig?.bookingPrefix || "NOV",
+        startNumber: loadedHotelConfig?.startNumber ?? 1,
+        digitLength: loadedHotelConfig?.digitLength ?? 4,
+        resetFinancialYear: loadedHotelConfig?.resetFinancialYear ?? true,
+        currentNumber: loadedHotelConfig?.currentNumber ?? 1,
+        currentFinancialYear: loadedHotelConfig?.currentFinancialYear || "",
+        financialYearFormat: loadedHotelConfig?.financialYearFormat || "YYYY-YY",
+        logo: loadedHotelConfig?.logo || null,
       })
+      setHotelLogoFile(null)
+      if (loadedHotelConfig?.logo?.key) {
+        getHotelLogoReadUrl(loadedHotelConfig.logo.key)
+          .then((url) => setHotelLogoPreview(url))
+          .catch(() => setHotelLogoPreview(loadedHotelConfig?.logo?.url || ""))
+      } else {
+        setHotelLogoPreview(loadedHotelConfig?.logo?.url || "")
+      }
     } catch (error: any) {
       toast({
         title: "Error",
@@ -519,6 +535,33 @@ export default function FOSetupPage() {
     mergeRegistrations(getCachedCompanyRegistrations().map((item: any) => normalizeRegistration(item, item.type || "Company", item.type === "Travel Agent" ? "travelAgent" : "company")))
     fetchData()
   }, [])
+
+  useEffect(() => {
+    if (!hotelLogoFile) return
+
+    const previewUrl = URL.createObjectURL(hotelLogoFile)
+    setHotelLogoPreview(previewUrl)
+
+    return () => URL.revokeObjectURL(previewUrl)
+  }, [hotelLogoFile])
+
+  const handleHotelLogoChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+
+    if (!file) return
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Invalid file",
+        description: "Please choose an image file for the hotel logo.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setHotelLogoFile(file)
+  }
 
   const toggleFloor = (floorId: string) => {
     setExpandedFloors(prev =>
@@ -628,6 +671,8 @@ export default function FOSetupPage() {
     }
 
     try {
+      setIsHotelLogoUploading(Boolean(hotelLogoFile))
+      const uploadedLogo = hotelLogoFile ? await uploadHotelLogo(hotelLogoFile) : hotelConfigForm.logo
       const result = await updateSetupHotelConfig({
         name: hotelConfigForm.name,
         address: hotelConfigForm.address,
@@ -647,11 +692,13 @@ export default function FOSetupPage() {
         currentNumber: Number(hotelConfigForm.currentNumber || hotelConfigForm.startNumber || 1),
         currentFinancialYear: hotelConfigForm.currentFinancialYear || null,
         financialYearFormat: hotelConfigForm.financialYearFormat,
+        logo: uploadedLogo || null,
       })
 
       const updatedHotel = (result as any)?.hotel || {
         ...hotelConfig,
         ...hotelConfigForm,
+        logo: uploadedLogo || hotelConfigForm.logo || null,
       }
 
       setHotelConfig(updatedHotel)
@@ -676,7 +723,18 @@ export default function FOSetupPage() {
         currentNumber: updatedHotel.currentNumber ?? hotelConfigForm.currentNumber ?? 1,
         currentFinancialYear: updatedHotel.currentFinancialYear || hotelConfigForm.currentFinancialYear || "",
         financialYearFormat: updatedHotel.financialYearFormat || hotelConfigForm.financialYearFormat || "YYYY-YY",
+        logo: updatedHotel.logo || uploadedLogo || null,
       })
+      setHotelLogoFile(null)
+      let nextLogoPreview = updatedHotel.logo?.url || uploadedLogo?.url || ""
+      if ((updatedHotel.logo?.key || uploadedLogo?.key)) {
+        nextLogoPreview = await getHotelLogoReadUrl(updatedHotel.logo?.key || uploadedLogo?.key)
+          .catch(() => nextLogoPreview)
+      }
+      setHotelLogoPreview(nextLogoPreview)
+      window.dispatchEvent(new CustomEvent("hotel-logo-updated", {
+        detail: { logoUrl: nextLogoPreview },
+      }))
 
       toast({
         title: "Saved",
@@ -688,11 +746,14 @@ export default function FOSetupPage() {
         description: error.message || "Failed to save hotel configuration",
         variant: "destructive"
       })
+    } finally {
+      setIsHotelLogoUploading(false)
     }
   }
 
   const totalRooms = floors.reduce((sum, f) => sum + f.totalRooms, 0)
   const bookingPreview = `${String(hotelConfigForm.bookingPrefix || "NOV").trim().toUpperCase() || "NOV"}-${String(Number(hotelConfigForm.currentNumber || hotelConfigForm.startNumber || 1)).padStart(Number(hotelConfigForm.digitLength || 4), "0")}`
+  const hotelLogoName = hotelLogoFile?.name || hotelConfigForm.logo?.fileName || "No logo selected"
 
 
   if (loading) {
@@ -752,11 +813,24 @@ export default function FOSetupPage() {
       return;
     }
 
+    if (genericForm.foodIncluded && (!genericForm.mealType || Number(genericForm.foodCharge) < 0)) {
+      toast({
+        title: "Error",
+        description: "Meal Type and valid Food Charge are required when food is included",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
+      const foodIncluded = !!genericForm.foodIncluded
       await createSetupRatePlan({
         name: genericForm.name,
         code: genericForm.code,
         description: genericForm.description || "",
+        foodIncluded,
+        mealType: foodIncluded ? genericForm.mealType || "" : "",
+        foodCharge: foodIncluded ? Number(genericForm.foodCharge || 0) : 0,
       });
 
       toast({
@@ -855,11 +929,23 @@ export default function FOSetupPage() {
   }
 
   const handleUpdateRatePlan = async () => {
+    if (editForm.foodIncluded && (!editForm.mealType || Number(editForm.foodCharge) < 0)) {
+      toast({
+        title: "Error",
+        description: "Meal Type and valid Food Charge are required when food is included",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
       await updateSetupRatePlan(selectedRatePlan._id, {
         name: editForm.name,
         code: editForm.code,
         description: editForm.description,
+        foodIncluded: !!editForm.foodIncluded,
+        mealType: editForm.foodIncluded ? editForm.mealType || "" : "",
+        foodCharge: editForm.foodIncluded ? Number(editForm.foodCharge || 0) : 0,
         status: editForm.status || "active",
       })
 
@@ -1307,7 +1393,7 @@ export default function FOSetupPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <CardTitle className="text-lg">Rate Plans</CardTitle>
-              <Button size="sm" onClick={() => { setAddType("rate-plan"); setIsAddOpen(true) }}>
+              <Button size="sm" onClick={() => { setAddType("rate-plan"); setGenericForm({ foodIncluded: false }); setIsAddOpen(true) }}>
                 <Plus className="h-3.5 w-3.5 mr-1.5" />Add Rate Plan
               </Button>
             </CardHeader>
@@ -1318,6 +1404,9 @@ export default function FOSetupPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Code</TableHead>
                     <TableHead>Description</TableHead>
+                    <TableHead>Food Included</TableHead>
+                    <TableHead>Meal Type</TableHead>
+                    <TableHead>Food Charge</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -1328,6 +1417,9 @@ export default function FOSetupPage() {
                       <TableCell className="font-medium">{rp.name}</TableCell>
                       <TableCell><Badge variant="secondary">{rp.code}</Badge></TableCell>
                       <TableCell>{rp.description}</TableCell>
+                      <TableCell>{rp.foodIncluded ? <Badge variant="secondary">Yes</Badge> : <Badge variant="outline">No</Badge>}</TableCell>
+                      <TableCell>{rp.foodIncluded ? rp.mealType || "-" : "-"}</TableCell>
+                      <TableCell>{rp.foodIncluded ? Number(rp.foodCharge || 0).toFixed(2) : "-"}</TableCell>
                       <TableCell><Badge className="bg-primary/10 text-primary border-primary/20">{rp.status || "Active"}</Badge></TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -1337,6 +1429,9 @@ export default function FOSetupPage() {
                               name: rp.name,
                               code: rp.code,
                               description: rp.description,
+                              foodIncluded: !!rp.foodIncluded,
+                              mealType: rp.mealType || "",
+                              foodCharge: rp.foodCharge || 0,
                               status: rp.status || "active",
                             })
                             setIsEditOpen(true)
@@ -1556,11 +1651,37 @@ export default function FOSetupPage() {
                   <div className="space-y-2"><Label>Email</Label><Input value={hotelConfigForm.email || ""} onChange={(e) => setHotelConfigForm({ ...hotelConfigForm, email: e.target.value })} /></div>
                 </div>
                 <div className="space-y-2"><Label>GST Number</Label><Input value={hotelConfigForm.gstNumber || ""} onChange={(e) => setHotelConfigForm({ ...hotelConfigForm, gstNumber: e.target.value })} /></div>
+                <div className="space-y-2">
+                  <Label>Hotel Logo</Label>
+                  <div className="flex items-center gap-3 rounded-md border border-input p-3">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+                      {hotelLogoPreview ? (
+                        <img src={hotelLogoPreview} alt="Hotel logo preview" className="h-full w-full object-contain" />
+                      ) : (
+                        <ImageIcon className="h-7 w-7 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{hotelLogoName}</p>
+                      <p className="text-xs text-muted-foreground">Saved under hotel logo folder in S3</p>
+                    </div>
+                    <Input id="hotel-logo-upload" type="file" accept="image/*" className="hidden" onChange={handleHotelLogoChange} />
+                    <Button type="button" variant="outline" size="sm" asChild>
+                      <Label htmlFor="hotel-logo-upload" className="cursor-pointer">
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload
+                      </Label>
+                    </Button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2"><Label>Total Floors</Label><Input type="number" value={floors.length} readOnly /></div>
                   <div className="space-y-2"><Label>Total Rooms</Label><Input type="number" value={totalRooms} readOnly /></div>
                 </div>
-                <Button className="w-full" onClick={handleSaveHotelConfig}>Save Hotel Details</Button>
+                <Button className="w-full" onClick={handleSaveHotelConfig} disabled={isHotelLogoUploading}>
+                  {isHotelLogoUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Save Hotel Details
+                </Button>
               </CardContent>
             </Card>
             <Card>
@@ -1953,15 +2074,54 @@ export default function FOSetupPage() {
               </div>
             )}
             {addType === "rate-plan" && (
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Input
-                  placeholder="e.g., European Plan, Bed & Breakfast"
-                  value={genericForm.description || ""}
-                  onChange={(e) =>
-                    setGenericForm({ ...genericForm, description: e.target.value })
-                  }
-                />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <Input
+                    placeholder="e.g., European Plan, Bed & Breakfast"
+                    value={genericForm.description || ""}
+                    onChange={(e) =>
+                      setGenericForm({ ...genericForm, description: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="rate-plan-food-included"
+                    checked={!!genericForm.foodIncluded}
+                    onCheckedChange={(value) =>
+                      setGenericForm({
+                        ...genericForm,
+                        foodIncluded: value,
+                        mealType: value ? genericForm.mealType || "" : "",
+                        foodCharge: value ? genericForm.foodCharge || "" : "",
+                      })
+                    }
+                  />
+                  <Label htmlFor="rate-plan-food-included">Food Included</Label>
+                </div>
+                {genericForm.foodIncluded && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Meal Type</Label>
+                      <Input
+                        placeholder="e.g., CP, MAP, AP"
+                        value={genericForm.mealType || ""}
+                        onChange={(e) => setGenericForm({ ...genericForm, mealType: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Food Charge</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="0.00"
+                        value={genericForm.foodCharge || ""}
+                        onChange={(e) => setGenericForm({ ...genericForm, foodCharge: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2070,6 +2230,47 @@ export default function FOSetupPage() {
                   </SelectContent>
                 </Select>
               </div>
+            )}
+            {selectedRatePlan && (
+              <>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="edit-rate-plan-food-included"
+                    checked={!!editForm.foodIncluded}
+                    onCheckedChange={(value) =>
+                      setEditForm({
+                        ...editForm,
+                        foodIncluded: value,
+                        mealType: value ? editForm.mealType || "" : "",
+                        foodCharge: value ? editForm.foodCharge || "" : "",
+                      })
+                    }
+                  />
+                  <Label htmlFor="edit-rate-plan-food-included">Food Included</Label>
+                </div>
+                {editForm.foodIncluded && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Meal Type</Label>
+                      <Input
+                        placeholder="e.g., CP, MAP, AP"
+                        value={editForm.mealType || ""}
+                        onChange={(e) => setEditForm({ ...editForm, mealType: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Food Charge</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="0.00"
+                        value={editForm.foodCharge || ""}
+                        onChange={(e) => setEditForm({ ...editForm, foodCharge: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             <div className="space-y-2">
               <Label>Status</Label>

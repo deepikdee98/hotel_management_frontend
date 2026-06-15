@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -12,8 +12,6 @@ import {
   TrendingDown,
   CreditCard,
   FileText,
-  ArrowUpRight,
-  ArrowDownRight,
   ArrowRightLeft,
   Receipt,
   Banknote,
@@ -21,21 +19,9 @@ import {
   BarChart,
   Calendar,
 } from "lucide-react"
+import { getAccountsDashboard, type AccountsTransaction } from "@/services/api/accounts.service"
 
-// Mock data
-const recentTransactions = [
-  { id: "TXN-001", date: "2024-01-15", description: "Room 101 - Checkout", type: "income", amount: 450.00 },
-  { id: "TXN-002", date: "2024-01-15", description: "Restaurant - Order #234", type: "income", amount: 85.50 },
-  { id: "TXN-003", date: "2024-01-15", description: "Laundry Supplies", type: "expense", amount: 120.00 },
-  { id: "TXN-004", date: "2024-01-14", description: "Room 205 - Checkout", type: "income", amount: 380.00 },
-  { id: "TXN-005", date: "2024-01-14", description: "Electricity Bill", type: "expense", amount: 850.00 },
-]
-
-const pendingPayments = [
-  { id: "INV-002", guest: "Emma Wilson", amount: 520.00, dueDate: "Jan 16" },
-  { id: "INV-004", guest: "Sarah Davis", amount: 640.00, dueDate: "Jan 18" },
-  { id: "INV-007", guest: "Robert Chen", amount: 890.00, dueDate: "Jan 20" },
-]
+// Data loaded from API
 
 const quickLinks = [
   { label: "Transactions", href: "/admin/accounts/transactions", icon: ArrowRightLeft, description: "View all transactions" },
@@ -49,6 +35,38 @@ const quickLinks = [
 ]
 
 export default function AccountsDashboardPage() {
+  const [summary, setSummary] = useState<Record<string, any>>({})
+  const [liveTransactions, setLiveTransactions] = useState<AccountsTransaction[]>([])
+  const [livePendingPayments, setLivePendingPayments] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+
+    getAccountsDashboard()
+      .then((data) => {
+        if (!active) return
+        setSummary(data.summary as Record<string, any>)
+        setLiveTransactions(data.recentTransactions)
+        setLivePendingPayments(data.pendingPayments)
+      })
+      .catch(() => {
+        if (!active) return
+        setSummary({})
+        setLiveTransactions([])
+        setLivePendingPayments([])
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const formatCurrency = (value: unknown) => `₹${Number(value || 0).toLocaleString("en-IN")}`
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -65,11 +83,8 @@ export default function AccountsDashboardPage() {
             <DollarSign className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$12,450</div>
-            <div className="flex items-center text-xs text-primary">
-              <ArrowUpRight className="mr-1 h-3 w-3" />
-              +18% from yesterday
-            </div>
+            <div className="text-2xl font-bold">{formatCurrency(summary.todayRevenue)}</div>
+            <p className="text-xs text-muted-foreground">{loading ? "Loading..." : "Live account data"}</p>
           </CardContent>
         </Card>
         <Card>
@@ -78,11 +93,8 @@ export default function AccountsDashboardPage() {
             <TrendingDown className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$3,280</div>
-            <div className="flex items-center text-xs text-destructive">
-              <ArrowDownRight className="mr-1 h-3 w-3" />
-              +5% from yesterday
-            </div>
+            <div className="text-2xl font-bold">{formatCurrency(summary.todayExpenses)}</div>
+            <p className="text-xs text-muted-foreground">{loading ? "Loading..." : "Live account data"}</p>
           </CardContent>
         </Card>
         <Card>
@@ -91,11 +103,8 @@ export default function AccountsDashboardPage() {
             <TrendingUp className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$248,500</div>
-            <div className="flex items-center text-xs text-primary">
-              <ArrowUpRight className="mr-1 h-3 w-3" />
-              +12% from last month
-            </div>
+            <div className="text-2xl font-bold">{formatCurrency(summary.monthlyRevenue)}</div>
+            <p className="text-xs text-muted-foreground">{loading ? "Loading..." : "Live account data"}</p>
           </CardContent>
         </Card>
         <Card>
@@ -104,8 +113,8 @@ export default function AccountsDashboardPage() {
             <CreditCard className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$15,340</div>
-            <p className="text-xs text-muted-foreground">12 invoices pending</p>
+            <div className="text-2xl font-bold">{formatCurrency(summary.pendingPayments)}</div>
+            <p className="text-xs text-muted-foreground">{Number(summary.pendingInvoiceCount || 0)} invoices pending</p>
           </CardContent>
         </Card>
       </div>
@@ -152,17 +161,20 @@ export default function AccountsDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {recentTransactions.map((txn) => (
+              {liveTransactions.map((txn: any) => (
                 <div key={txn.id} className="flex items-center justify-between py-2 border-b last:border-0">
                   <div>
                     <p className="text-sm font-medium">{txn.description}</p>
                     <p className="text-xs text-muted-foreground">{txn.date}</p>
                   </div>
-                  <span className={txn.type === "income" ? "text-primary font-medium" : "text-destructive font-medium"}>
-                    {txn.type === "income" ? "+" : "-"}${txn.amount.toFixed(2)}
+                  <span className={String(txn.type).toLowerCase() === "income" ? "text-primary font-medium" : "text-destructive font-medium"}>
+                    {String(txn.type).toLowerCase() === "income" ? "+" : "-"}{formatCurrency(txn.amount)}
                   </span>
                 </div>
               ))}
+              {!loading && liveTransactions.length === 0 && (
+                <p className="py-6 text-center text-sm text-muted-foreground">No recent transactions found.</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -180,18 +192,21 @@ export default function AccountsDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {pendingPayments.map((payment) => (
+              {livePendingPayments.map((payment: any) => (
                 <div key={payment.id} className="flex items-center justify-between py-2 border-b last:border-0">
                   <div>
                     <p className="text-sm font-medium">{payment.guest}</p>
                     <p className="text-xs text-muted-foreground">Due: {payment.dueDate}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium">${payment.amount.toFixed(2)}</p>
+                    <p className="text-sm font-medium">{formatCurrency(payment.amount)}</p>
                     <Badge variant="outline" className="text-xs">Pending</Badge>
                   </div>
                 </div>
               ))}
+              {!loading && livePendingPayments.length === 0 && (
+                <p className="py-6 text-center text-sm text-muted-foreground">No pending payments found.</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -201,29 +216,29 @@ export default function AccountsDashboardPage() {
       <Card>
         <CardHeader>
           <CardTitle>This Month's Summary</CardTitle>
-          <CardDescription>Financial overview for January 2024</CardDescription>
+          <CardDescription>Financial overview for the current period</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <div className="p-4 rounded-lg bg-muted/50">
               <p className="text-sm text-muted-foreground">Room Revenue</p>
-              <p className="text-xl font-bold">$185,200</p>
+              <p className="text-xl font-bold">{formatCurrency(summary.roomRevenue)}</p>
             </div>
             <div className="p-4 rounded-lg bg-muted/50">
               <p className="text-sm text-muted-foreground">F&B Revenue</p>
-              <p className="text-xl font-bold">$42,800</p>
+              <p className="text-xl font-bold">{formatCurrency(summary.fbRevenue)}</p>
             </div>
             <div className="p-4 rounded-lg bg-muted/50">
               <p className="text-sm text-muted-foreground">Other Services</p>
-              <p className="text-xl font-bold">$20,500</p>
+              <p className="text-xl font-bold">{formatCurrency(summary.otherServicesRevenue)}</p>
             </div>
             <div className="p-4 rounded-lg bg-muted/50">
               <p className="text-sm text-muted-foreground">Total Expenses</p>
-              <p className="text-xl font-bold text-destructive">$82,400</p>
+              <p className="text-xl font-bold text-destructive">{formatCurrency(summary.monthlyExpenses)}</p>
             </div>
             <div className="p-4 rounded-lg bg-primary/10">
               <p className="text-sm text-muted-foreground">Net Profit</p>
-              <p className="text-xl font-bold text-primary">$166,100</p>
+              <p className="text-xl font-bold text-primary">{formatCurrency(summary.monthlyNetProfit)}</p>
             </div>
           </div>
         </CardContent>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,47 +21,75 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Download, Search } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import { getChartOfAccounts, getLedgerEntries } from "@/services/api/accounts.service"
 
-const ledgerAccounts = [
-  { code: "1001", name: "Cash in Hand", type: "Asset", balance: 15000.00, balanceType: "Dr" },
-  { code: "1002", name: "Bank Account - Main", type: "Asset", balance: 185000.00, balanceType: "Dr" },
-  { code: "1003", name: "Accounts Receivable", type: "Asset", balance: 24500.00, balanceType: "Dr" },
-  { code: "2001", name: "Accounts Payable", type: "Liability", balance: 12800.00, balanceType: "Cr" },
-  { code: "2002", name: "Advance Deposits", type: "Liability", balance: 35000.00, balanceType: "Cr" },
-  { code: "3001", name: "Capital", type: "Equity", balance: 500000.00, balanceType: "Cr" },
-  { code: "4001", name: "Room Revenue", type: "Income", balance: 185200.00, balanceType: "Cr" },
-  { code: "4002", name: "F&B Revenue", type: "Income", balance: 42800.00, balanceType: "Cr" },
-  { code: "4003", name: "Other Services Revenue", type: "Income", balance: 20500.00, balanceType: "Cr" },
-  { code: "5001", name: "Salaries & Wages", type: "Expense", balance: 45000.00, balanceType: "Dr" },
-  { code: "5002", name: "Utilities", type: "Expense", balance: 8500.00, balanceType: "Dr" },
-  { code: "5003", name: "Supplies", type: "Expense", balance: 12400.00, balanceType: "Dr" },
-  { code: "5004", name: "Maintenance", type: "Expense", balance: 6500.00, balanceType: "Dr" },
-]
+// data comes from API
 
-const ledgerEntries = [
-  { date: "2024-01-15", particulars: "Room 101 Checkout - John Smith", voucherNo: "RCP-001", debit: 450.00, credit: 0, balance: 185450.00 },
-  { date: "2024-01-15", particulars: "Restaurant Sales - Table 5", voucherNo: "RCP-002", debit: 85.50, credit: 0, balance: 185535.50 },
-  { date: "2024-01-15", particulars: "Electricity Bill Payment", voucherNo: "PAY-001", debit: 0, credit: 850.00, balance: 184685.50 },
-  { date: "2024-01-14", particulars: "Room 205 Checkout - Emma Wilson", voucherNo: "RCP-003", debit: 380.00, credit: 0, balance: 185065.50 },
-  { date: "2024-01-14", particulars: "Kitchen Supplies Purchase", voucherNo: "PAY-002", debit: 0, credit: 1200.00, balance: 183865.50 },
-  { date: "2024-01-13", particulars: "Spa Services - Guest 302", voucherNo: "RCP-004", debit: 200.00, credit: 0, balance: 184065.50 },
-  { date: "2024-01-13", particulars: "Staff Salary - Partial", voucherNo: "PAY-003", debit: 0, credit: 5000.00, balance: 179065.50 },
-]
+function formatCurrency(value: unknown) {
+  return `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
 
 export default function LedgerPage() {
+  const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [accountTypeFilter, setAccountTypeFilter] = useState<string>("all")
   const [selectedAccount, setSelectedAccount] = useState<string>("")
+  const [accounts, setAccounts] = useState<any[]>([])
+  const [entries, setEntries] = useState<any[]>([])
+  const [openingBalance, setOpeningBalance] = useState<number>(0)
+  const [closingBalance, setClosingBalance] = useState<number>(0)
+  const [loadingAccounts, setLoadingAccounts] = useState(true)
+  const [loadingEntries, setLoadingEntries] = useState(false)
 
-  const filteredAccounts = ledgerAccounts.filter((acc) => {
-    const matchesSearch = acc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      acc.code.includes(searchQuery)
+  const loadAccounts = async () => {
+    setLoadingAccounts(true)
+    try {
+      const data = await getChartOfAccounts()
+      setAccounts(data)
+      if (data.length) {
+        setSelectedAccount(data[0].id)
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load accounts"
+      toast({ title: "Accounts unavailable", description: message, variant: "destructive" })
+      setAccounts([])
+    } finally {
+      setLoadingAccounts(false)
+    }
+  }
+
+  const loadEntries = async (accountId?: string) => {
+    if (!accountId) return
+    setLoadingEntries(true)
+    try {
+      const res = await getLedgerEntries(accountId)
+      setEntries(res.entries || [])
+      setOpeningBalance(Number(res.openingBalance || 0))
+      setClosingBalance(Number(res.closingBalance || 0))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load ledger entries"
+      toast({ title: "Ledger entries unavailable", description: message, variant: "destructive" })
+      setEntries([])
+      setOpeningBalance(0)
+      setClosingBalance(0)
+    } finally {
+      setLoadingEntries(false)
+    }
+  }
+
+  useEffect(() => { loadAccounts() }, [])
+  useEffect(() => { if (selectedAccount) loadEntries(selectedAccount) }, [selectedAccount])
+
+  const filteredAccounts = accounts.filter((acc) => {
+    const matchesSearch = (String(acc.name || "").toLowerCase().includes(searchQuery.toLowerCase())) ||
+      String(acc.code || "").includes(searchQuery)
     const matchesType = accountTypeFilter === "all" || acc.type === accountTypeFilter
     return matchesSearch && matchesType
   })
 
-  const totalDebits = ledgerAccounts.filter(a => a.balanceType === "Dr").reduce((sum, a) => sum + a.balance, 0)
-  const totalCredits = ledgerAccounts.filter(a => a.balanceType === "Cr").reduce((sum, a) => sum + a.balance, 0)
+  const totalDebits = accounts.filter(a => String(a.normalBalance || "").toLowerCase() === "dr").reduce((sum, a) => sum + Number(a.balance || 0), 0)
+  const totalCredits = accounts.filter(a => String(a.normalBalance || "").toLowerCase() === "cr").reduce((sum, a) => sum + Number(a.balance || 0), 0)
 
   return (
     <div className="space-y-6">
@@ -82,20 +110,20 @@ export default function LedgerPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Total Debits</div>
-            <div className="text-2xl font-bold">${totalDebits.toFixed(2)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalDebits)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Total Credits</div>
-            <div className="text-2xl font-bold">${totalCredits.toFixed(2)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalCredits)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Difference</div>
             <div className={`text-2xl font-bold ${Math.abs(totalDebits - totalCredits) < 0.01 ? "text-primary" : "text-destructive"}`}>
-              ${Math.abs(totalDebits - totalCredits).toFixed(2)}
+              {formatCurrency(Math.abs(totalDebits - totalCredits))}
             </div>
           </CardContent>
         </Card>
@@ -151,15 +179,15 @@ export default function LedgerPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredAccounts.map((account) => (
-                    <TableRow key={account.code} className="cursor-pointer hover:bg-muted" onClick={() => setSelectedAccount(account.code)}>
+                    <TableRow key={account.code} className="cursor-pointer hover:bg-muted" onClick={() => setSelectedAccount(account.id)}>
                       <TableCell className="font-medium">{account.code}</TableCell>
                       <TableCell>{account.name}</TableCell>
                       <TableCell>{account.type}</TableCell>
                       <TableCell className="text-right">
-                        {account.balanceType === "Dr" ? `$${account.balance.toFixed(2)}` : "-"}
+                        {account.normalBalance === "Dr" ? formatCurrency(account.balance) : "-"}
                       </TableCell>
                       <TableCell className="text-right">
-                        {account.balanceType === "Cr" ? `$${account.balance.toFixed(2)}` : "-"}
+                        {account.normalBalance === "Cr" ? formatCurrency(account.balance) : "-"}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -173,15 +201,15 @@ export default function LedgerPage() {
           <Card>
             <CardHeader>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle>Ledger Entries - Bank Account (1002)</CardTitle>
+                <CardTitle>Ledger Entries - {accounts.find(a => a.id === selectedAccount)?.name || "Select Account"}</CardTitle>
                 <div className="flex gap-2">
-                  <Select defaultValue="1002">
+                  <Select value={selectedAccount} onValueChange={setSelectedAccount}>
                     <SelectTrigger className="w-48">
                       <SelectValue placeholder="Select account" />
                     </SelectTrigger>
                     <SelectContent>
-                      {ledgerAccounts.map(acc => (
-                        <SelectItem key={acc.code} value={acc.code}>{acc.code} - {acc.name}</SelectItem>
+                      {accounts.map(acc => (
+                        <SelectItem key={acc.id} value={acc.id}>{acc.code} - {acc.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -205,20 +233,20 @@ export default function LedgerPage() {
                 <TableBody>
                   <TableRow className="bg-muted">
                     <TableCell colSpan={5} className="font-medium">Opening Balance</TableCell>
-                    <TableCell className="text-right font-medium">$185,000.00</TableCell>
+                    <TableCell className="text-right font-medium">{formatCurrency(openingBalance)}</TableCell>
                   </TableRow>
-                  {ledgerEntries.map((entry, idx) => (
+                  {entries.map((entry: any, idx: number) => (
                     <TableRow key={idx}>
                       <TableCell>{entry.date}</TableCell>
-                      <TableCell>{entry.particulars}</TableCell>
-                      <TableCell>{entry.voucherNo}</TableCell>
+                      <TableCell>{entry.particulars || entry.description || "-"}</TableCell>
+                      <TableCell>{entry.voucherNo || "-"}</TableCell>
                       <TableCell className="text-right">
-                        {entry.debit > 0 ? `$${entry.debit.toFixed(2)}` : "-"}
+                        {Number(entry.debit || 0) > 0 ? formatCurrency(entry.debit) : "-"}
                       </TableCell>
                       <TableCell className="text-right">
-                        {entry.credit > 0 ? `$${entry.credit.toFixed(2)}` : "-"}
+                        {Number(entry.credit || 0) > 0 ? formatCurrency(entry.credit) : "-"}
                       </TableCell>
-                      <TableCell className="text-right font-medium">${entry.balance.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(entry.balance)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

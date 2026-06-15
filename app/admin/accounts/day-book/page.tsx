@@ -14,42 +14,50 @@ import {
 } from "@/components/ui/table"
 import { Download, Printer, ChevronLeft, ChevronRight, Calendar } from "lucide-react"
 
-const mockDayBook = {
-  date: "2024-01-15",
-  openingCash: 5000.00,
-  openingBank: 180000.00,
-  entries: [
-    { time: "08:30", type: "income", description: "Room 101 - Checkout (John Smith)", category: "Room Revenue", mode: "Cash", amount: 450.00 },
-    { time: "09:15", type: "income", description: "Restaurant - Breakfast Orders", category: "F&B Revenue", mode: "Cash", amount: 120.00 },
-    { time: "10:00", type: "expense", description: "Daily Newspaper Delivery", category: "Supplies", mode: "Cash", amount: 25.00 },
-    { time: "11:30", type: "income", description: "Room 205 - Extension Payment", category: "Room Revenue", mode: "Credit Card", amount: 200.00 },
-    { time: "12:00", type: "income", description: "Restaurant - Lunch Orders", category: "F&B Revenue", mode: "Cash", amount: 380.00 },
-    { time: "13:00", type: "expense", description: "Kitchen Supplies - Urgent", category: "Supplies", mode: "Cash", amount: 150.00 },
-    { time: "14:30", type: "income", description: "Room 302 - Checkout (Michael Brown)", category: "Room Revenue", mode: "UPI", amount: 1169.00 },
-    { time: "15:00", type: "income", description: "Spa Services - Guest 401", category: "Other Services", mode: "Credit Card", amount: 200.00 },
-    { time: "16:00", type: "expense", description: "AC Repair - Emergency", category: "Maintenance", mode: "Cash", amount: 350.00 },
-    { time: "17:30", type: "income", description: "Room 118 - Advance Payment", category: "Room Revenue", mode: "Cash", amount: 500.00 },
-    { time: "18:00", type: "income", description: "Restaurant - Dinner Orders", category: "F&B Revenue", mode: "Cash", amount: 450.00 },
-    { time: "19:00", type: "income", description: "Bar Sales", category: "F&B Revenue", mode: "Cash", amount: 280.00 },
-  ]
+// Day Book: load from API
+import { useEffect } from "react"
+import { useToast } from "@/hooks/use-toast"
+import { getAccountsDayBook } from "@/services/api/accounts.service"
+
+function formatCurrency(value: unknown) {
+  return `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 export default function DayBookPage() {
-  const [selectedDate, setSelectedDate] = useState(mockDayBook.date)
+  const { toast } = useToast()
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
+  const [dayBook, setDayBook] = useState<any>({ date: selectedDate, openingCash: 0, openingBank: 0, entries: [] })
+  const [loading, setLoading] = useState(true)
 
-  const incomeEntries = mockDayBook.entries.filter(e => e.type === "income")
-  const expenseEntries = mockDayBook.entries.filter(e => e.type === "expense")
-  
-  const totalCashIncome = incomeEntries.filter(e => e.mode === "Cash").reduce((sum, e) => sum + e.amount, 0)
-  const totalCardIncome = incomeEntries.filter(e => e.mode === "Credit Card").reduce((sum, e) => sum + e.amount, 0)
-  const totalUPIIncome = incomeEntries.filter(e => e.mode === "UPI").reduce((sum, e) => sum + e.amount, 0)
-  const totalCashExpense = expenseEntries.filter(e => e.mode === "Cash").reduce((sum, e) => sum + e.amount, 0)
-  
-  const totalIncome = incomeEntries.reduce((sum, e) => sum + e.amount, 0)
-  const totalExpense = expenseEntries.reduce((sum, e) => sum + e.amount, 0)
-  
-  const closingCash = mockDayBook.openingCash + totalCashIncome - totalCashExpense
-  const closingBank = mockDayBook.openingBank + totalCardIncome + totalUPIIncome
+  const loadDayBook = async (date: string) => {
+    setLoading(true)
+    try {
+      const data = await getAccountsDayBook({ date })
+      setDayBook(data || { date, openingCash: 0, openingBank: 0, entries: [] })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load day book"
+      toast({ title: "Day book unavailable", description: message, variant: "destructive" })
+      setDayBook({ date, openingCash: 0, openingBank: 0, entries: [] })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadDayBook(selectedDate) }, [selectedDate])
+
+  const incomeEntries = (dayBook.entries || []).filter((e: any) => e.type === "income")
+  const expenseEntries = (dayBook.entries || []).filter((e: any) => e.type === "expense")
+
+  const totalCashIncome = incomeEntries.filter((e: any) => e.mode === "Cash").reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
+  const totalCardIncome = incomeEntries.filter((e: any) => e.mode === "Credit Card").reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
+  const totalUPIIncome = incomeEntries.filter((e: any) => e.mode === "UPI").reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
+  const totalCashExpense = expenseEntries.filter((e: any) => e.mode === "Cash").reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
+
+  const totalIncome = incomeEntries.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
+  const totalExpense = expenseEntries.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
+
+  const closingCash = Number(dayBook.openingCash || 0) + totalCashIncome - totalCashExpense
+  const closingBank = Number(dayBook.openingBank || 0) + totalCardIncome + totalUPIIncome
 
   return (
     <div className="space-y-6">
@@ -91,25 +99,25 @@ export default function DayBookPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Opening Cash</div>
-            <div className="text-2xl font-bold">${mockDayBook.openingCash.toFixed(2)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(dayBook.openingCash)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Opening Bank</div>
-            <div className="text-2xl font-bold">${mockDayBook.openingBank.toFixed(2)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(dayBook.openingBank)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Day's Income</div>
-            <div className="text-2xl font-bold text-primary">${totalIncome.toFixed(2)}</div>
+            <div className="text-2xl font-bold text-primary">{formatCurrency(totalIncome)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Day's Expense</div>
-            <div className="text-2xl font-bold text-destructive">${totalExpense.toFixed(2)}</div>
+            <div className="text-2xl font-bold text-destructive">{formatCurrency(totalExpense)}</div>
           </CardContent>
         </Card>
       </div>
@@ -132,24 +140,24 @@ export default function DayBookPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockDayBook.entries.map((entry, idx) => (
+              {(dayBook.entries || []).map((entry: any, idx: number) => (
                 <TableRow key={idx}>
                   <TableCell className="font-medium">{entry.time}</TableCell>
                   <TableCell>{entry.description}</TableCell>
                   <TableCell>{entry.category}</TableCell>
                   <TableCell>{entry.mode}</TableCell>
                   <TableCell className="text-right text-primary">
-                    {entry.type === "income" ? `$${entry.amount.toFixed(2)}` : "-"}
+                    {entry.type === "income" ? formatCurrency(entry.amount) : "-"}
                   </TableCell>
                   <TableCell className="text-right text-destructive">
-                    {entry.type === "expense" ? `$${entry.amount.toFixed(2)}` : "-"}
+                    {entry.type === "expense" ? formatCurrency(entry.amount) : "-"}
                   </TableCell>
                 </TableRow>
               ))}
               <TableRow className="bg-muted font-bold">
                 <TableCell colSpan={4}>TOTAL</TableCell>
-                <TableCell className="text-right text-primary">${totalIncome.toFixed(2)}</TableCell>
-                <TableCell className="text-right text-destructive">${totalExpense.toFixed(2)}</TableCell>
+                <TableCell className="text-right text-primary">{formatCurrency(totalIncome)}</TableCell>
+                <TableCell className="text-right text-destructive">{formatCurrency(totalExpense)}</TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -166,19 +174,19 @@ export default function DayBookPage() {
             <div className="space-y-4">
               <div className="flex justify-between items-center py-2 border-b">
                 <span>Cash</span>
-                <span className="font-bold">${totalCashIncome.toFixed(2)}</span>
+                <span className="font-bold">{formatCurrency(totalCashIncome)}</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b">
                 <span>Credit/Debit Card</span>
-                <span className="font-bold">${totalCardIncome.toFixed(2)}</span>
+                <span className="font-bold">{formatCurrency(totalCardIncome)}</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b">
                 <span>UPI</span>
-                <span className="font-bold">${totalUPIIncome.toFixed(2)}</span>
+                <span className="font-bold">{formatCurrency(totalUPIIncome)}</span>
               </div>
               <div className="flex justify-between items-center py-2 font-bold text-lg">
                 <span>Total Income</span>
-                <span className="text-primary">${totalIncome.toFixed(2)}</span>
+                <span className="text-primary">{formatCurrency(totalIncome)}</span>
               </div>
             </div>
           </CardContent>
@@ -194,23 +202,23 @@ export default function DayBookPage() {
                 <div>
                   <div className="font-medium">Closing Cash</div>
                   <div className="text-xs text-muted-foreground">
-                    Opening: ${mockDayBook.openingCash.toFixed(2)} + Income: ${totalCashIncome.toFixed(2)} - Expense: ${totalCashExpense.toFixed(2)}
+                    Opening: {formatCurrency(dayBook.openingCash)} + Income: {formatCurrency(totalCashIncome)} - Expense: {formatCurrency(totalCashExpense)}
                   </div>
                 </div>
-                <span className="font-bold text-lg">${closingCash.toFixed(2)}</span>
+                <span className="font-bold text-lg">{formatCurrency(closingCash)}</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b">
                 <div>
                   <div className="font-medium">Closing Bank</div>
                   <div className="text-xs text-muted-foreground">
-                    Opening: ${mockDayBook.openingBank.toFixed(2)} + Card: ${totalCardIncome.toFixed(2)} + UPI: ${totalUPIIncome.toFixed(2)}
+                    Opening: {formatCurrency(dayBook.openingBank)} + Card: {formatCurrency(totalCardIncome)} + UPI: {formatCurrency(totalUPIIncome)}
                   </div>
                 </div>
-                <span className="font-bold text-lg">${closingBank.toFixed(2)}</span>
+                <span className="font-bold text-lg">{formatCurrency(closingBank)}</span>
               </div>
               <div className="flex justify-between items-center py-2 font-bold text-lg bg-muted p-3 rounded-lg">
                 <span>Total Closing Balance</span>
-                <span className="text-primary">${(closingCash + closingBank).toFixed(2)}</span>
+                <span className="text-primary">{formatCurrency(closingCash + closingBank)}</span>
               </div>
             </div>
           </CardContent>

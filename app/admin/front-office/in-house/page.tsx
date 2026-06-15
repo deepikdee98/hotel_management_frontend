@@ -20,6 +20,7 @@ type InHouseGuest = {
   guestName: string
   guestEmail: string
   guestPhone: string
+  guestPhotoUrl?: string
   roomNumber: string
   roomType: string
   checkIn: string
@@ -63,6 +64,7 @@ const normalizeInHouseGuest = (item: any): InHouseGuest => {
     guestName: String(item.guestName || item.name || ""),
     guestEmail: String(item.email || item.guestEmail || ""),
     guestPhone: String(item.mobileNo || item.guestPhone || item.phone || ""),
+    guestPhotoUrl: String(item.guestPhotoUrl || item.avatar || ""),
     roomNumber: String(item.roomNumber || item.room?.roomNumber || ""),
     roomType: getRoomTypeName(item.roomType || item.type),
     checkIn,
@@ -237,8 +239,20 @@ export default function InHouseGuestsPage() {
                     >
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                            <User className="h-4 w-4 text-primary" />
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 overflow-hidden">
+                            {guest.guestPhotoUrl ? (
+                              <img 
+                                src={guest.guestPhotoUrl} 
+                                alt={guest.guestName} 
+                                className="h-full w-full object-cover"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                  (e.target as HTMLImageElement).parentElement!.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user h-4 w-4 text-primary"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>';
+                                }}
+                              />
+                            ) : (
+                              <User className="h-4 w-4 text-primary" />
+                            )}
                           </div>
                           <div>
                             <button

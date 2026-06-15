@@ -234,6 +234,9 @@ export interface Room {
   adults?: number
   children?: number
   remainingDays?: number
+  planCharges?: number
+  foodCharges?: number
+  discount?: number
   guestDetails?: {
     name?: string
     phone?: string
@@ -280,6 +283,7 @@ export interface Reservation {
   guestName: string
   guestEmail: string
   guestPhone: string
+  guestPhotoUrl?: string
   idProofType?: string
   idProofNumber?: string
   roomId: string
@@ -309,6 +313,7 @@ export interface Guest {
   name: string
   email: string
   phone: string
+  photo?: string
   idType: string
   idNumber: string
   address: string

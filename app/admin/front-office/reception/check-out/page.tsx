@@ -485,6 +485,11 @@ export default function CheckOutPage() {
   const roomCharges = charges
     .filter((c: any) => String(c.category || c.type || "").toLowerCase() === "room-tariff")
     .reduce((sum: number, c: any) => sum + Number(c.total ?? c.totalAmount ?? c.amount ?? 0), 0) || (fallbackNightlyRate * Math.max(1, Number(room?.nights || folioData?.stay?.nights || 1))) || 0
+  
+  const totalNights = charges
+    .filter((c: any) => String(c.category || c.type || "").toLowerCase() === "room-tariff")
+    .reduce((sum: number, c: any) => sum + Number(c.quantity || 0), 0) || Math.max(1, Number(room?.nights || folioData?.stay?.nights || 1))
+
   const serviceCharges = charges
     .filter((c: any) => String(c.category || c.type || "").toLowerCase() !== "room-tariff")
     .reduce((sum: number, c: any) => sum + Number(c.total ?? c.totalAmount ?? c.amount ?? 0), 0) || 0
@@ -663,7 +668,7 @@ export default function CheckOutPage() {
                         </TableHeader>
                         <TableBody>
                           <TableRow>
-                            <TableCell className="text-xs">Room Charges ({room?.nights || 0} nights)</TableCell>
+                            <TableCell className="text-xs">Room Charges ({totalNights} nights)</TableCell>
                             <TableCell className="text-xs text-right">{money(roomCharges)}</TableCell>
                           </TableRow>
                           <TableRow>

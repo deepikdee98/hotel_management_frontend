@@ -184,6 +184,65 @@ export async function updateSetupHotelConfig(payload: JsonRecord) {
   })
 }
 
+export async function uploadHotelLogo(file: File) {
+  const contentType = file.type || "image/png"
+  const presign = await apiRequest<{
+    success: boolean
+    data: {
+      uploadUrl: string
+      fileUrl: string
+      key: string
+      contentType: string
+    }
+  }>("/uploads/presign", {
+    method: "POST",
+    body: JSON.stringify({
+      fileName: file.name || "logo.png",
+      contentType,
+      uploadType: "hotel-logo",
+      fileSize: file.size,
+      storageScope: "hotel",
+    }),
+  })
+
+  const upload = await fetch(presign.data.uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": presign.data.contentType || contentType,
+    },
+    body: file,
+  })
+
+  if (!upload.ok) {
+    const text = await upload.text().catch(() => "")
+    throw new Error(text || "Failed to upload hotel logo to S3")
+  }
+
+  return {
+    url: presign.data.fileUrl,
+    key: presign.data.key,
+    fileName: file.name || "logo.png",
+    contentType: presign.data.contentType || contentType,
+    uploadedAt: new Date().toISOString(),
+  }
+}
+
+export async function getHotelLogoReadUrl(key: string) {
+  const response = await apiRequest<{
+    success: boolean
+    data: {
+      readUrl: string
+      key: string
+      expiresIn: number
+    }
+  }>("/uploads/read-url", {
+    method: "POST",
+    body: JSON.stringify({ key }),
+  })
+
+  return response.data.readUrl
+}
+
 export async function completeHotelSetup() {
   return apiRequest<{ success: boolean; message: string }>("/admin/setup/hotel-config/complete-setup", {
     method: "POST",
