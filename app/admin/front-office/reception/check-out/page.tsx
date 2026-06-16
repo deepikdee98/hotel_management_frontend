@@ -150,12 +150,38 @@ export default function CheckOutPage() {
     setSplitAllocations((prev) => prev.map((row, idx) => (idx === index ? { ...row, [key]: value } : row)))
   }
 
+  const distributeEvenly = () => {
+    if (splitAllocations.length === 0) return
+    const share = roundMoney(finalAmount / splitAllocations.length)
+    setSplitAllocations((prev) => prev.map((a, i) => ({
+      ...a,
+      amount: i === prev.length - 1 
+        ? roundMoney(finalAmount - (share * (prev.length - 1)))
+        : share
+    })))
+  }
+
+  const autoFillLast = () => {
+    if (splitAllocations.length === 0) return
+    setSplitAllocations((prev) => {
+      const currentTotalExceptLast = prev
+        .slice(0, -1)
+        .reduce((sum, row) => sum + toNonNegativeNum(row.amount), 0)
+      
+      return prev.map((a, i) => i === prev.length - 1 
+        ? { ...a, amount: roundMoney(finalAmount - currentTotalExceptLast) }
+        : a
+      )
+    })
+  }
+
   const isSplitBillingValid = () => {
     if (billingType !== "split") return true
     if (splitAllocations.length === 0) return false
     const hasInvalidRow = splitAllocations.some((row) => !row.name?.trim() || toNonNegativeNum(row.amount) <= 0 || !row.mode)
     if (hasInvalidRow) return false
-    return moneyEquals(totalSplit, finalAmount)
+    // Use a small tolerance of 1.0 for manual split calculation
+    return Math.abs(totalSplit - finalAmount) <= 1.0
   }
 
   const handleCompanyChange = (value: string) => {
@@ -938,9 +964,17 @@ export default function CheckOutPage() {
                         <div className="space-y-3 border rounded-md p-3">
                           <div className="flex items-center justify-between">
                             <Label className="text-xs font-semibold">Split Billing Allocations</Label>
-                            <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={addSplitPayer}>
-                              Add Payer
-                            </Button>
+                            <div className="flex gap-1.5">
+                              <Button type="button" size="sm" variant="outline" className="h-7 text-[10px]" onClick={autoFillLast}>
+                                Auto-fill Last
+                              </Button>
+                              <Button type="button" size="sm" variant="outline" className="h-7 text-[10px]" onClick={distributeEvenly}>
+                                Distribute Evenly
+                              </Button>
+                              <Button type="button" size="sm" variant="outline" className="h-7 text-[10px] bg-primary/5" onClick={addSplitPayer}>
+                                Add Payer
+                              </Button>
+                            </div>
                           </div>
                           {splitAllocations.map((row, index) => (
                             <div key={index} className="grid grid-cols-12 gap-2 items-end">

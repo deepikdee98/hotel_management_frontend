@@ -79,6 +79,35 @@ import {
   type MultiRoomContext,
 } from "@/features/checkin/utils/checkin-form-utils"
 
+function getRoomAvailabilityLabel(room?: Room) {
+  if (!room) return ""
+
+  const status = String(room.status || "").toLowerCase()
+  const hkStatus = String(room.hkStatus || "").toLowerCase()
+
+  if (status === "occupied") return "Occupied"
+  if (status === "reserved") return "Reserved"
+  if (status === "blocked") return "Blocked"
+  if (status === "maintenance") return "Maintenance"
+  if (status === "cleaning" || hkStatus === "dirty" || hkStatus === "cleaning") return "Under cleaning"
+  if (hkStatus === "out-of-order") return "Out of order"
+
+  return ""
+}
+
+function isRoomUnavailableForCheckIn(room?: Room) {
+  return Boolean(getRoomAvailabilityLabel(room))
+}
+
+function formatRoomTypeWithAc(room?: Room) {
+  if (!room) return ""
+  return `${room.type}${room.acType === "AC" ? " AC" : " Non AC"}`
+}
+
+function normalizeRoomTypeValue(value?: unknown) {
+  return String(value || "").trim().toLowerCase()
+}
+
 export function CheckInForm({
   mode = "check-in",
   editId = "",
@@ -540,7 +569,8 @@ export function CheckInForm({
       companyInfoCreditLimit: String(booking.companyInfo?.creditLimit || ""),
       companyInfoBookingCategory: String(booking.companyInfo?.bookingCategory || ""),
       planTypeLabel: String(booking.planType?.name || booking.planTypeLabel || ""),
-      mainCheckin: booking.mainCheckin || "",
+      extraBeds: String(booking.extraBeds || "0"),
+      mainCheckin: String(booking.mainCheckin || ""),
     }
 
     setForm(normalizedForm)
@@ -649,6 +679,7 @@ export function CheckInForm({
             businessSource: reservation.bookingSource || "",
             paxAdultMale: reservation.adults?.toString() || "0",
             paxChildren: reservation.children?.toString() || "0",
+            extraBeds: reservation.extraBeds?.toString() || "0",
             totalPax: (Number(reservation.adults || 0) + Number(reservation.children || 0)).toString(),
             gstPercentage: String(selectedType?.gstPercentage || matchingRoom?.gstPercentage || 0),
             gstType: selectedType?.gstType || matchingRoom?.gstType || "EXCLUSIVE",
@@ -708,6 +739,28 @@ export function CheckInForm({
     setShowGuestDialog(false)
   }
 
+  const getCalculatedPlanCharge = (roomNumber: string, extraBedsVal: string | number) => {
+    const room = rooms.find(r => r.number === roomNumber);
+    if (!room) return null;
+    const selectedType = roomTypes.find(rt => rt.name === room.type || rt.code === room.type || rt._id === room.roomTypeId);
+    if (!selectedType) return null;
+
+    const acType = room.acType || "NON_AC";
+    const extraBedsCount = Number(extraBedsVal) || 0;
+    let baseRate = 0;
+    let extraBedRate = 0;
+
+    if (acType === "AC") {
+      baseRate = typeof selectedType.acRate === "number" && selectedType.acRate > 0 ? selectedType.acRate : (room.price || selectedType.baseRate || 0);
+      extraBedRate = typeof selectedType.extraBedAcRate === "number" ? selectedType.extraBedAcRate : 0;
+    } else {
+      baseRate = typeof selectedType.nonAcRate === "number" && selectedType.nonAcRate > 0 ? selectedType.nonAcRate : (room.price || selectedType.baseRate || 0);
+      extraBedRate = typeof selectedType.extraBedNonAcRate === "number" ? selectedType.extraBedNonAcRate : 0;
+    }
+
+    return baseRate + (extraBedsCount * extraBedRate);
+  };
+
   const handleChange = (field: string, value: string) => {
     if ((isAddingLinkedRoom || (multiRoomContext && !isEditMode)) && !multiRoomEditableFields.has(field)) return
     if (isEditMode && isEditing && isStaff && !isEditableForStaff(field)) return
@@ -758,13 +811,24 @@ export function CheckInForm({
       setSelectedRoomType(value)
       const selectedType = roomTypes.find(rt => rt.name === value || rt.code === value || rt._id === value);
       if (selectedType) {
+        const calculatedCharge = getCalculatedPlanCharge(form.roomNo, form.extraBeds);
         setForm(prev => ({
           ...prev,
           gstPercentage: String(selectedType.gstPercentage || 0),
           gstType: selectedType.gstType || "EXCLUSIVE",
           noOfBeds: String(selectedType.maxOccupancy || selectedType.capacity || ""),
+          planCharge: calculatedCharge !== null ? toMoneyString(calculatedCharge) : prev.planCharge,
         }))
       }
+    }
+
+    if (field === "extraBeds") {
+      const calculatedCharge = getCalculatedPlanCharge(form.roomNo, value);
+      setForm(prev => ({
+        ...prev,
+        extraBeds: String(value),
+        planCharge: calculatedCharge !== null ? toMoneyString(calculatedCharge) : prev.planCharge,
+      }));
     }
 
     if (field === "referredByType") {
@@ -822,7 +886,7 @@ export function CheckInForm({
 
     if (field === "roomNo") {
       if (mode === "pax") {
-        const selected = inHouseGuests.find(g => g.roomNumber === value || g.checkinId === value);
+        const selected = inHouseGuests.find(g => (g.roomNumber === value || g.checkinId === value) && g.guestType !== "PAX");
         if (selected) {
           setMainGuestInfo({
             name: selected.guestName,
@@ -835,7 +899,7 @@ export function CheckInForm({
 
           setForm(prev => ({
             ...prev,
-            mainCheckin: selected.checkinId,
+            mainCheckin: String(selected.checkinId || ""),
             roomNo: selected.roomNumber,
             roomType: roomTypeName,
             planType: selected.planType?.code || selected.planType || "",
@@ -843,6 +907,11 @@ export function CheckInForm({
             planCharge: toMoneyString(getNightlyCharge(selected.planCharge, selected.planCharges, selected.nights)),
             foodCharge: toMoneyString(getNightlyCharge(selected.foodCharge, selected.foodCharges, selected.nights)),
             checkoutPlan: selected.checkoutPlan || "",
+            gstPercentage: String(selected.gstPercentage || "0"),
+            gstType: String(selected.gstType || "EXCLUSIVE"),
+            discount: String(selected.discount || "0"),
+            noOfBeds: String(selected.noOfBeds || "0"),
+            noOfNights: String(selected.nights || "1"),
           }));
 
           if (roomTypeName) {
@@ -853,12 +922,14 @@ export function CheckInForm({
         const room = rooms.find(r => r.number === value)
         if (room) {
           const selectedType = roomTypes.find(rt => rt.name === room.type || rt.code === room.type || rt._id === room.roomTypeId);
+          const calculatedCharge = getCalculatedPlanCharge(value, form.extraBeds);
+          const basePrice = calculatedCharge !== null ? calculatedCharge : room.price;
           setForm(prev => ({
             ...prev,
             roomType: room.type,
             roomNo: value,
-            planCharge: toMoneyString(room.price),
-            planCharges: toMoneyString(room.price),
+            planCharge: toMoneyString(basePrice),
+            planCharges: toMoneyString(basePrice),
             gstPercentage: String(selectedType?.gstPercentage || room.gstPercentage || 0),
             gstType: selectedType?.gstType || room.gstType || "EXCLUSIVE",
             noOfBeds: String(selectedType?.maxOccupancy || selectedType?.capacity || ""),
@@ -1226,9 +1297,13 @@ export function CheckInForm({
     loadedGuestId,
     companions,
   })
+  const selectedRoomForCheckIn = mode === "pax" ? undefined : rooms.find(r => r.number === form.roomNo)
+  const availabilityLabel = getRoomAvailabilityLabel(selectedRoomForCheckIn)
+  const isOriginalRoom = isEditMode && originalData && form.roomNo === originalData.roomNo
+  const selectedRoomAvailabilityLabel = (isOriginalRoom && availabilityLabel === "Occupied") ? "" : availabilityLabel
 
   const isCheckInValid = Object.keys(validationErrors).length === 0
-  const canCheckIn = isCheckInValid && mobileLookupStatus !== "loading"
+  const canCheckIn = isCheckInValid && mobileLookupStatus !== "loading" && !selectedRoomAvailabilityLabel
   const billingNights = Math.max(1, Number(form.noOfNights) || 1)
   const nightlyPlanCharge = Number(form.planCharge) || 0
   const nightlyFoodCharge = Number(form.foodCharge) || 0
@@ -1272,6 +1347,23 @@ export function CheckInForm({
         ...pendingRooms,
         { ...buildUpdatePayload(), __pendingUploads: getPendingUploads() },
       ]
+
+      if (mode !== "pax") {
+        const unavailableRoom = allRooms
+          .map((roomPayload: any) => rooms.find(r => r.number === (roomPayload.roomNo || roomPayload.roomNumber)))
+          .find((room) => isRoomUnavailableForCheckIn(room))
+
+        if (unavailableRoom) {
+          toast({
+            title: "Room not ready",
+            description: `Room ${unavailableRoom.number} is ${getRoomAvailabilityLabel(unavailableRoom).toLowerCase()}. Please mark it clean before check-in.`,
+            variant: "destructive",
+          })
+          setActiveTab("guest-info")
+          return
+        }
+      }
+
       let currentBookingGroupId = multiRoomContext?.bookingGroupId || ""
       let currentParentGuestCheckin = multiRoomContext?.parentGuestCheckin || ""
 
@@ -1442,15 +1534,16 @@ export function CheckInForm({
     setSubmitAttempted(true)
     if (!canCheckIn) {
       const firstErrorKey = Object.keys(validationErrors)[0]
-      const firstErrorMessage = validationErrors[firstErrorKey] || "Please complete all required fields"
+      const firstErrorMessage = (firstErrorKey && validationErrors[firstErrorKey]) || 
+                               (selectedRoomAvailabilityLabel ? `Room ${form.roomNo} is ${selectedRoomAvailabilityLabel}` : "Please complete all required fields")
 
       toast({ title: "Validation Error", description: firstErrorMessage, variant: "destructive" })
 
-      if (firstErrorKey.startsWith("companion")) {
+      if (firstErrorKey && firstErrorKey.startsWith("companion")) {
         setActiveTab("companion")
-      } else if (["idProofType", "idProofNumber"].includes(firstErrorKey)) {
+      } else if (firstErrorKey && ["idProofType", "idProofNumber"].includes(firstErrorKey)) {
         setActiveTab("guest-id")
-      } else if (["vehicleNo", "vehicleType", "companyInfoCompanyName"].includes(firstErrorKey)) {
+      } else if (firstErrorKey && ["vehicleNo", "vehicleType", "companyInfoCompanyName"].includes(firstErrorKey)) {
         setActiveTab("vehicle-company")
       } else {
         setActiveTab("guest-info")
@@ -1482,15 +1575,16 @@ export function CheckInForm({
       const firstErrorKey = Object.keys(validationErrors)[0]
       const firstError = mobileLookupStatus === "loading"
         ? "Please wait for mobile lookup to finish"
-        : validationErrors[firstErrorKey] || "Please complete all required fields"
+        : (firstErrorKey && validationErrors[firstErrorKey]) || 
+          (selectedRoomAvailabilityLabel ? `Room ${form.roomNo} is ${selectedRoomAvailabilityLabel}` : "Please complete all required fields")
 
       toast({ title: "Validation Error", description: firstError, variant: "destructive" });
 
       if (firstErrorKey && firstErrorKey.startsWith("companion")) {
         setActiveTab("companion")
-      } else if (["idProofType", "idProofNumber"].includes(firstErrorKey)) {
+      } else if (firstErrorKey && ["idProofType", "idProofNumber"].includes(firstErrorKey)) {
         setActiveTab("guest-id")
-      } else if (["vehicleNo", "vehicleType", "companyInfoCompanyName"].includes(firstErrorKey)) {
+      } else if (firstErrorKey && ["vehicleNo", "vehicleType", "companyInfoCompanyName"].includes(firstErrorKey)) {
         setActiveTab("vehicle-company")
       } else if (firstErrorKey) {
         setActiveTab("guest-info")
@@ -1540,9 +1634,41 @@ export function CheckInForm({
     ).values()
   );
 
+  const isRoomVisibleInCheckInList = (room: Room) => ["available", "cleaning"].includes(String(room.status || "").toLowerCase())
+  const selectedRoomTypeRecord = selectedRoomType
+    ? roomTypes.find(rt => {
+        const selected = normalizeRoomTypeValue(selectedRoomType)
+        return [
+          rt._id,
+          rt.id,
+          rt.name,
+          rt.code,
+        ].some(value => normalizeRoomTypeValue(value) === selected)
+      })
+    : undefined
+
+  const doesRoomMatchSelectedType = (room: Room) => {
+    if (!selectedRoomType) return true
+
+    const selectedValues = [
+      selectedRoomType,
+      selectedRoomTypeRecord?._id,
+      selectedRoomTypeRecord?.id,
+      selectedRoomTypeRecord?.name,
+      selectedRoomTypeRecord?.code,
+    ].map(normalizeRoomTypeValue).filter(Boolean)
+
+    const roomValues = [
+      room.type,
+      room.roomTypeId,
+    ].map(normalizeRoomTypeValue).filter(Boolean)
+
+    return roomValues.some(value => selectedValues.includes(value))
+  }
+
   const baseFilteredRooms = selectedRoomType
-    ? rooms.filter(r => r.type === selectedRoomType && r.status === "available")
-    : rooms.filter(r => r.status === "available")
+    ? rooms.filter(r => doesRoomMatchSelectedType(r) && isRoomVisibleInCheckInList(r))
+    : rooms.filter(isRoomVisibleInCheckInList)
 
   const selectedRoom = form.roomNo ? rooms.find(r => r.number === form.roomNo) : undefined
   const filteredRooms = selectedRoom
@@ -1745,7 +1871,9 @@ export function CheckInForm({
                 <Select value={form.roomNo} onValueChange={v => handleChange("roomNo", v)} disabled={form.roomNo !== ""}>
                   <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select occupied room" /></SelectTrigger>
                   <SelectContent>
-                    {inHouseGuests.map((r: any) => (
+                    {inHouseGuests
+                      .filter((r: any) => r.guestType !== "PAX")
+                      .map((r: any) => (
                       <SelectItem key={r.checkinId} value={r.roomNumber}>
                         {r.roomNumber} - {r.guestName}
                       </SelectItem>
@@ -1900,7 +2028,7 @@ export function CheckInForm({
                             </div>
                           )}
                         </FormField>
-                        <FormField label="Email" required className="col-span-2">
+                        <FormField label="Email" className="col-span-2">
                           <Input className={errorClass("email")} type="email" value={form.email} onChange={e => handleChange("email", e.target.value)} placeholder="guest@email.com" disabled={isFieldDisabled("email")} />
                           {fieldError("email") && <p className="text-xs text-destructive">{fieldError("email")}</p>}
                         </FormField>
@@ -2035,9 +2163,24 @@ export function CheckInForm({
                       <FormField label="Room No" required>
                         <Select value={form.roomNo} onValueChange={v => handleChange("roomNo", v)} disabled={isFieldDisabled("roomNo")}>
                           <SelectTrigger className={errorClass("roomNo")} title={restrictedFieldTitle("roomNo")}><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>{filteredRooms.map(r => <SelectItem key={r.id} value={r.number}>{r.number} - {r.type}</SelectItem>)}</SelectContent>
+                          <SelectContent>
+                            {filteredRooms.map((r) => {
+                              const availabilityLabel = getRoomAvailabilityLabel(r)
+
+                              return (
+                                <SelectItem key={r.id} value={r.number} disabled={Boolean(availabilityLabel)}>
+                                  {r.number} - {formatRoomTypeWithAc(r)}{availabilityLabel ? ` (${availabilityLabel})` : ""}
+                                </SelectItem>
+                              )
+                            })}
+                          </SelectContent>
                         </Select>
                         {fieldError("roomNo") && <p className="mt-1 text-xs text-destructive">{fieldError("roomNo")}</p>}
+                        {selectedRoomAvailabilityLabel && (
+                          <p className="mt-1 text-xs text-amber-600">
+                            Room {form.roomNo} is {selectedRoomAvailabilityLabel.toLowerCase()}. Mark it clean in Housekeeping before check-in.
+                          </p>
+                        )}
                       </FormField>
                       <FormField label="Plan Type" required>
                         <Select
@@ -2097,10 +2240,11 @@ export function CheckInForm({
                       </FormField>
                       <FormField label="Total PAX"><Input type="number" value={form.totalPax} readOnly className="bg-muted font-bold" /></FormField>
                     </div>
-                    <div className="grid grid-cols-3 gap-4 mt-4">
+                    <div className="grid grid-cols-4 gap-4 mt-4">
                       <FormField label="Adult Male"><Input className={errorClass("paxAdultMale")} type="number" min="0" value={form.paxAdultMale} onChange={e => handleChange("paxAdultMale", e.target.value)} /></FormField>
                       <FormField label="Adult Female (PAX)"><Input type="number" min="0" value={form.paxAdultFemale} onChange={e => handleChange("paxAdultFemale", e.target.value)} /></FormField>
                       <FormField label="Children"><Input type="number" min="0" value={form.paxChildren} onChange={e => handleChange("paxChildren", e.target.value)} /></FormField>
+                      <FormField label="Extra Beds"><Input className={errorClass("extraBeds")} type="number" min="0" value={form.extraBeds} onChange={e => handleChange("extraBeds", e.target.value)} /></FormField>
                     </div>
                   </div>
 

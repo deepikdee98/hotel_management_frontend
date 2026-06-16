@@ -66,6 +66,10 @@ interface RoomType {
   name: string
   code: string
   baseRate: number
+  nonAcRate?: number
+  acRate?: number
+  extraBedNonAcRate?: number
+  extraBedAcRate?: number
   maxOccupancy: number
   gstPercentage?: number
   gstType?: "INCLUSIVE" | "EXCLUSIVE"
@@ -75,6 +79,7 @@ interface RoomType {
 interface FloorRoom {
   roomTypeId: string
   roomTypeName: string
+  acType: "AC" | "NON_AC"
   count: number
   roomNumbers: string[]
 }
@@ -83,8 +88,14 @@ interface Floor {
   _id: string
   name: string
   floorNumber: number
+  floorType: "rooms" | "banquet"
   totalRooms: number
   rooms: FloorRoom[]
+}
+
+const formatOptionalRate = (rate: unknown) => {
+  const value = Number(rate || 0)
+  return value > 0 ? `Rs. ${value.toLocaleString()}` : "-"
 }
 
 const masterDataGroups = {
@@ -366,8 +377,8 @@ export default function FOSetupPage() {
   const [isAddRoomToFloorOpen, setIsAddRoomToFloorOpen] = useState(false)
   const [selectedFloor, setSelectedFloor] = useState<Floor | null>(null)
 
-  const [newFloor, setNewFloor] = useState({ name: "", floorNumber: "" })
-  const [newRoomConfig, setNewRoomConfig] = useState({ roomTypeId: "", count: "", startNumber: "" })
+  const [newFloor, setNewFloor] = useState<{ name: string; floorNumber: string; floorType: "rooms" | "banquet" }>({ name: "", floorNumber: "", floorType: "rooms" })
+  const [newRoomConfig, setNewRoomConfig] = useState<{ roomTypeId: string; acType: "AC" | "NON_AC"; count: string; startNumber: string }>({ roomTypeId: "", acType: "NON_AC", count: "", startNumber: "" })
   const [genericForm, setGenericForm] = useState<any>({})
 
   const [isEditOpen, setIsEditOpen] = useState(false)
@@ -475,10 +486,12 @@ export default function FOSetupPage() {
         _id: f._id,
         name: f.name,
         floorNumber: f.floorNumber,
+        floorType: f.floorType || "rooms",
         totalRooms: f.roomConfigurations?.reduce((sum: number, rc: any) => sum + rc.count, 0) || 0,
         rooms: f.roomConfigurations?.map((rc: any) => ({
           roomTypeId: rc.roomTypeId?._id || rc.roomTypeId,
           roomTypeName: rc.roomTypeId?.name || "Unknown",
+          acType: rc.acType || "NON_AC",
           count: rc.count,
           roomNumbers: rc.rooms || []
         })) || []
@@ -575,11 +588,12 @@ export default function FOSetupPage() {
     try {
       await createSetupFloor({
         name: newFloor.name,
-        floorNumber: parseInt(newFloor.floorNumber)
+        floorNumber: parseInt(newFloor.floorNumber),
+        floorType: newFloor.floorType,
       })
       toast({ title: "Success", description: "Floor added successfully" })
       fetchData()
-      setNewFloor({ name: "", floorNumber: "" })
+      setNewFloor({ name: "", floorNumber: "", floorType: "rooms" })
       setIsAddFloorOpen(false)
     } catch (error: any) {
       toast({
@@ -592,8 +606,29 @@ export default function FOSetupPage() {
 
   const handleAddRoomToFloor = async () => {
     if (!selectedFloor || !newRoomConfig.roomTypeId || !newRoomConfig.count) return
+    if (selectedFloor.floorType === "banquet") {
+      toast({
+        title: "Banquet floor",
+        description: "This floor is configured as a banquet hall, so rooms cannot be added to it.",
+        variant: "destructive"
+      })
+      return
+    }
     const roomType = roomTypes.find(rt => rt._id === newRoomConfig.roomTypeId)
     if (!roomType) return
+
+    const selectedRate = newRoomConfig.acType === "AC"
+      ? Number(roomType.acRate || 0)
+      : Number(roomType.nonAcRate || 0)
+
+    if (selectedRate <= 0) {
+      toast({
+        title: "Rate not configured",
+        description: `${newRoomConfig.acType === "AC" ? "AC" : "Non AC"} rate is not configured for ${roomType.name}.`,
+        variant: "destructive"
+      })
+      return
+    }
 
     const requestedCount = parseInt(newRoomConfig.count)
     const currentTotal = floors.reduce((sum, f) => sum + f.totalRooms, 0)
@@ -624,6 +659,7 @@ export default function FOSetupPage() {
 
       await createSetupRoomConfig(selectedFloor._id, {
         roomTypeId: newRoomConfig.roomTypeId,
+        acType: newRoomConfig.acType,
         count: requestedCount,
         startingRoomNumber,
         roomNumberFormat,
@@ -631,7 +667,7 @@ export default function FOSetupPage() {
 
       toast({ title: "Success", description: "Rooms added successfully" })
       fetchData()
-      setNewRoomConfig({ roomTypeId: "", count: "", startNumber: "" })
+      setNewRoomConfig({ roomTypeId: "", acType: "NON_AC", count: "", startNumber: "" })
       setIsAddRoomToFloorOpen(false)
       setSelectedFloor(null)
     } catch (error: any) {
@@ -643,12 +679,12 @@ export default function FOSetupPage() {
     }
   }
 
-  const handleDeleteRoomConfig = async (floorId: string, roomTypeId: string) => {
+  const handleDeleteRoomConfig = async (floorId: string, roomTypeId: string, acType: "AC" | "NON_AC") => {
     const confirmDelete = confirm("Are you sure you want to remove this room configuration?")
     if (!confirmDelete) return
 
     try {
-      await deleteSetupRoomConfig(floorId, roomTypeId)
+      await deleteSetupRoomConfig(floorId, roomTypeId, acType)
       toast({ title: "Deleted", description: "Room configuration removed successfully" })
       fetchData()
     } catch (error: any) {
@@ -754,6 +790,20 @@ export default function FOSetupPage() {
   const totalRooms = floors.reduce((sum, f) => sum + f.totalRooms, 0)
   const bookingPreview = `${String(hotelConfigForm.bookingPrefix || "NOV").trim().toUpperCase() || "NOV"}-${String(Number(hotelConfigForm.currentNumber || hotelConfigForm.startNumber || 1)).padStart(Number(hotelConfigForm.digitLength || 4), "0")}`
   const hotelLogoName = hotelLogoFile?.name || hotelConfigForm.logo?.fileName || "No logo selected"
+  const selectedConfigRoomType = roomTypes.find(rt => rt._id === newRoomConfig.roomTypeId)
+  const roomConfigAcLabel = newRoomConfig.acType === "AC" ? "AC" : "Non AC"
+  const roomConfigPreview = (() => {
+    if (!selectedFloor || !newRoomConfig.count || !newRoomConfig.startNumber) return "Enter values to see range"
+
+    const start = parseInt(newRoomConfig.startNumber)
+    const count = parseInt(newRoomConfig.count)
+    const roomTypeName = selectedConfigRoomType?.name || "Room"
+    if (!Number.isFinite(start) || !Number.isFinite(count)) {
+      return `${newRoomConfig.startNumber} ${roomTypeName} ${roomConfigAcLabel}`
+    }
+
+    return `${start} ${roomTypeName} ${roomConfigAcLabel} - ${start + count - 1} ${roomTypeName} ${roomConfigAcLabel}`
+  })()
 
 
   if (loading) {
@@ -766,10 +816,22 @@ export default function FOSetupPage() {
   }
 
   const handleCreateRoomType = async () => {
-    if (!genericForm.name || !genericForm.code || !genericForm.baseRate || !genericForm.maxOccupancy) {
+    const nonAcRate = Number(genericForm.nonAcRate || 0)
+    const acRate = Number(genericForm.acRate || 0)
+
+    if (!genericForm.name || !genericForm.code || !genericForm.maxOccupancy) {
       toast({
         title: "Error",
-        description: "All fields are required",
+        description: "Name, code and max occupancy are required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (nonAcRate <= 0 && acRate <= 0) {
+      toast({
+        title: "Error",
+        description: "Enter at least one rate: Non AC or AC",
         variant: "destructive",
       });
       return;
@@ -779,7 +841,11 @@ export default function FOSetupPage() {
       await createSetupRoomType({
         name: genericForm.name,
         code: genericForm.code,
-        baseRate: Number(genericForm.baseRate),
+        nonAcRate,
+        acRate,
+        baseRate: nonAcRate > 0 ? nonAcRate : acRate,
+        extraBedNonAcRate: Number(genericForm.extraBedNonAcRate) || 0,
+        extraBedAcRate: Number(genericForm.extraBedAcRate) || 0,
         maxOccupancy: Number(genericForm.maxOccupancy),
         gstPercentage: Number(genericForm.gstPercentage) || 0,
         gstType: genericForm.gstType || "EXCLUSIVE",
@@ -876,11 +942,36 @@ export default function FOSetupPage() {
   }
 
   const handleUpdateRoomType = async () => {
+    const nonAcRate = Number(editForm.nonAcRate || 0)
+    const acRate = Number(editForm.acRate || 0)
+
+    if (!editForm.name || !editForm.code || !editForm.maxOccupancy) {
+      toast({
+        title: "Error",
+        description: "Name, code and max occupancy are required",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (nonAcRate <= 0 && acRate <= 0) {
+      toast({
+        title: "Error",
+        description: "Enter at least one rate: Non AC or AC",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
       await updateSetupRoomType(selectedRoomType._id, {
         name: editForm.name,
         code: editForm.code,
-        baseRate: Number(editForm.baseRate),
+        nonAcRate,
+        acRate,
+        baseRate: nonAcRate > 0 ? nonAcRate : acRate,
+        extraBedNonAcRate: Number(editForm.extraBedNonAcRate) || 0,
+        extraBedAcRate: Number(editForm.extraBedAcRate) || 0,
         maxOccupancy: Number(editForm.maxOccupancy),
         gstPercentage: Number(editForm.gstPercentage) || 0,
         gstType: editForm.gstType || "EXCLUSIVE",
@@ -1238,40 +1329,50 @@ export default function FOSetupPage() {
                             <ChevronRight className="h-4 w-4 text-muted-foreground" />
                           )}
                           <div>
-                            <p className="font-medium">{floor.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{floor.name}</p>
+                              {floor.floorType === "banquet" && <Badge variant="outline">Banquet Hall</Badge>}
+                            </div>
                             <p className="text-sm text-muted-foreground">
-                              {floor.totalRooms} rooms - {floor.rooms.map(r => `${r.count} ${r.roomTypeName}`).join(", ") || "No rooms configured"}
+                              {floor.floorType === "banquet"
+                                ? "Complete floor reserved for banquet hall"
+                                : `${floor.totalRooms} rooms - ${floor.rooms.map(r => `${r.count} ${r.roomTypeName} ${r.acType === "AC" ? "AC" : "Non AC"}`).join(", ") || "No rooms configured"}`}
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge variant="secondary">{floor.totalRooms} Rooms</Badge>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setSelectedFloor(floor)
-                              setIsAddRoomToFloorOpen(true)
-                            }}
-                          >
-                            <Plus className="h-3 w-3 mr-1" />Add Rooms
-                          </Button>
+                          <Badge variant="secondary">{floor.floorType === "banquet" ? "Banquet" : `${floor.totalRooms} Rooms`}</Badge>
+                          {floor.floorType !== "banquet" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedFloor(floor)
+                                setIsAddRoomToFloorOpen(true)
+                              }}
+                            >
+                              <Plus className="h-3 w-3 mr-1" />Add Rooms
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <div className="border-t p-3 bg-muted/30">
-                        {floor.rooms.length === 0 ? (
+                        {floor.floorType === "banquet" ? (
+                          <p className="text-sm text-muted-foreground text-center py-4">This complete floor is configured as a banquet hall.</p>
+                        ) : floor.rooms.length === 0 ? (
                           <p className="text-sm text-muted-foreground text-center py-4">No rooms configured for this floor yet.</p>
                         ) : (
                           <Table>
                             <TableHeader>
                               <TableRow>
                                 <TableHead>Room Type</TableHead>
+                                <TableHead>AC Type</TableHead>
                                 <TableHead>Count</TableHead>
                                 <TableHead>Room Numbers</TableHead>
-                                <TableHead>Base Rate</TableHead>
+                                <TableHead>Rates</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                               </TableRow>
                             </TableHeader>
@@ -1286,21 +1387,26 @@ export default function FOSetupPage() {
                                         <span className="font-medium">{room.roomTypeName}</span>
                                       </div>
                                     </TableCell>
+                                    <TableCell>{room.acType === "AC" ? "AC" : "Non AC"}</TableCell>
                                     <TableCell>{room.count}</TableCell>
                                     <TableCell>
                                       <div className="flex flex-wrap gap-1">
                                         {room.roomNumbers.map(num => (
-                                          <Badge key={num} variant="outline" className="text-xs">{num}</Badge>
+                                          <Badge key={num} variant="outline" className="text-xs">
+                                            {num} {room.roomTypeName} {room.acType === "AC" ? "AC" : "Non AC"}
+                                          </Badge>
                                         ))}
                                       </div>
                                     </TableCell>
-                                    <TableCell>Rs. {roomType?.baseRate.toLocaleString()}</TableCell>
+                                    <TableCell>
+                                      Non AC {formatOptionalRate(roomType?.nonAcRate)} / AC {formatOptionalRate(roomType?.acRate)}
+                                    </TableCell>
                                     <TableCell className="text-right">
                                       <Button
                                         size="sm"
                                         variant="ghost"
                                         className="text-destructive"
-                                        onClick={() => handleDeleteRoomConfig(floor._id, room.roomTypeId)}
+                                        onClick={() => handleDeleteRoomConfig(floor._id, room.roomTypeId, room.acType)}
                                       >
                                         <Trash2 className="h-3.5 w-3.5" />
                                       </Button>
@@ -1335,9 +1441,12 @@ export default function FOSetupPage() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Code</TableHead>
-                    <TableHead>Base Rate</TableHead>
-                    <TableHead>GST</TableHead>
+                    <TableHead>Non AC Rate</TableHead>
+                    <TableHead>AC Rate</TableHead>
+                    <TableHead>Extra Bed Non AC Rate</TableHead>
+                    <TableHead>Extra Bed AC Rate</TableHead>
                     <TableHead>Max Occupancy</TableHead>
+                    <TableHead>GST</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -1347,7 +1456,11 @@ export default function FOSetupPage() {
                     <TableRow key={rt._id}>
                       <TableCell className="font-medium">{rt.name}</TableCell>
                       <TableCell><Badge variant="secondary">{rt.code}</Badge></TableCell>
-                      <TableCell>Rs. {rt.baseRate.toLocaleString()}</TableCell>
+                      <TableCell>{formatOptionalRate(rt.nonAcRate)}</TableCell>
+                      <TableCell>{formatOptionalRate(rt.acRate)}</TableCell>
+                      <TableCell>{formatOptionalRate(rt.extraBedNonAcRate)}</TableCell>
+                      <TableCell>{formatOptionalRate(rt.extraBedAcRate)}</TableCell>
+                      <TableCell>{rt.maxOccupancy}</TableCell>
                       <TableCell>
                         {rt.gstPercentage ? (
                           <div className="flex flex-col">
@@ -1358,7 +1471,6 @@ export default function FOSetupPage() {
                           <span className="text-muted-foreground text-xs">No GST</span>
                         )}
                       </TableCell>
-                      <TableCell>{rt.maxOccupancy}</TableCell>
                       <TableCell><Badge className="bg-primary/10 text-primary border-primary/20">{rt.status || "Active"}</Badge></TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -1367,7 +1479,10 @@ export default function FOSetupPage() {
                             setEditForm({
                               name: rt.name,
                               code: rt.code,
-                              baseRate: rt.baseRate,
+                              nonAcRate: rt.nonAcRate ?? rt.baseRate,
+                              acRate: rt.acRate ?? rt.baseRate,
+                              extraBedNonAcRate: rt.extraBedNonAcRate ?? 0,
+                              extraBedAcRate: rt.extraBedAcRate ?? 0,
                               maxOccupancy: rt.maxOccupancy,
                               gstPercentage: rt.gstPercentage || 0,
                               gstType: rt.gstType || "EXCLUSIVE",
@@ -1865,6 +1980,19 @@ export default function FOSetupPage() {
               />
               <p className="text-xs text-muted-foreground">Use 0 for Ground Floor</p>
             </div>
+            <div className="space-y-2">
+              <Label>Floor Use</Label>
+              <Select
+                value={newFloor.floorType}
+                onValueChange={(value: "rooms" | "banquet") => setNewFloor({ ...newFloor, floorType: value })}
+              >
+                <SelectTrigger><SelectValue placeholder="Select floor use" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rooms">Guest Rooms</SelectItem>
+                  <SelectItem value="banquet">Banquet Hall</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddFloorOpen(false)}>Cancel</Button>
@@ -1890,9 +2018,22 @@ export default function FOSetupPage() {
                 <SelectContent>
                   {roomTypes.map(rt => (
                     <SelectItem key={rt._id} value={String(rt._id)}>
-                      {rt.name} ({rt.code}) - Rs. {rt.baseRate.toLocaleString()}
+                      {rt.name} ({rt.code}) - Non AC {formatOptionalRate(rt.nonAcRate)} / AC {formatOptionalRate(rt.acRate)}
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>AC Type</Label>
+              <Select
+                value={newRoomConfig.acType}
+                onValueChange={(value: "AC" | "NON_AC") => setNewRoomConfig({ ...newRoomConfig, acType: value })}
+              >
+                <SelectTrigger><SelectValue placeholder="Select AC type" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AC">AC</SelectItem>
+                  <SelectItem value="NON_AC">Non AC</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1915,19 +2056,14 @@ export default function FOSetupPage() {
                   onChange={(e) => setNewRoomConfig({ ...newRoomConfig, startNumber: e.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Rooms: {selectedFloor && newRoomConfig.count && newRoomConfig.startNumber
-                    ? `${parseInt(newRoomConfig.startNumber)} - ${parseInt(newRoomConfig.startNumber) +
-                    parseInt(newRoomConfig.count) -
-                    1
-                    }`
-                    : "Enter values to see range"}
+                  Rooms: {roomConfigPreview}
                 </p>
               </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setIsAddRoomToFloorOpen(false); setSelectedFloor(null) }}>Cancel</Button>
-            <Button onClick={handleAddRoomToFloor} disabled={!newRoomConfig.roomTypeId || !newRoomConfig.count}>Add Rooms</Button>
+            <Button onClick={handleAddRoomToFloor} disabled={!newRoomConfig.roomTypeId || !newRoomConfig.acType || !newRoomConfig.count}>Add Rooms</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2032,14 +2168,42 @@ export default function FOSetupPage() {
             {addType === "room-type" && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Base Rate</Label><Input
+                  <div className="space-y-2"><Label>Non AC Rate</Label><Input
                     type="number"
-                    placeholder="0.00"
-                    value={genericForm.baseRate || ""}
+                    placeholder="Optional"
+                    value={genericForm.nonAcRate || ""}
                     onChange={(e) =>
-                      setGenericForm({ ...genericForm, baseRate: e.target.value })
+                      setGenericForm({ ...genericForm, nonAcRate: e.target.value })
                     }
                   /></div>
+                  <div className="space-y-2"><Label>AC Rate</Label><Input
+                    type="number"
+                    placeholder="Optional"
+                    value={genericForm.acRate || ""}
+                    onChange={(e) =>
+                      setGenericForm({ ...genericForm, acRate: e.target.value })
+                    }
+                  /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2"><Label>Extra Bed Non AC Rate</Label><Input
+                    type="number"
+                    placeholder="0"
+                    value={genericForm.extraBedNonAcRate || ""}
+                    onChange={(e) =>
+                      setGenericForm({ ...genericForm, extraBedNonAcRate: e.target.value })
+                    }
+                  /></div>
+                  <div className="space-y-2"><Label>Extra Bed AC Rate</Label><Input
+                    type="number"
+                    placeholder="0"
+                    value={genericForm.extraBedAcRate || ""}
+                    onChange={(e) =>
+                      setGenericForm({ ...genericForm, extraBedAcRate: e.target.value })
+                    }
+                  /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>Max Occupancy</Label><Input
                     type="number"
                     placeholder="2"
@@ -2048,8 +2212,6 @@ export default function FOSetupPage() {
                       setGenericForm({ ...genericForm, maxOccupancy: e.target.value })
                     }
                   /></div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>GST %</Label><Input
                     type="number"
                     placeholder="0"
@@ -2058,6 +2220,8 @@ export default function FOSetupPage() {
                       setGenericForm({ ...genericForm, gstPercentage: e.target.value })
                     }
                   /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2"><Label>GST Type</Label>
                     <Select
                       value={genericForm.gstType || "EXCLUSIVE"}
@@ -2154,7 +2318,10 @@ export default function FOSetupPage() {
             ? [
               { name: "name", label: "Name" },
               { name: "code", label: "Code" },
-              { name: "baseRate", label: "Base Rate", type: "number" },
+              { name: "nonAcRate", label: "Non AC Rate", type: "number" },
+              { name: "acRate", label: "AC Rate", type: "number" },
+              { name: "extraBedNonAcRate", label: "Extra Bed Non AC Rate", type: "number" },
+              { name: "extraBedAcRate", label: "Extra Bed AC Rate", type: "number" },
               { name: "maxOccupancy", label: "Max Occupancy", type: "number" },
               { name: "gstPercentage", label: "GST %", type: "number" },
             ]

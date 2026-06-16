@@ -129,7 +129,7 @@ const HOTEL_NAV: NavItem[] = [
     ]
   },
   { label: "Point of Sale", href: "/admin/pos", icon: CreditCard, module: "point-of-sale" },
-  { label: "Housekeeping", href: "/admin/housekeeping", icon: Sparkles, module: ["housekeeping", "front-office"] },
+  { label: "Housekeeping", href: "/admin/housekeeping", icon: Sparkles, module: "housekeeping" },
   {
     label: "Accounts",
     href: "/admin/accounts",

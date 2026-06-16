@@ -93,17 +93,17 @@ export default function GRCardPage() {
 
         const checkinRooms: Room[] = checkinsResult.status === "fulfilled"
           ? checkinsResult.value
-              .filter((item: any) => item?.roomId && item?.roomNumber)
-              .map((item: any) => ({
-                id: String(item.roomId),
-                number: String(item.roomNumber),
-                floor: 0,
-                type: String(item.roomType || ""),
-                status: "occupied" as const,
-                price: Number(item.planCharges || item.planCharge || 0),
-                amenities: [],
-                guestName: item.guestName ? String(item.guestName) : undefined,
-              }))
+            .filter((item: any) => item?.roomId && item?.roomNumber)
+            .map((item: any) => ({
+              id: String(item.roomId),
+              number: String(item.roomNumber),
+              floor: 0,
+              type: String(item.roomType || ""),
+              status: "occupied" as const,
+              price: Number(item.planCharges || item.planCharge || 0),
+              amenities: [],
+              guestName: item.guestName ? String(item.guestName) : undefined,
+            }))
           : []
 
         const occupiedRooms = roomsResult.status === "fulfilled"
@@ -111,9 +111,9 @@ export default function GRCardPage() {
           : []
 
         const roomsById = new Map<string, Room>()
-        ;[...occupiedRooms, ...checkinRooms].forEach((room) => {
-          if (room.id && room.number) roomsById.set(room.id, room)
-        })
+          ;[...occupiedRooms, ...checkinRooms].forEach((room) => {
+            if (room.id && room.number) roomsById.set(room.id, room)
+          })
         setRooms(Array.from(roomsById.values()))
 
         if (hotelResult.status === "fulfilled" && hotelResult.value) {
@@ -203,7 +203,7 @@ export default function GRCardPage() {
             }
           }
         `}</style>
-        <div className="space-y-4 max-w-2xl print:max-w-none print:p-0">
+        <div className="space-y-4 max-w-5xl mx-auto print:max-w-none print:p-0">
           <div className="print:hidden">
             <h1 className="text-2xl font-bold text-foreground">GR Card (Guest Registration Card)</h1>
             <p className="text-sm text-muted-foreground">Print Guest Registration Card for checked-in guests</p>
@@ -255,7 +255,7 @@ export default function GRCardPage() {
               <CardTitle className="text-sm">GR Card Preview</CardTitle>
             </CardHeader>
             <CardContent>
-              <div id="gr-card-print" className="border border-border rounded-lg p-8 bg-white min-h-250 w-full max-w-[210mm] mx-auto text-black print:border-none print:p-0 print:shadow-none">
+              <div id="gr-card-print" className="border border-border rounded-lg p-4 md:p-8 bg-white min-h-250 w-full max-w-[210mm] mx-auto text-black print:border-none print:p-0 print:shadow-none">
                 {/* Header */}
                 <div className="text-center space-y-1 mb-6">
                   <h2 className="text-xl font-bold uppercase tracking-tight">{previewData?.hotel?.name || hotelInfo?.name || "GUEST REGISTRATION CARD"}</h2>
@@ -277,9 +277,9 @@ export default function GRCardPage() {
                 ) : (
                   <div className="space-y-4">
                     {/* Two Column Section */}
-                    <div className="flex justify-between items-start gap-12">
+                    <div className="flex flex-col md:flex-row justify-between items-start gap-6 md:gap-12 print:flex-row print:justify-between print:gap-12">
                       {/* Left Column */}
-                      <div className="w-[48%] space-y-2 text-[11px]">
+                      <div className="w-full md:w-[48%] print:w-[48%] space-y-2 text-[11px]">
                         <div className="flex items-baseline gap-2">
                           <span className="font-bold text-gray-700 uppercase text-[9px] w-32 shrink-0">Booking No :</span>
                           <span className="border-b border-gray-400 flex-1 min-h-3.5">{displayValue(previewData?.bookingNo)}</span>
@@ -330,7 +330,7 @@ export default function GRCardPage() {
                       </div>
 
                       {/* Right Column */}
-                      <div className="w-[48%] space-y-2 text-[11px]">
+                      <div className="w-full md:w-[48%] print:w-[48%] space-y-2 text-[11px]">
                         <div className="flex items-baseline gap-2">
                           <span className="font-bold text-gray-700 uppercase text-[9px] w-32 shrink-0">Room No :</span>
                           <span className="border-b border-gray-400 flex-1 min-h-3.5">{displayValue(previewRoomNumber)}</span>
@@ -395,8 +395,8 @@ export default function GRCardPage() {
                     </div>
 
                     {/* Room Details Table */}
-                    <div className="mt-3.75 flex justify-center">
-                      <table className="w-full border-collapse border border-black text-[11px]">
+                    <div className="mt-3.75 w-full overflow-x-auto print:overflow-visible flex justify-center">
+                      <table className="w-full border-collapse border border-black text-[11px] min-w-[500px] md:min-w-0 print:min-w-0">
                         <thead>
                           <tr className="bg-gray-100">
                             <th className="border border-black p-3 text-left uppercase text-[9px] font-bold">Room No</th>
@@ -427,11 +427,11 @@ export default function GRCardPage() {
                     </div>
 
                     {/* Signature Section */}
-                    <div className="mt-24 flex justify-between items-end px-8">
-                      <div className="w-64 border-t-[1.5px] border-black pt-3 text-center">
+                    <div className="mt-12 md:mt-24 flex flex-col md:flex-row justify-between items-center md:items-end gap-8 md:gap-0 px-4 md:px-8 print:flex-row print:justify-between print:items-end print:gap-0 print:px-8">
+                      <div className="w-full max-w-[240px] md:w-64 print:w-64 border-t-[1.5px] border-black pt-3 text-center">
                         <span className="text-[10px] font-bold uppercase tracking-wider">Guest Signature</span>
                       </div>
-                      <div className="w-64 border-t-[1.5px] border-black pt-3 text-center">
+                      <div className="w-full max-w-[240px] md:w-64 print:w-64 border-t-[1.5px] border-black pt-3 text-center">
                         <span className="text-[10px] font-bold uppercase tracking-wider">Receptionist Signature</span>
                       </div>
                     </div>

@@ -167,7 +167,7 @@ export default function InHouseGuestsPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Outstanding Balance</p>
-                  <p className="text-2xl font-bold">${totalBalance}</p>
+                  <p className="text-2xl font-bold">₹{totalBalance}</p>
                 </div>
               </div>
             </CardContent>

@@ -43,11 +43,11 @@ import {
   BedDouble,
   Loader2,
 } from "lucide-react"
-import { 
-  getHousekeepingTasks, 
-  getHousekeepingRooms, 
+import {
+  getHousekeepingTasks,
+  getHousekeepingRooms,
   getHousekeepingStaff,
-  createHousekeepingTask, 
+  createHousekeepingTask,
   updateHousekeepingTask,
   updateRoomHkStatus
 } from "@/lib/backend-api"
@@ -73,7 +73,7 @@ export default function HousekeepingPage() {
   const [tasks, setTasks] = useState<HousekeepingTask[]>([])
   const [rooms, setRooms] = useState<Room[]>([])
   const [staff, setStaff] = useState<Staff[]>([])
-  
+
   // Form state
   const [newTask, setNewTask] = useState({
     roomId: "",
@@ -225,17 +225,14 @@ export default function HousekeepingPage() {
 
   if (isLoading) {
     return (
-      <DashboardLayout requiredModule={["housekeeping", "front-office"]}>
-        <div className="flex items-center justify-center h-[60vh]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
     )
   }
 
   return (
-    <DashboardLayout requiredModule={["housekeeping", "front-office"]}>
-      <div className="space-y-6">
+    <div className="space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -257,9 +254,9 @@ export default function HousekeepingPage() {
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
                   <Label>Room Number</Label>
-                  <Select 
-                    value={newTask.roomId} 
-                    onValueChange={(v) => setNewTask({...newTask, roomId: v})}
+                  <Select
+                    value={newTask.roomId}
+                    onValueChange={(v) => setNewTask({ ...newTask, roomId: v })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select room" />
@@ -275,9 +272,9 @@ export default function HousekeepingPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label>Task Type</Label>
-                  <Select 
-                    value={newTask.taskType} 
-                    onValueChange={(v) => setNewTask({...newTask, taskType: v})}
+                  <Select
+                    value={newTask.taskType}
+                    onValueChange={(v) => setNewTask({ ...newTask, taskType: v })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select type" />
@@ -294,9 +291,9 @@ export default function HousekeepingPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label>Priority</Label>
-                  <Select 
-                    value={newTask.priority} 
-                    onValueChange={(v) => setNewTask({...newTask, priority: v})}
+                  <Select
+                    value={newTask.priority}
+                    onValueChange={(v) => setNewTask({ ...newTask, priority: v })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select priority" />
@@ -311,9 +308,9 @@ export default function HousekeepingPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label>Assign To</Label>
-                  <Select 
-                    value={newTask.assignedTo} 
-                    onValueChange={(v) => setNewTask({...newTask, assignedTo: v})}
+                  <Select
+                    value={newTask.assignedTo}
+                    onValueChange={(v) => setNewTask({ ...newTask, assignedTo: v })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select staff member" />
@@ -329,10 +326,10 @@ export default function HousekeepingPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label>Notes</Label>
-                  <Input 
-                    placeholder="Optional notes" 
+                  <Input
+                    placeholder="Optional notes"
                     value={newTask.notes}
-                    onChange={(e) => setNewTask({...newTask, notes: e.target.value})}
+                    onChange={(e) => setNewTask({ ...newTask, notes: e.target.value })}
                   />
                 </div>
               </div>
@@ -556,7 +553,7 @@ export default function HousekeepingPage() {
                 const completed = staffTasks.filter(t => t.status === 'completed').length
                 const total = staffTasks.length
                 const percent = total > 0 ? Math.round((completed / total) * 100) : 0
-                
+
                 return (
                   <div key={s.id} className="p-3 rounded-lg bg-secondary/50">
                     <div className="flex items-center justify-between mb-2">
@@ -606,6 +603,5 @@ export default function HousekeepingPage() {
           </CardContent>
         </Card>
       </div>
-    </DashboardLayout>
   )
 }

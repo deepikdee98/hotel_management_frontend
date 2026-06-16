@@ -255,16 +255,17 @@ export async function getSetupFloors() {
   return data.data?.floors || []
 }
 
-export async function createSetupFloor(payload: { name: string; floorNumber: number }) {
+export async function createSetupFloor(payload: { name: string; floorNumber: number; floorType?: "rooms" | "banquet" }) {
   return apiRequest<JsonRecord>("/front-office/floors", {
     method: "POST",
     body: JSON.stringify(payload),
   })
 }
 
-export async function deleteSetupRoomConfig(floorId: string, roomTypeId: string) {
+export async function deleteSetupRoomConfig(floorId: string, roomTypeId: string, acType?: "AC" | "NON_AC") {
+  const query = acType ? `?acType=${encodeURIComponent(acType)}` : ""
   return apiRequest(
-    `/front-office/floors/${floorId}/room-config/${roomTypeId}`,
+    `/front-office/floors/${floorId}/room-config/${roomTypeId}${query}`,
     {
       method: "DELETE",
     }
@@ -272,7 +273,7 @@ export async function deleteSetupRoomConfig(floorId: string, roomTypeId: string)
 }
 
 
-export async function createSetupRoomConfig(floorId: string, payload: { roomTypeId: string; count: number; startingRoomNumber: string; roomNumberFormat?: string }) {
+export async function createSetupRoomConfig(floorId: string, payload: { roomTypeId: string; acType: "AC" | "NON_AC"; count: number; startingRoomNumber: string; roomNumberFormat?: string }) {
   return apiRequest<JsonRecord>(`/front-office/floors/${floorId}/room-config`, {
     method: "POST",
     body: JSON.stringify(payload),

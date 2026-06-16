@@ -123,9 +123,11 @@ function getStoredAccessToken(): string | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [accessToken, setAccessToken] = useState<string | null>(null)
   const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const subscriptionRefreshKeyRef = useRef<string | null>(null)
+  const lastRefreshRef = useRef<number>(0)
 
   const logout = useCallback((message?: string) => {
     const tokensRaw = sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
@@ -146,6 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setUser(null)
+    setAccessToken(null)
     setSubscriptionInfo(null)
     sessionStorage.removeItem(AUTH_STORAGE_KEY)
     sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
@@ -156,6 +159,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem(AUTH_STORAGE_KEY)
+      const tokenRaw = sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+      
+      if (tokenRaw) {
+        const { accessToken: token } = JSON.parse(tokenRaw)
+        if (token) setAccessToken(token)
+      }
+
       if (stored) {
         const restoredUser = JSON.parse(stored) as User
         setUser(restoredUser)
@@ -266,19 +276,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [logout, user])
 
-  useEffect(() => {
-    const tokensRaw = sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+  const refreshTokens = useCallback(async () => {
+    // Prevent refreshing more than once every 10 seconds to avoid loops
+    const now = Date.now()
+    if (now - lastRefreshRef.current < 10000) {
+      return true
+    }
+    lastRefreshRef.current = now
 
-    if (!tokensRaw) return
+    const tokensRaw = sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+    if (!tokensRaw) return false
 
     try {
-      const { accessToken } = JSON.parse(tokensRaw)
+      const { refreshToken } = JSON.parse(tokensRaw)
+      if (!refreshToken) return false
 
-      if (!accessToken) {
-        logout()
-        return
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      })
+
+      if (!response.ok) return false
+
+      const payload = await response.json()
+      const nextAccessToken = payload.accessToken || payload.data?.accessToken
+      const nextRefreshToken = payload.refreshToken || payload.data?.refreshToken
+
+      if (nextAccessToken) {
+        sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, JSON.stringify({
+          accessToken: nextAccessToken,
+          refreshToken: nextRefreshToken || refreshToken
+        }))
+        setAccessToken(nextAccessToken)
+        // Dispatch storage event to notify other tabs
+        window.dispatchEvent(new Event("storage"))
+        return true
       }
+    } catch {
+      return false
+    }
+    return false
+  }, [])
 
+  useEffect(() => {
+    if (!accessToken) return
+
+    try {
       const parts = accessToken.split(".")
 
       if (parts.length !== 3) {
@@ -297,17 +341,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const timeLeft = expiryTime - Date.now()
 
       if (timeLeft <= 0) {
-        logout()
+        refreshTokens().then(success => {
+          if (!success) logout()
+        })
         return
       }
 
-      const timer = setTimeout(() => logout(), timeLeft)
+      // Try to refresh 30 seconds before expiry
+      const refreshBuffer = 30 * 1000
+      const timer = setTimeout(() => {
+        refreshTokens().then(success => {
+          if (!success) logout()
+        })
+      }, Math.max(0, timeLeft - refreshBuffer))
 
       return () => clearTimeout(timer)
     } catch {
       logout()
     }
-  }, [logout])
+  }, [accessToken, logout, refreshTokens])
 
   useEffect(() => {
     const checkToken = () => {
@@ -319,11 +371,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const { accessToken } = JSON.parse(tokensRaw)
-        const parts = accessToken.split(".")
-
-        if (parts.length !== 3) {
+        const { accessToken: newToken } = JSON.parse(tokensRaw)
+        if (!newToken) {
           logout()
+        } else if (newToken !== accessToken) {
+          setAccessToken(newToken)
         }
       } catch {
         logout()
@@ -335,7 +387,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       window.removeEventListener("storage", checkToken)
     }
-  }, [logout])
+  }, [accessToken, logout])
 
   const login = useCallback(async (identifier: string, password: string) => {
     try {
@@ -442,6 +494,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setUser(userProfile)
+      setAccessToken(accessToken)
       setSubscriptionInfo(nextSubscriptionInfo)
       sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userProfile))
       if (nextSubscriptionInfo) {

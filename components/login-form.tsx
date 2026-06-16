@@ -80,14 +80,14 @@ export function LoginForm() {
               />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Zentric HMS</h1>
+          {/* <h1 className="text-2xl font-bold text-foreground">Zentric HMS</h1> */}
           
         </div>
 
         <Card className="border-border bg-card">
           <CardHeader className="text-center pb-4">
             <CardTitle className="text-lg">Sign In
-              <p className="text-muted-foreground mt-1">Hotel Management System</p>
+              <p className="text-muted-foreground mt-1">Zentric HMS</p>
             </CardTitle>
           </CardHeader>
           <CardContent>

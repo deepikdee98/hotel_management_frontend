@@ -220,6 +220,7 @@ export interface Room {
   roomTypeId?: string
   status: RoomStatus
   hkStatus?: "clean" | "dirty" | "cleaning" | "inspected" | "out-of-order"
+  acType?: "AC" | "NON_AC"
   price: number
   gstPercentage?: number
   gstType?: "INCLUSIVE" | "EXCLUSIVE"
@@ -294,6 +295,7 @@ export interface Reservation {
   status: "confirmed" | "checked-in" | "checked-out" | "cancelled"
   adults?: number
   children?: number
+  extraBeds?: number
   totalAmount: number
   paidAmount: number
   paymentMode?: string

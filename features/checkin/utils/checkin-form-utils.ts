@@ -55,6 +55,7 @@ export const createInitialCheckInForm = (mode: CheckInMode = "check-in") => ({
   netAmount: "0",
   guestType: mode === "pax" ? "PAX" : "Regular",
   noOfBeds: "",
+  extraBeds: "0",
   paxAdultMale: "0",
   paxAdultFemale: "0",
   paxChildren: "0",
@@ -158,7 +159,6 @@ export const getRequiredCheckInFields = (mode: CheckInMode): Array<[keyof CheckI
   const requiredFields: Array<[keyof CheckInFormState, string]> = [
     ["guestName", "Guest Name"],
     ["mobile", "Mobile Number"],
-    ["email", "Email"],
     ["roomNo", "Room Number"],
     ["checkInDate", "Check-in Date"],
     ["checkInTime", "Check-in Time"],
@@ -264,6 +264,9 @@ export const validateCheckInForm = ({
     if (Number(form.discount || 0) < 0) errors.discount = "Discount % must not be negative"
     if (Number(form.discount || 0) > 100) errors.discount = "Discount % must not exceed 100"
     if (Number(form.netAmount || 0) < 0) errors.netAmount = "Net Amount must not be negative"
+    if (form.extraBeds && (Number(form.extraBeds) < 0 || Number.isNaN(Number(form.extraBeds)))) {
+      errors.extraBeds = "Extra Beds must not be negative"
+    }
     if (form.paxAdultMale && (Number(form.paxAdultMale) < 0 || Number.isNaN(Number(form.paxAdultMale)))) {
       errors.paxAdultMale = "Adult Male must be greater than or equal to 0"
     }
@@ -293,6 +296,7 @@ export const buildCheckInPayload = ({
   const discountAmount = totalPlanCharge * (discountPercent / 100)
 
   return {
+    reservationId: form.reservationId || undefined,
     title: form.title,
     guestName: form.guestName,
     mobileNo: form.mobile,
@@ -328,18 +332,19 @@ export const buildCheckInPayload = ({
     checkoutPlan: form.checkoutPlan,
     guestClassification: form.guestClassification,
     roomNumber: form.roomNo,
-    planType: form.planType,
+    planType: form.planType || undefined,
     planCharge: nightlyPlanCharge,
     foodCharge: nightlyFoodCharge,
     planCharges: totalPlanCharge,
     foodCharges: totalFoodCharge,
     discount: discountAmount,
     gstPercentage: Number(form.gstPercentage) || 0,
-    gstType: form.gstType,
+    gstType: form.gstType || undefined,
     gstAmount: Number(form.gstAmount) || 0,
     netAmount: Number(form.netAmount) || 0,
     guestType: form.guestType,
     noOfBeds: Number(form.noOfBeds) || 0,
+    extraBeds: Number(form.extraBeds) || 0,
     adultMale: Number(form.paxAdultMale) || 0,
     adultFemale: Number(form.paxAdultFemale) || 0,
     children: Number(form.paxChildren) || 0,
@@ -367,8 +372,8 @@ export const buildCheckInPayload = ({
       bookingCategory: form.companyInfoBookingCategory || null,
     },
     mainCheckin: form.mainCheckin || undefined,
+    parentGuestCheckin: form.mainCheckin || multiRoomContext?.parentGuestCheckin || undefined,
     bookingGroupId: multiRoomContext?.bookingGroupId || undefined,
-    parentGuestCheckin: multiRoomContext?.parentGuestCheckin || undefined,
     isPax: mode === "pax",
   }
 }

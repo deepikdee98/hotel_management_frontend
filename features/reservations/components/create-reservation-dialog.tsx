@@ -41,6 +41,7 @@ type ReservationFormData = {
   advanceAmount: string
   paymentMode: string
   specialRequests: string
+  extraBeds: string
 }
 
 interface CreateReservationDialogProps {
@@ -156,6 +157,10 @@ export const CreateReservationDialog = memo(function CreateReservationDialog({
               <div className="space-y-2">
                 <Label htmlFor="children">Number of Children</Label>
                 <Input id="children" type="number" min="0" value={formData.children} onChange={(event) => onFormChange("children", event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="extraBeds">Extra Beds</Label>
+                <Input id="extraBeds" type="number" min="0" value={formData.extraBeds || "0"} onChange={(event) => onFormChange("extraBeds", event.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="roomType">Room Type *</Label>

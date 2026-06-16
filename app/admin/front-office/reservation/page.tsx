@@ -81,6 +81,7 @@ export default function ReservationPage() {
           totalAmount: r.totalAmount,
           paidAmount: r.paidAmount,
           status: r.status,
+          extraBeds: r.extraBeds || 0,
         }))
 
         setReservations(formatted)
@@ -116,6 +117,7 @@ export default function ReservationPage() {
     advanceAmount: "",
     paymentMode: "",
     specialRequests: "",
+    extraBeds: "0",
   })
 
   type TabType = "guest" | "booking" | "payment";
@@ -182,7 +184,18 @@ export default function ReservationPage() {
     let baseRate = 0
     const selectedRoomType = roomTypes.find(t => (t._id || t.id) === formData.roomType)
     if (selectedRoomType) {
-      baseRate = selectedRoomType.baseRate || selectedRoomType.price || 0
+      const room = rooms.find(r => r.number === formData.roomNumber || r.id === formData.roomNumber)
+      const acType = room?.acType || "NON_AC"
+      let roomRate = 0
+      let extraBedRate = 0
+      if (acType === "AC") {
+        roomRate = typeof selectedRoomType.acRate === "number" && selectedRoomType.acRate > 0 ? selectedRoomType.acRate : (room?.price || selectedRoomType.baseRate || 0)
+        extraBedRate = typeof selectedRoomType.extraBedAcRate === "number" ? selectedRoomType.extraBedAcRate : 0
+      } else {
+        roomRate = typeof selectedRoomType.nonAcRate === "number" && selectedRoomType.nonAcRate > 0 ? selectedRoomType.nonAcRate : (room?.price || selectedRoomType.baseRate || 0)
+        extraBedRate = typeof selectedRoomType.extraBedNonAcRate === "number" ? selectedRoomType.extraBedNonAcRate : 0
+      }
+      baseRate = roomRate + (Number(formData.extraBeds || 0) * extraBedRate)
     }
 
     // Apply rate plan logic if applicable
@@ -201,7 +214,7 @@ export default function ReservationPage() {
     const total = roomCharges + taxes
 
     return { roomCharges, taxes, total }
-  }, [formData.checkInDate, formData.checkOutDate, formData.ratePlan, formData.roomType, ratePlans, roomTypes])
+  }, [formData.checkInDate, formData.checkOutDate, formData.ratePlan, formData.roomType, formData.roomNumber, formData.extraBeds, ratePlans, roomTypes, rooms])
 
   const handleFormChange = useCallback((field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -249,6 +262,7 @@ export default function ReservationPage() {
           advanceAmount: Number(formData.advanceAmount || 0),
           paymentMode: formData.paymentMode,
           totalAmount: estimates.total,
+          extraBeds: Number(formData.extraBeds || 0),
         })
 
         const refreshed = await getFrontOfficeReservations()
@@ -265,6 +279,7 @@ export default function ReservationPage() {
           totalAmount: r.totalAmount,
           paidAmount: r.paidAmount,
           status: r.status,
+          extraBeds: r.extraBeds || 0,
         }))
 
         setReservations(formatted)
@@ -292,6 +307,7 @@ export default function ReservationPage() {
           advanceAmount: "",
           paymentMode: "",
           specialRequests: "",
+          extraBeds: "0",
         })
       } else {
         toast({
@@ -359,6 +375,7 @@ export default function ReservationPage() {
         checkOutDate: editData.checkOut,
         totalAmount: editData.totalAmount,
         advanceAmount: editData.paidAmount,
+        extraBeds: Number(editData.extraBeds || 0),
       }
 
       await updateFrontOfficeReservation(editData.id, payload)
@@ -377,6 +394,7 @@ export default function ReservationPage() {
         totalAmount: r.totalAmount,
         paidAmount: r.paidAmount,
         status: r.status,
+        extraBeds: r.extraBeds || 0,
       }))
 
       setReservations(formatted)
@@ -403,6 +421,7 @@ export default function ReservationPage() {
     { name: "roomNumber", label: "Room Number" },
     { name: "checkIn", label: "Check-in", type: "date" },
     { name: "checkOut", label: "Check-out", type: "date" },
+    { name: "extraBeds", label: "Extra Beds", type: "number" },
   ]
 
   return (
