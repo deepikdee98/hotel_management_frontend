@@ -590,7 +590,11 @@ export default function FOSetupPage() {
     if (!file) return
 
     if (!file.type.startsWith("image/")) {
-      toast.error("Invalid file: Please choose an image file (PNG, JPG, etc.) for the hotel logo.")
+      toast({
+        title: "Invalid file",
+        description: "Please choose an image file (PNG, JPG, etc.) for the hotel logo.",
+        variant: "destructive",
+      })
       return
     }
 
@@ -604,7 +608,11 @@ export default function FOSetupPage() {
     if (!file) return
 
     if (!file.type.startsWith("image/")) {
-      toast.error("Invalid file: Please choose an image file (PNG, JPG, etc.) for the payment QR code.")
+      toast({
+        title: "Invalid file",
+        description: "Please choose an image file (PNG, JPG, etc.) for the payment QR code.",
+        variant: "destructive",
+      })
       return
     }
 
@@ -771,26 +779,46 @@ export default function FOSetupPage() {
   const handleSaveHotelConfig = async () => {
     // Basic Required Fields
     if (!hotelConfigForm.name?.trim()) {
-      toast.error("Hotel name is required")
+      toast({
+        title: "Error",
+        description: "Hotel name is required",
+        variant: "destructive"
+      })
       return
     }
     if (!hotelConfigForm.address?.trim()) {
-      toast.error("Hotel address is required")
+      toast({
+        title: "Error",
+        description: "Hotel address is required",
+        variant: "destructive"
+      })
       return
     }
     if (!hotelConfigForm.phone?.trim()) {
-      toast.error("Hotel phone number is required")
+      toast({
+        title: "Error",
+        description: "Hotel phone number is required",
+        variant: "destructive"
+      })
       return
     }
     if (!hotelConfigForm.email?.trim()) {
-      toast.error("Hotel email address is required")
+      toast({
+        title: "Error",
+        description: "Hotel email address is required",
+        variant: "destructive"
+      })
       return
     }
 
     // Email Validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(hotelConfigForm.email)) {
-      toast.error("Please enter a valid email address")
+      toast({
+        title: "Error",
+        description: "Please enter a valid email address",
+        variant: "destructive"
+      })
       return
     }
 
@@ -799,7 +827,11 @@ export default function FOSetupPage() {
       const { accountName, accountNumber, bankName, ifscCode } = hotelConfigForm.bankDetails
       if ((accountName || accountNumber || bankName || ifscCode) && 
           !(accountName && accountNumber && bankName && ifscCode)) {
-        toast.error("Please complete all bank account details (Name, Number, Bank, and IFSC)")
+        toast({
+          title: "Error",
+          description: "Please complete all bank account details (Name, Number, Bank, and IFSC)",
+          variant: "destructive"
+        })
         return
       }
     }
