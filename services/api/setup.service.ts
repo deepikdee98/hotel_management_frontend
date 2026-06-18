@@ -262,6 +262,14 @@ export async function createSetupFloor(payload: { name: string; floorNumber: num
   })
 }
 
+export async function updateSetupRoomConfig(floorId: string, roomTypeId: string, payload: { roomTypeId: string; acType: "AC" | "NON_AC"; count: number; startingRoomNumber: string; roomNumberFormat?: string }, oldAcType?: "AC" | "NON_AC") {
+  const query = oldAcType ? `?oldAcType=${encodeURIComponent(oldAcType)}` : ""
+  return apiRequest<JsonRecord>(`/front-office/floors/${floorId}/room-config/${roomTypeId}${query}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function deleteSetupRoomConfig(floorId: string, roomTypeId: string, acType?: "AC" | "NON_AC") {
   const query = acType ? `?acType=${encodeURIComponent(acType)}` : ""
   return apiRequest(

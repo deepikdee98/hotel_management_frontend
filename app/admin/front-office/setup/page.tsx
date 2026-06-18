@@ -39,6 +39,7 @@ import {
   uploadHotelLogo,
   getHotelLogoReadUrl,
   deleteSetupRoomConfig,
+  updateSetupRoomConfig,
   createSetupOption,
   deactivateSetupOption,
   getSetupOptions,
@@ -375,6 +376,9 @@ export default function FOSetupPage() {
   const [expandedFloors, setExpandedFloors] = useState<string[]>([])
   const [isAddFloorOpen, setIsAddFloorOpen] = useState(false)
   const [isAddRoomToFloorOpen, setIsAddRoomToFloorOpen] = useState(false)
+  const [isEditingRoomConfig, setIsEditingRoomConfig] = useState(false)
+  const [oldRoomTypeId, setOldRoomTypeId] = useState<string | null>(null)
+  const [oldAcType, setOldAcType] = useState<"AC" | "NON_AC" | null>(null)
   const [selectedFloor, setSelectedFloor] = useState<Floor | null>(null)
 
   const [newFloor, setNewFloor] = useState<{ name: string; floorNumber: string; floorType: "rooms" | "banquet" }>({ name: "", floorNumber: "", floorType: "rooms" })
@@ -657,18 +661,32 @@ export default function FOSetupPage() {
       const startingRoomNumber = newRoomConfig.startNumber || `${selectedFloor.floorNumber === 0 ? "G" : selectedFloor.floorNumber}01`
       const roomNumberFormat = /^[0-9]+$/.test(String(startingRoomNumber)) ? "numeric" : "alphanumeric"
 
-      await createSetupRoomConfig(selectedFloor._id, {
-        roomTypeId: newRoomConfig.roomTypeId,
-        acType: newRoomConfig.acType,
-        count: requestedCount,
-        startingRoomNumber,
-        roomNumberFormat,
-      })
+      if (isEditingRoomConfig && oldRoomTypeId && oldAcType) {
+        await updateSetupRoomConfig(selectedFloor._id, oldRoomTypeId, {
+          roomTypeId: newRoomConfig.roomTypeId,
+          acType: newRoomConfig.acType,
+          count: requestedCount,
+          startingRoomNumber,
+          roomNumberFormat,
+        }, oldAcType)
+        toast({ title: "Success", description: "Rooms updated successfully" })
+      } else {
+        await createSetupRoomConfig(selectedFloor._id, {
+          roomTypeId: newRoomConfig.roomTypeId,
+          acType: newRoomConfig.acType,
+          count: requestedCount,
+          startingRoomNumber,
+          roomNumberFormat,
+        })
+        toast({ title: "Success", description: "Rooms added successfully" })
+      }
 
-      toast({ title: "Success", description: "Rooms added successfully" })
       fetchData()
       setNewRoomConfig({ roomTypeId: "", acType: "NON_AC", count: "", startNumber: "" })
       setIsAddRoomToFloorOpen(false)
+      setIsEditingRoomConfig(false)
+      setOldRoomTypeId(null)
+      setOldAcType(null)
       setSelectedFloor(null)
     } catch (error: any) {
       toast({
@@ -677,6 +695,20 @@ export default function FOSetupPage() {
         variant: "destructive"
       })
     }
+  }
+
+  const handleOpenEditRoomConfig = (floor: Floor, room: FloorRoom) => {
+    setSelectedFloor(floor)
+    setNewRoomConfig({
+      roomTypeId: room.roomTypeId,
+      acType: room.acType,
+      count: String(room.count),
+      startNumber: room.roomNumbers[0] || "",
+    })
+    setIsEditingRoomConfig(true)
+    setOldRoomTypeId(room.roomTypeId)
+    setOldAcType(room.acType)
+    setIsAddRoomToFloorOpen(true)
   }
 
   const handleDeleteRoomConfig = async (floorId: string, roomTypeId: string, acType: "AC" | "NON_AC") => {
@@ -1402,14 +1434,23 @@ export default function FOSetupPage() {
                                       Non AC {formatOptionalRate(roomType?.nonAcRate)} / AC {formatOptionalRate(roomType?.acRate)}
                                     </TableCell>
                                     <TableCell className="text-right">
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="text-destructive"
-                                        onClick={() => handleDeleteRoomConfig(floor._id, room.roomTypeId, room.acType)}
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </Button>
+                                      <div className="flex justify-end gap-1">
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => handleOpenEditRoomConfig(floor, room)}
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="text-destructive"
+                                          onClick={() => handleDeleteRoomConfig(floor._id, room.roomTypeId, room.acType)}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </div>
                                     </TableCell>
                                   </TableRow>
                                 )
@@ -2002,10 +2043,18 @@ export default function FOSetupPage() {
       </Dialog>
 
       {/* Add Rooms to Floor Dialog */}
-      <Dialog open={isAddRoomToFloorOpen} onOpenChange={setIsAddRoomToFloorOpen}>
+      <Dialog open={isAddRoomToFloorOpen} onOpenChange={(open) => {
+        setIsAddRoomToFloorOpen(open)
+        if (!open) {
+          setIsEditingRoomConfig(false)
+          setOldRoomTypeId(null)
+          setOldAcType(null)
+          setNewRoomConfig({ roomTypeId: "", acType: "NON_AC", count: "", startNumber: "" })
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Rooms to {selectedFloor?.name}</DialogTitle>
+            <DialogTitle>{isEditingRoomConfig ? "Edit Room Configuration" : `Add Rooms to ${selectedFloor?.name}`}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -2062,8 +2111,17 @@ export default function FOSetupPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setIsAddRoomToFloorOpen(false); setSelectedFloor(null) }}>Cancel</Button>
-            <Button onClick={handleAddRoomToFloor} disabled={!newRoomConfig.roomTypeId || !newRoomConfig.acType || !newRoomConfig.count}>Add Rooms</Button>
+            <Button variant="outline" onClick={() => { 
+              setIsAddRoomToFloorOpen(false)
+              setIsEditingRoomConfig(false)
+              setOldRoomTypeId(null)
+              setOldAcType(null)
+              setSelectedFloor(null)
+              setNewRoomConfig({ roomTypeId: "", acType: "NON_AC", count: "", startNumber: "" })
+            }}>Cancel</Button>
+            <Button onClick={handleAddRoomToFloor} disabled={!newRoomConfig.roomTypeId || !newRoomConfig.acType || !newRoomConfig.count}>
+              {isEditingRoomConfig ? "Update Configuration" : "Add Rooms"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

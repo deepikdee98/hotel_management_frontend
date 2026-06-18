@@ -39,6 +39,10 @@ function formatCurrency(value: unknown) {
   return `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+function sourceLabel(sourceModule?: string) {
+  return sourceModule === "front-office" ? "Front Office" : "Manual"
+}
+
 const categories = [
   { name: "Utilities", subCategories: ["Electricity", "Water", "Gas", "Internet"] },
   { name: "Supplies", subCategories: ["Kitchen", "Housekeeping", "Office", "Guest Amenities"] },
@@ -53,6 +57,7 @@ export default function ExpensesPage() {
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  const [sourceFilter, setSourceFilter] = useState<string>("all")
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<string>("")
   const [selectedSubCategory, setSelectedSubCategory] = useState("")
@@ -70,7 +75,7 @@ export default function ExpensesPage() {
   const loadExpenses = async () => {
     setLoading(true)
     try {
-      const result = await getAccountsExpenses({ search: searchQuery, category: categoryFilter, limit: 100 })
+      const result = await getAccountsExpenses({ search: searchQuery, category: categoryFilter, sourceModule: sourceFilter, limit: 100 })
       setExpenses(result.expenses)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load expenses"
@@ -83,7 +88,7 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     loadExpenses()
-  }, [searchQuery, categoryFilter])
+  }, [searchQuery, categoryFilter, sourceFilter])
 
   const sourceExpenses = expenses
 
@@ -266,6 +271,16 @@ export default function ExpensesPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sources</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="front-office">Front Office</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
@@ -280,12 +295,13 @@ export default function ExpensesPage() {
                 <TableHead>Description</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Source</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Loading expenses...</TableCell>
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">Loading expenses...</TableCell>
                 </TableRow>
               )}
               {!loading && filteredExpenses.map((expense) => (
@@ -302,6 +318,11 @@ export default function ExpensesPage() {
                   <TableCell>
                     <Badge variant={expense.status === "approved" ? "default" : "secondary"}>
                       {expense.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={expense.sourceModule === "front-office" ? "secondary" : "outline"}>
+                      {sourceLabel(expense.sourceModule)}
                     </Badge>
                   </TableCell>
                 </TableRow>

@@ -108,6 +108,16 @@ function normalizeRoomTypeValue(value?: unknown) {
   return String(value || "").trim().toLowerCase()
 }
 
+function moneyInputString(value: unknown) {
+  const amount = Number(value)
+  return Number.isFinite(amount) && amount > 0 ? toMoneyString(amount) : ""
+}
+
+function countInputString(value: unknown) {
+  const count = Number(value)
+  return Number.isFinite(count) && count > 0 ? String(count) : ""
+}
+
 export function CheckInForm({
   mode = "check-in",
   editId = "",
@@ -325,9 +335,9 @@ export function CheckInForm({
 
     setForm(prev => ({
       ...prev,
-      paxAdultMale: adultMale.toString(),
-      paxAdultFemale: adultFemale.toString(),
-      paxChildren: children.toString(),
+      paxAdultMale: countInputString(adultMale),
+      paxAdultFemale: countInputString(adultFemale),
+      paxChildren: countInputString(children),
       totalPax: (adultMale + adultFemale + children).toString()
     }));
   }, [form.gender, companions]);
@@ -343,8 +353,8 @@ export function CheckInForm({
           ...prev,
           roomNo: room.number,
           roomType: roomTypeDisplay,
-          planCharge: toMoneyString(room.price || 0),
-          planCharges: toMoneyString(room.price || 0),
+          planCharge: moneyInputString(room.price),
+          planCharges: moneyInputString(room.price),
           gstPercentage: String(selectedType?.gstPercentage || room.gstPercentage || "0"),
           gstType: String(selectedType?.gstType || room.gstType || "EXCLUSIVE"),
           noOfBeds: String(selectedType?.maxOccupancy || selectedType?.capacity || ""),
@@ -537,9 +547,9 @@ export function CheckInForm({
       roomNo,
       roomType: roomTypeDisplay,
       planType: planTypeCode,
-      planCharge: toMoneyString(nightlyPlanCharge || matchingRoom?.price || 0),
+      planCharge: moneyInputString(nightlyPlanCharge || matchingRoom?.price),
       foodCharge: toMoneyString(nightlyFoodCharge),
-      planCharges: toMoneyString(booking.planCharges || nightlyPlanCharge || matchingRoom?.price || 0),
+      planCharges: moneyInputString(booking.planCharges || nightlyPlanCharge || matchingRoom?.price),
       foodCharges: toMoneyString(booking.foodCharges || nightlyFoodCharge),
       discount: String(booking.discount || "0"),
       gstPercentage: String(booking.gstPercentage || selectedType?.gstPercentage || matchingRoom?.gstPercentage || "0"),
@@ -548,9 +558,9 @@ export function CheckInForm({
       netAmount: String(booking.netAmount || "0"),
       guestType: String(booking.guestType || (mode === "pax" ? "PAX" : "Regular")),
       noOfBeds: String(booking.noOfBeds || selectedType?.maxOccupancy || selectedType?.capacity || ""),
-      paxAdultMale: String(booking.adultMale || booking.paxAdultMale || "0"),
-      paxAdultFemale: String(booking.adultFemale || booking.paxAdultFemale || "0"),
-      paxChildren: String(booking.children || booking.paxChildren || "0"),
+      paxAdultMale: countInputString(booking.adultMale || booking.paxAdultMale),
+      paxAdultFemale: countInputString(booking.adultFemale || booking.paxAdultFemale),
+      paxChildren: countInputString(booking.children || booking.paxChildren),
       totalPax: String(booking.totalPax || (Number(booking.adultMale || 0) + Number(booking.adultFemale || 0) + Number(booking.children || 0)) || "0"),
       paymentMode: String(booking.paymentMode || ""),
       advanceAmount: String(booking.advanceAmount || ""),
@@ -669,7 +679,7 @@ export function CheckInForm({
             checkOutTime: reservation.checkOut ? new Date(reservation.checkOut).toTimeString().slice(0, 5) : "",
             noOfNights: noOfNights.toString(),
             advanceAmount: reservation.paidAmount?.toString() || "0",
-            planCharge: toMoneyString(nightlyReservationPlanCharge),
+            planCharge: moneyInputString(nightlyReservationPlanCharge),
             planCharges: toMoneyString(reservationData.planCharges || reservation.totalAmount || nightlyReservationPlanCharge),
             foodCharge: toMoneyString(nightlyReservationFoodCharge),
             foodCharges: toMoneyString(reservationData.foodCharges || nightlyReservationFoodCharge),
@@ -677,8 +687,8 @@ export function CheckInForm({
             planType: reservation.ratePlan || "",
             planTypeLabel: plan?.name || reservation.ratePlan || "",
             businessSource: reservation.bookingSource || "",
-            paxAdultMale: reservation.adults?.toString() || "0",
-            paxChildren: reservation.children?.toString() || "0",
+            paxAdultMale: countInputString(reservation.adults),
+            paxChildren: countInputString(reservation.children),
             extraBeds: reservation.extraBeds?.toString() || "0",
             totalPax: (Number(reservation.adults || 0) + Number(reservation.children || 0)).toString(),
             gstPercentage: String(selectedType?.gstPercentage || matchingRoom?.gstPercentage || 0),
@@ -817,7 +827,7 @@ export function CheckInForm({
           gstPercentage: String(selectedType.gstPercentage || 0),
           gstType: selectedType.gstType || "EXCLUSIVE",
           noOfBeds: String(selectedType.maxOccupancy || selectedType.capacity || ""),
-          planCharge: calculatedCharge !== null ? toMoneyString(calculatedCharge) : prev.planCharge,
+          planCharge: calculatedCharge !== null ? moneyInputString(calculatedCharge) : prev.planCharge,
         }))
       }
     }
@@ -827,7 +837,7 @@ export function CheckInForm({
       setForm(prev => ({
         ...prev,
         extraBeds: String(value),
-        planCharge: calculatedCharge !== null ? toMoneyString(calculatedCharge) : prev.planCharge,
+        planCharge: calculatedCharge !== null ? moneyInputString(calculatedCharge) : prev.planCharge,
       }));
     }
 
@@ -904,7 +914,7 @@ export function CheckInForm({
             roomType: roomTypeName,
             planType: selected.planType?.code || selected.planType || "",
             planTypeLabel: selected.planType?.name || selected.planTypeLabel || selected.planType || "",
-            planCharge: toMoneyString(getNightlyCharge(selected.planCharge, selected.planCharges, selected.nights)),
+            planCharge: moneyInputString(getNightlyCharge(selected.planCharge, selected.planCharges, selected.nights)),
             foodCharge: toMoneyString(getNightlyCharge(selected.foodCharge, selected.foodCharges, selected.nights)),
             checkoutPlan: selected.checkoutPlan || "",
             gstPercentage: String(selected.gstPercentage || "0"),
@@ -928,8 +938,8 @@ export function CheckInForm({
             ...prev,
             roomType: room.type,
             roomNo: value,
-            planCharge: toMoneyString(basePrice),
-            planCharges: toMoneyString(basePrice),
+            planCharge: moneyInputString(basePrice),
+            planCharges: moneyInputString(basePrice),
             gstPercentage: String(selectedType?.gstPercentage || room.gstPercentage || 0),
             gstType: selectedType?.gstType || room.gstType || "EXCLUSIVE",
             noOfBeds: String(selectedType?.maxOccupancy || selectedType?.capacity || ""),
@@ -1457,7 +1467,7 @@ export function CheckInForm({
       roomType: "",
       planType: "",
       planTypeLabel: "",
-      planCharge: "0",
+      planCharge: "",
       foodCharge: "0",
       planCharges: "0",
       foodCharges: "0",
@@ -1468,9 +1478,9 @@ export function CheckInForm({
       netAmount: "0",
       amount: "0",
       noOfBeds: "",
-      paxAdultMale: "0",
-      paxAdultFemale: "0",
-      paxChildren: "0",
+      paxAdultMale: "",
+      paxAdultFemale: "",
+      paxChildren: "",
       totalPax: "0",
       paymentMode: "",
       advanceAmount: "",
@@ -2241,9 +2251,18 @@ export function CheckInForm({
                       <FormField label="Total PAX"><Input type="number" value={form.totalPax} readOnly className="bg-muted font-bold" /></FormField>
                     </div>
                     <div className="grid grid-cols-4 gap-4 mt-4">
-                      <FormField label="Adult Male"><Input className={errorClass("paxAdultMale")} type="number" min="0" value={form.paxAdultMale} onChange={e => handleChange("paxAdultMale", e.target.value)} /></FormField>
-                      <FormField label="Adult Female (PAX)"><Input type="number" min="0" value={form.paxAdultFemale} onChange={e => handleChange("paxAdultFemale", e.target.value)} /></FormField>
-                      <FormField label="Children"><Input type="number" min="0" value={form.paxChildren} onChange={e => handleChange("paxChildren", e.target.value)} /></FormField>
+                      <FormField label="Adult Male" required>
+                        <Input className={errorClass("paxAdultMale")} type="number" min="0" value={form.paxAdultMale} onChange={e => handleChange("paxAdultMale", e.target.value)} placeholder="0" />
+                        {fieldError("paxAdultMale") && <p className="mt-1 text-xs text-destructive">{fieldError("paxAdultMale")}</p>}
+                      </FormField>
+                      <FormField label="Adult Female (PAX)" required>
+                        <Input className={errorClass("paxAdultFemale")} type="number" min="0" value={form.paxAdultFemale} onChange={e => handleChange("paxAdultFemale", e.target.value)} placeholder="0" />
+                        {fieldError("paxAdultFemale") && <p className="mt-1 text-xs text-destructive">{fieldError("paxAdultFemale")}</p>}
+                      </FormField>
+                      <FormField label="Children" required>
+                        <Input className={errorClass("paxChildren")} type="number" min="0" value={form.paxChildren} onChange={e => handleChange("paxChildren", e.target.value)} placeholder="0" />
+                        {fieldError("paxChildren") && <p className="mt-1 text-xs text-destructive">{fieldError("paxChildren")}</p>}
+                      </FormField>
                       <FormField label="Extra Beds"><Input className={errorClass("extraBeds")} type="number" min="0" value={form.extraBeds} onChange={e => handleChange("extraBeds", e.target.value)} /></FormField>
                     </div>
                   </div>
@@ -2252,7 +2271,7 @@ export function CheckInForm({
                   <div>
                     <div className="grid grid-cols-5 gap-4">
                       <FormField label="Plan Charge / Night" required>
-                        <Input className={errorClass("planCharge")} type="number" min="0" value={form.planCharge} onChange={e => handleChange("planCharge", e.target.value)} placeholder="0.00" disabled={isFieldDisabled("planCharge")} title={restrictedFieldTitle("planCharge")} />
+                        <Input className={errorClass("planCharge")} type="number" min="0" value={form.planCharge} onChange={e => handleChange("planCharge", e.target.value)} placeholder="0" disabled={isFieldDisabled("planCharge")} title={restrictedFieldTitle("planCharge")} />
                         {fieldError("planCharge") && <p className="mt-1 text-xs text-destructive">{fieldError("planCharge")}</p>}
                       </FormField>
                       <FormField label="Discount %">

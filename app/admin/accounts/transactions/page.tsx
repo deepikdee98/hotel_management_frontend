@@ -55,6 +55,10 @@ const initialForm = {
   subCategory: "",
 }
 
+function sourceLabel(sourceModule?: string) {
+  return sourceModule === "front-office" ? "Front Office" : "Manual"
+}
+
 function formatDateTime(value?: string) {
   if (!value) return { date: "-", time: "" }
   const date = new Date(value)
@@ -78,6 +82,7 @@ export default function TransactionsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  const [sourceFilter, setSourceFilter] = useState<string>("all")
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [selectedTxn, setSelectedTxn] = useState<AccountsTransaction | null>(null)
   const [transactions, setTransactions] = useState<AccountsTransaction[]>([])
@@ -98,6 +103,7 @@ export default function TransactionsPage() {
         search: debouncedSearch,
         type: typeFilter,
         category: categoryFilter,
+        sourceModule: sourceFilter,
         page: 1,
         limit: 50,
       })
@@ -111,7 +117,7 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false)
     }
-  }, [categoryFilter, debouncedSearch, toast, typeFilter])
+  }, [categoryFilter, debouncedSearch, sourceFilter, toast, typeFilter])
 
   useEffect(() => {
     fetchTransactions()
@@ -356,6 +362,16 @@ export default function TransactionsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sources</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="front-office">Front Office</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
@@ -368,6 +384,7 @@ export default function TransactionsPage() {
                 <TableHead>Description</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Payment Mode</TableHead>
+                <TableHead>Source</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -376,17 +393,17 @@ export default function TransactionsPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">Loading transactions...</TableCell>
+                  <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">Loading transactions...</TableCell>
                 </TableRow>
               )}
               {!loading && error && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-destructive">{error}</TableCell>
+                  <TableCell colSpan={9} className="py-8 text-center text-destructive">{error}</TableCell>
                 </TableRow>
               )}
               {!loading && !error && transactions.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No transactions found</TableCell>
+                  <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">No transactions found</TableCell>
                 </TableRow>
               )}
               {!loading && !error && transactions.map((txn) => {
@@ -402,6 +419,11 @@ export default function TransactionsPage() {
                   <TableCell>{txn.description}</TableCell>
                   <TableCell>{txn.category}</TableCell>
                   <TableCell>{txn.paymentMode}</TableCell>
+                  <TableCell>
+                    <Badge variant={txn.sourceModule === "front-office" ? "secondary" : "outline"}>
+                      {sourceLabel(txn.sourceModule)}
+                    </Badge>
+                  </TableCell>
                   <TableCell className={isIncome ? "text-primary font-medium" : "text-destructive font-medium"}>
                     {isIncome ? "+" : "-"}{formatCurrency(txn.amount)}
                   </TableCell>
@@ -477,6 +499,10 @@ export default function TransactionsPage() {
                   <Label className="text-muted-foreground">Created By</Label>
                   <p className="font-medium">{selectedTxn.createdBy}</p>
                 </div>
+              </div>
+              <div>
+                <Label className="text-muted-foreground">Source</Label>
+                <p className="font-medium">{sourceLabel(selectedTxn.sourceModule)}</p>
               </div>
             </div>
           )}

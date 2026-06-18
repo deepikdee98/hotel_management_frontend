@@ -43,11 +43,16 @@ function formatCurrency(value: unknown) {
   return `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+function sourceLabel(sourceModule?: string) {
+  return sourceModule === "front-office" ? "Front Office" : "Manual"
+}
+
 export default function InvoicesPage() {
   const { toast } = useToast()
   const paymentModeOptions = useSetupOptions("paymentMode")
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [sourceFilter, setSourceFilter] = useState<string>("all")
   const [invoices, setInvoices] = useState<AccountsInvoice[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedInvoice, setSelectedInvoice] = useState<AccountsInvoice | null>(null)
@@ -59,7 +64,7 @@ export default function InvoicesPage() {
   const loadInvoices = async () => {
     setLoading(true)
     try {
-      const result = await getAccountsInvoices({ search: searchQuery, status: statusFilter, limit: 100 })
+      const result = await getAccountsInvoices({ search: searchQuery, status: statusFilter, sourceModule: sourceFilter, limit: 100 })
       setInvoices(result.invoices)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load invoices"
@@ -72,7 +77,7 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     loadInvoices()
-  }, [searchQuery, statusFilter])
+  }, [searchQuery, statusFilter, sourceFilter])
 
   // Use API-provided invoices directly
   const sourceInvoices: AccountsInvoice[] = invoices
@@ -220,6 +225,16 @@ export default function InvoicesPage() {
                   <SelectItem value="overdue">Overdue</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sources</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="front-office">Front Office</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
@@ -235,13 +250,14 @@ export default function InvoicesPage() {
                 <TableHead>Paid</TableHead>
                 <TableHead>Balance</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Source</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">Loading invoices...</TableCell>
+                  <TableCell colSpan={10} className="py-8 text-center text-muted-foreground">Loading invoices...</TableCell>
                 </TableRow>
               )}
               {!loading && filteredInvoices.map((inv) => (
@@ -259,6 +275,11 @@ export default function InvoicesPage() {
                     {formatCurrency(inv.balance)}
                   </TableCell>
                   <TableCell>{getStatusBadge(inv.status)}</TableCell>
+                  <TableCell>
+                    <Badge variant={inv.sourceModule === "front-office" ? "secondary" : "outline"}>
+                      {sourceLabel(inv.sourceModule)}
+                    </Badge>
+                  </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
                       <Button variant="ghost" size="sm" onClick={() => setSelectedInvoice(inv)}>
@@ -306,6 +327,10 @@ export default function InvoicesPage() {
                 <div>
                   <Label className="text-muted-foreground">Check-Out</Label>
                   <p className="font-medium">{String(selectedInvoice.checkOut || "").slice(0, 10) || "-"}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Source</Label>
+                  <p className="font-medium">{sourceLabel(selectedInvoice.sourceModule)}</p>
                 </div>
               </div>
               <div className="space-y-2">

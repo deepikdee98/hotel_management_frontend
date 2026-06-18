@@ -85,11 +85,16 @@ function displayId(payment: AccountsPayment, prefix: string) {
   return payment.id ? `${prefix}-${payment.id.slice(-6).toUpperCase()}` : "-"
 }
 
+function sourceLabel(sourceModule?: string) {
+  return sourceModule === "front-office" ? "Front Office" : "Manual"
+}
+
 export default function PaymentsPage() {
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false)
   const [isReceivePaymentOpen, setIsReceivePaymentOpen] = useState(false)
+  const [sourceFilter, setSourceFilter] = useState("all")
   const [outgoingPayments, setOutgoingPayments] = useState<AccountsPayment[]>([])
   const [incomingPayments, setIncomingPayments] = useState<AccountsPayment[]>([])
   const [loading, setLoading] = useState(true)
@@ -105,8 +110,8 @@ export default function PaymentsPage() {
     setError("")
     try {
       const [paymentsResult, receiptsResult] = await Promise.all([
-        getAccountsPayments({ direction: "outgoing", search: debouncedSearch, page: 1, limit: 50 }),
-        getAccountsReceipts({ search: debouncedSearch, page: 1, limit: 50 }),
+        getAccountsPayments({ direction: "outgoing", search: debouncedSearch, sourceModule: sourceFilter, page: 1, limit: 50 }),
+        getAccountsReceipts({ search: debouncedSearch, sourceModule: sourceFilter, page: 1, limit: 50 }),
       ])
       setOutgoingPayments(paymentsResult.payments)
       setIncomingPayments(receiptsResult.receipts)
@@ -117,7 +122,7 @@ export default function PaymentsPage() {
     } finally {
       setLoading(false)
     }
-  }, [debouncedSearch, toast])
+  }, [debouncedSearch, sourceFilter, toast])
 
   useEffect(() => {
     fetchPayments()
@@ -218,6 +223,16 @@ export default function PaymentsPage() {
           <p className="text-muted-foreground">Manage outgoing and incoming payments</p>
         </div>
         <div className="flex gap-2">
+          <Select value={sourceFilter} onValueChange={setSourceFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Source" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Sources</SelectItem>
+              <SelectItem value="manual">Manual</SelectItem>
+              <SelectItem value="front-office">Front Office</SelectItem>
+            </SelectContent>
+          </Select>
           <Button variant="outline">
             <Download className="mr-2 h-4 w-4" />
             Export
@@ -461,6 +476,7 @@ export default function PaymentsPage() {
                     <TableHead>Mode</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Source</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -478,18 +494,23 @@ export default function PaymentsPage() {
                           {payment.status}
                         </Badge>
                       </TableCell>
+                      <TableCell>
+                        <Badge variant={payment.sourceModule === "front-office" ? "secondary" : "outline"}>
+                          {sourceLabel(payment.sourceModule)}
+                        </Badge>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {!loading && outgoingPayments.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                         {error || "No outgoing payments found."}
                       </TableCell>
                     </TableRow>
                   )}
                   {loading && (
                     <TableRow>
-                      <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">Loading payments...</TableCell>
+                      <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">Loading payments...</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -524,6 +545,7 @@ export default function PaymentsPage() {
                     <TableHead>Mode</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Source</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -541,18 +563,23 @@ export default function PaymentsPage() {
                           {payment.status}
                         </Badge>
                       </TableCell>
+                      <TableCell>
+                        <Badge variant={payment.sourceModule === "front-office" ? "secondary" : "outline"}>
+                          {sourceLabel(payment.sourceModule)}
+                        </Badge>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {!loading && incomingPayments.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                         {error || "No incoming payments found."}
                       </TableCell>
                     </TableRow>
                   )}
                   {loading && (
                     <TableRow>
-                      <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">Loading payments...</TableCell>
+                      <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">Loading payments...</TableCell>
                     </TableRow>
                   )}
                 </TableBody>

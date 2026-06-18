@@ -22,6 +22,7 @@ export interface AccountsListFilters {
   month?: number | string
   year?: number | string
   asOfDate?: string
+  sourceModule?: "all" | "manual" | "front-office" | string
 }
 
 export interface AccountsTransaction {
@@ -38,6 +39,9 @@ export interface AccountsTransaction {
   paymentMode?: string
   status: "pending" | "completed" | "cancelled" | "reversed" | string
   sourceModule?: string
+  sourceId?: string
+  folioId?: string
+  folioNumber?: string
   ledgerAccountId?: string
   createdBy?: string
   createdAt?: string
@@ -74,6 +78,10 @@ export interface AccountsPayment {
   reference?: string
   status: string
   direction: "outgoing" | "incoming" | string
+  sourceModule?: string
+  sourceId?: string
+  folioId?: string
+  folioNumber?: string
 }
 
 export interface CreateAccountsPaymentPayload {
@@ -127,6 +135,10 @@ export interface AccountsInvoice {
   status: string
   sent?: boolean
   notes?: string
+  sourceModule?: string
+  sourceId?: string
+  folioId?: string
+  folioNumber?: string
 }
 
 export interface AccountsExpense {
@@ -147,6 +159,10 @@ export interface AccountsExpense {
   taxAmount: number
   taxableAmount: number
   gstRate: number
+  sourceModule?: string
+  sourceId?: string
+  folioId?: string
+  folioNumber?: string
 }
 
 export interface LedgerAccount {
@@ -247,7 +263,10 @@ function mapTransaction(raw: JsonRecord, fallbackTransactionNumber?: string): Ac
     amount: Number(raw.amount || 0),
     paymentMode: raw.paymentMode ? String(raw.paymentMode) : undefined,
     status: String(raw.status || "completed"),
-    sourceModule: raw.sourceModule ? String(raw.sourceModule) : undefined,
+    sourceModule: raw.sourceModule ? String(raw.sourceModule) : "manual",
+    sourceId: raw.sourceId ? String(raw.sourceId) : undefined,
+    folioId: raw.folioId ? String(raw.folioId) : undefined,
+    folioNumber: raw.folioNumber ? String(raw.folioNumber) : undefined,
     ledgerAccountId: raw.ledgerAccountId ? String(raw.ledgerAccountId) : undefined,
     createdBy: actorName(raw.createdBy),
     createdAt: raw.createdAt ? String(raw.createdAt) : undefined,
@@ -271,6 +290,10 @@ function mapPayment(raw: JsonRecord): AccountsPayment {
     reference: reference ? String(reference) : undefined,
     status: String(raw.status === "active" ? "completed" : raw.status || "completed"),
     direction: String(raw.direction || (raw.receiptNumber ? "incoming" : "outgoing")),
+    sourceModule: raw.sourceModule ? String(raw.sourceModule) : "manual",
+    sourceId: raw.sourceId ? String(raw.sourceId) : undefined,
+    folioId: raw.folioId ? String(raw.folioId) : undefined,
+    folioNumber: raw.folioNumber ? String(raw.folioNumber) : undefined,
   }
 }
 
@@ -306,6 +329,10 @@ function mapInvoice(raw: JsonRecord): AccountsInvoice {
     status: String(raw.status || "pending"),
     sent: Boolean(raw.sent),
     notes: raw.notes ? String(raw.notes) : undefined,
+    sourceModule: raw.sourceModule ? String(raw.sourceModule) : "manual",
+    sourceId: raw.sourceId ? String(raw.sourceId) : undefined,
+    folioId: raw.folioId ? String(raw.folioId) : undefined,
+    folioNumber: raw.folioNumber ? String(raw.folioNumber) : undefined,
   }
 }
 
@@ -329,6 +356,10 @@ function mapExpense(raw: JsonRecord): AccountsExpense {
     taxAmount: Number(raw.taxAmount || 0),
     taxableAmount: Number(raw.taxableAmount || raw.amount || 0),
     gstRate: Number(raw.gstRate || 0),
+    sourceModule: raw.sourceModule ? String(raw.sourceModule) : "manual",
+    sourceId: raw.sourceId ? String(raw.sourceId) : undefined,
+    folioId: raw.folioId ? String(raw.folioId) : undefined,
+    folioNumber: raw.folioNumber ? String(raw.folioNumber) : undefined,
   }
 }
 

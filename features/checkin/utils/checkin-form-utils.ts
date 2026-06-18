@@ -44,7 +44,7 @@ export const createInitialCheckInForm = (mode: CheckInMode = "check-in") => ({
   roomNo: "",
   roomType: "",
   planType: "",
-  planCharge: "0",
+  planCharge: "",
   foodCharge: "0",
   planCharges: "0",
   foodCharges: "0",
@@ -56,9 +56,9 @@ export const createInitialCheckInForm = (mode: CheckInMode = "check-in") => ({
   guestType: mode === "pax" ? "PAX" : "Regular",
   noOfBeds: "",
   extraBeds: "0",
-  paxAdultMale: "0",
-  paxAdultFemale: "0",
-  paxChildren: "0",
+  paxAdultMale: "",
+  paxAdultFemale: "",
+  paxChildren: "",
   totalPax: "0",
   paymentMode: "",
   advanceAmount: "",
@@ -167,6 +167,9 @@ export const getRequiredCheckInFields = (mode: CheckInMode): Array<[keyof CheckI
     ["stayType", "Stay Type"],
     ["occupancyType", "Occupancy Type"],
     ["checkoutPlan", "Checkout Plan"],
+    ["paxAdultMale", "Adult Male"],
+    ["paxAdultFemale", "Adult Female"],
+    ["paxChildren", "Children"],
   ]
 
   if (mode !== "pax") {
@@ -269,6 +272,12 @@ export const validateCheckInForm = ({
     }
     if (form.paxAdultMale && (Number(form.paxAdultMale) < 0 || Number.isNaN(Number(form.paxAdultMale)))) {
       errors.paxAdultMale = "Adult Male must be greater than or equal to 0"
+    }
+    if (form.paxAdultFemale && (Number(form.paxAdultFemale) < 0 || Number.isNaN(Number(form.paxAdultFemale)))) {
+      errors.paxAdultFemale = "Adult Female must be greater than or equal to 0"
+    }
+    if (form.paxChildren && (Number(form.paxChildren) < 0 || Number.isNaN(Number(form.paxChildren)))) {
+      errors.paxChildren = "Children must be greater than or equal to 0"
     }
   }
 

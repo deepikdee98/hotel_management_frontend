@@ -16,6 +16,13 @@ import {
 import { Search, Download, Printer, Eye } from "lucide-react"
 import { getAccountsReceipts, type AccountsPayment } from "@/services/api/accounts.service"
 import { useToast } from "@/hooks/use-toast"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 // Receipts loaded from API
 
@@ -23,11 +30,16 @@ function formatCurrency(value: unknown) {
   return `₹${Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+function sourceLabel(sourceModule?: string) {
+  return sourceModule === "front-office" ? "Front Office" : "Manual"
+}
+
 export default function ReceiptsPage() {
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  const [sourceFilter, setSourceFilter] = useState("all")
   const [receipts, setReceipts] = useState<AccountsPayment[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -35,7 +47,7 @@ export default function ReceiptsPage() {
     let active = true
     setLoading(true)
 
-    getAccountsReceipts({ search: searchQuery, fromDate: dateFrom, toDate: dateTo, limit: 100 })
+    getAccountsReceipts({ search: searchQuery, fromDate: dateFrom, toDate: dateTo, sourceModule: sourceFilter, limit: 100 })
       .then((result) => {
         if (!active) return
         setReceipts(result.receipts)
@@ -53,7 +65,7 @@ export default function ReceiptsPage() {
     return () => {
       active = false
     }
-  }, [searchQuery, dateFrom, dateTo, toast])
+  }, [searchQuery, dateFrom, dateTo, sourceFilter, toast])
 
   const sourceReceipts = receipts.map((receipt) => ({
     id: receipt.id,
@@ -65,6 +77,7 @@ export default function ReceiptsPage() {
     paymentMode: receipt.mode,
     reference: receipt.reference || "-",
     receivedBy: "-",
+    sourceModule: receipt.sourceModule,
   }))
 
   const filteredReceipts = sourceReceipts.filter((receipt) => {
@@ -141,6 +154,16 @@ export default function ReceiptsPage() {
                 onChange={(e) => setDateTo(e.target.value)}
                 placeholder="To"
               />
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sources</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="front-office">Front Office</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
@@ -155,6 +178,7 @@ export default function ReceiptsPage() {
                 <TableHead>Payment Mode</TableHead>
                 <TableHead>Reference</TableHead>
                 <TableHead>Amount</TableHead>
+                <TableHead>Source</TableHead>
                 <TableHead>Received By</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -162,7 +186,7 @@ export default function ReceiptsPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">Loading receipts...</TableCell>
+                  <TableCell colSpan={10} className="py-8 text-center text-muted-foreground">Loading receipts...</TableCell>
                 </TableRow>
               )}
               {!loading && filteredReceipts.map((receipt) => (
@@ -179,6 +203,11 @@ export default function ReceiptsPage() {
                   </TableCell>
                   <TableCell className="text-muted-foreground">{receipt.reference}</TableCell>
                   <TableCell className="font-medium text-primary">{formatCurrency(receipt.amount)}</TableCell>
+                  <TableCell>
+                    <Badge variant={receipt.sourceModule === "front-office" ? "secondary" : "outline"}>
+                      {sourceLabel(receipt.sourceModule)}
+                    </Badge>
+                  </TableCell>
                   <TableCell>{receipt.receivedBy}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
@@ -194,7 +223,7 @@ export default function ReceiptsPage() {
               ))}
               {!loading && filteredReceipts.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">No receipts found.</TableCell>
+                  <TableCell colSpan={10} className="py-8 text-center text-muted-foreground">No receipts found.</TableCell>
                 </TableRow>
               )}
             </TableBody>
