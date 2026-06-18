@@ -379,7 +379,7 @@ export default function TransactionsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
+                <TableHead>Transaction #</TableHead>
                 <TableHead>Date & Time</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Category</TableHead>

@@ -262,7 +262,7 @@ export default function InvoicesPage() {
               )}
               {!loading && filteredInvoices.map((inv) => (
                 <TableRow key={inv.id}>
-                  <TableCell className="font-medium">{inv.invoiceNumber || inv.id}</TableCell>
+                  <TableCell className="font-medium">{inv.invoiceNumber}</TableCell>
                   <TableCell>{inv.guestName}</TableCell>
                   <TableCell>{inv.room}</TableCell>
                   <TableCell>

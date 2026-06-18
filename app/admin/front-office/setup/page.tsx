@@ -371,6 +371,10 @@ export default function FOSetupPage() {
   const [hotelLogoPreview, setHotelLogoPreview] = useState("")
   const [isHotelLogoUploading, setIsHotelLogoUploading] = useState(false)
 
+  const [paymentQrFile, setPaymentQrFile] = useState<File | null>(null)
+  const [paymentQrPreview, setPaymentQrPreview] = useState("")
+  const [isPaymentQrUploading, setIsPaymentQrUploading] = useState(false)
+
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [addType, setAddType] = useState("")
   const [expandedFloors, setExpandedFloors] = useState<string[]>([])
@@ -528,6 +532,14 @@ export default function FOSetupPage() {
         currentFinancialYear: loadedHotelConfig?.currentFinancialYear || "",
         financialYearFormat: loadedHotelConfig?.financialYearFormat || "YYYY-YY",
         logo: loadedHotelConfig?.logo || null,
+        paymentQrCode: loadedHotelConfig?.paymentQrCode || null,
+        bankDetails: {
+          accountName: loadedHotelConfig?.bankDetails?.accountName || "",
+          accountNumber: loadedHotelConfig?.bankDetails?.accountNumber || "",
+          bankName: loadedHotelConfig?.bankDetails?.bankName || "",
+          ifscCode: loadedHotelConfig?.bankDetails?.ifscCode || "",
+          branchName: loadedHotelConfig?.bankDetails?.branchName || "",
+        },
       })
       setHotelLogoFile(null)
       if (loadedHotelConfig?.logo?.key) {
@@ -536,6 +548,15 @@ export default function FOSetupPage() {
           .catch(() => setHotelLogoPreview(loadedHotelConfig?.logo?.url || ""))
       } else {
         setHotelLogoPreview(loadedHotelConfig?.logo?.url || "")
+      }
+
+      setPaymentQrFile(null)
+      if (loadedHotelConfig?.paymentQrCode?.key) {
+        getHotelLogoReadUrl(loadedHotelConfig.paymentQrCode.key)
+          .then((url) => setPaymentQrPreview(url))
+          .catch(() => setPaymentQrPreview(loadedHotelConfig?.paymentQrCode?.url || ""))
+      } else {
+        setPaymentQrPreview(loadedHotelConfig?.paymentQrCode?.url || "")
       }
     } catch (error: any) {
       toast({
@@ -569,16 +590,35 @@ export default function FOSetupPage() {
     if (!file) return
 
     if (!file.type.startsWith("image/")) {
-      toast({
-        title: "Invalid file",
-        description: "Please choose an image file for the hotel logo.",
-        variant: "destructive",
-      })
+      toast.error("Invalid file: Please choose an image file (PNG, JPG, etc.) for the hotel logo.")
       return
     }
 
     setHotelLogoFile(file)
   }
+
+  const handlePaymentQrChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+
+    if (!file) return
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Invalid file: Please choose an image file (PNG, JPG, etc.) for the payment QR code.")
+      return
+    }
+
+    setPaymentQrFile(file)
+  }
+
+  useEffect(() => {
+    if (!paymentQrFile) return
+
+    const previewUrl = URL.createObjectURL(paymentQrFile)
+    setPaymentQrPreview(previewUrl)
+
+    return () => URL.revokeObjectURL(previewUrl)
+  }, [paymentQrFile])
 
   const toggleFloor = (floorId: string) => {
     setExpandedFloors(prev =>
@@ -729,18 +769,49 @@ export default function FOSetupPage() {
   }
 
   const handleSaveHotelConfig = async () => {
-    if (!hotelConfigForm.name || !hotelConfigForm.address) {
-      toast({
-        title: "Validation error",
-        description: "Hotel name and address are required",
-        variant: "destructive"
-      })
+    // Basic Required Fields
+    if (!hotelConfigForm.name?.trim()) {
+      toast.error("Hotel name is required")
       return
+    }
+    if (!hotelConfigForm.address?.trim()) {
+      toast.error("Hotel address is required")
+      return
+    }
+    if (!hotelConfigForm.phone?.trim()) {
+      toast.error("Hotel phone number is required")
+      return
+    }
+    if (!hotelConfigForm.email?.trim()) {
+      toast.error("Hotel email address is required")
+      return
+    }
+
+    // Email Validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(hotelConfigForm.email)) {
+      toast.error("Please enter a valid email address")
+      return
+    }
+
+    // Bank Details Validation (Partial validation - if any field is entered, others should be there or just basic check)
+    if (hotelConfigForm.bankDetails) {
+      const { accountName, accountNumber, bankName, ifscCode } = hotelConfigForm.bankDetails
+      if ((accountName || accountNumber || bankName || ifscCode) && 
+          !(accountName && accountNumber && bankName && ifscCode)) {
+        toast.error("Please complete all bank account details (Name, Number, Bank, and IFSC)")
+        return
+      }
     }
 
     try {
       setIsHotelLogoUploading(Boolean(hotelLogoFile))
-      const uploadedLogo = hotelLogoFile ? await uploadHotelLogo(hotelLogoFile) : hotelConfigForm.logo
+      setIsPaymentQrUploading(Boolean(paymentQrFile))
+      const [uploadedLogo, uploadedQr] = await Promise.all([
+        hotelLogoFile ? uploadHotelLogo(hotelLogoFile) : Promise.resolve(hotelConfigForm.logo),
+        paymentQrFile ? uploadHotelLogo(paymentQrFile) : Promise.resolve(hotelConfigForm.paymentQrCode)
+      ])
+
       const result = await updateSetupHotelConfig({
         name: hotelConfigForm.name,
         address: hotelConfigForm.address,
@@ -761,12 +832,15 @@ export default function FOSetupPage() {
         currentFinancialYear: hotelConfigForm.currentFinancialYear || null,
         financialYearFormat: hotelConfigForm.financialYearFormat,
         logo: uploadedLogo || null,
+        paymentQrCode: uploadedQr || null,
+        bankDetails: hotelConfigForm.bankDetails,
       })
 
       const updatedHotel = (result as any)?.hotel || {
         ...hotelConfig,
         ...hotelConfigForm,
         logo: uploadedLogo || hotelConfigForm.logo || null,
+        paymentQrCode: uploadedQr || hotelConfigForm.paymentQrCode || null,
       }
 
       setHotelConfig(updatedHotel)
@@ -792,14 +866,31 @@ export default function FOSetupPage() {
         currentFinancialYear: updatedHotel.currentFinancialYear || hotelConfigForm.currentFinancialYear || "",
         financialYearFormat: updatedHotel.financialYearFormat || hotelConfigForm.financialYearFormat || "YYYY-YY",
         logo: updatedHotel.logo || uploadedLogo || null,
+        paymentQrCode: updatedHotel.paymentQrCode || uploadedQr || null,
+        bankDetails: {
+          accountName: updatedHotel.bankDetails?.accountName || hotelConfigForm.bankDetails?.accountName || "",
+          accountNumber: updatedHotel.bankDetails?.accountNumber || hotelConfigForm.bankDetails?.accountNumber || "",
+          bankName: updatedHotel.bankDetails?.bankName || hotelConfigForm.bankDetails?.bankName || "",
+          ifscCode: updatedHotel.bankDetails?.ifscCode || hotelConfigForm.bankDetails?.ifscCode || "",
+          branchName: updatedHotel.bankDetails?.branchName || hotelConfigForm.bankDetails?.branchName || "",
+        },
       })
       setHotelLogoFile(null)
+      setPaymentQrFile(null)
       let nextLogoPreview = updatedHotel.logo?.url || uploadedLogo?.url || ""
       if ((updatedHotel.logo?.key || uploadedLogo?.key)) {
         nextLogoPreview = await getHotelLogoReadUrl(updatedHotel.logo?.key || uploadedLogo?.key)
           .catch(() => nextLogoPreview)
       }
       setHotelLogoPreview(nextLogoPreview)
+
+      let nextQrPreview = updatedHotel.paymentQrCode?.url || uploadedQr?.url || ""
+      if ((updatedHotel.paymentQrCode?.key || uploadedQr?.key)) {
+        nextQrPreview = await getHotelLogoReadUrl(updatedHotel.paymentQrCode?.key || uploadedQr?.key)
+          .catch(() => nextQrPreview)
+      }
+      setPaymentQrPreview(nextQrPreview)
+
       window.dispatchEvent(new CustomEvent("hotel-logo-updated", {
         detail: { logoUrl: nextLogoPreview },
       }))
@@ -1822,22 +1913,113 @@ export default function FOSetupPage() {
                       <p className="text-xs text-muted-foreground">Saved under hotel logo folder in S3</p>
                     </div>
                     <Input id="hotel-logo-upload" type="file" accept="image/*" className="hidden" onChange={handleHotelLogoChange} />
-                    <Button type="button" variant="outline" size="sm" asChild>
+                    <Button type="button" variant="outline" size="sm" asChild disabled={isHotelLogoUploading}>
                       <Label htmlFor="hotel-logo-upload" className="cursor-pointer">
-                        <Upload className="mr-2 h-4 w-4" />
+                        {isHotelLogoUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
                         Upload
                       </Label>
                     </Button>
                   </div>
                 </div>
+                
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2"><Label>Total Floors</Label><Input type="number" value={floors.length} readOnly /></div>
                   <div className="space-y-2"><Label>Total Rooms</Label><Input type="number" value={totalRooms} readOnly /></div>
                 </div>
-                <Button className="w-full" onClick={handleSaveHotelConfig} disabled={isHotelLogoUploading}>
-                  {isHotelLogoUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                <Button className="w-full" onClick={handleSaveHotelConfig} disabled={isHotelLogoUploading || isPaymentQrUploading}>
+                  {(isHotelLogoUploading || isPaymentQrUploading) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Save Hotel Details
                 </Button>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Bank Account Details</CardTitle>
+                <CardDescription>Configure bank account details to be printed on guest invoices.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Account Name</Label>
+                  <Input 
+                    value={hotelConfigForm.bankDetails?.accountName || ""} 
+                    onChange={(e) => setHotelConfigForm({ 
+                      ...hotelConfigForm, 
+                      bankDetails: { ...hotelConfigForm.bankDetails, accountName: e.target.value } 
+                    })} 
+                    placeholder="e.g., Grand Hotel Pvt Ltd"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Account Number</Label>
+                  <Input 
+                    value={hotelConfigForm.bankDetails?.accountNumber || ""} 
+                    onChange={(e) => setHotelConfigForm({ 
+                      ...hotelConfigForm, 
+                      bankDetails: { ...hotelConfigForm.bankDetails, accountNumber: e.target.value } 
+                    })} 
+                    placeholder="Enter account number"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Bank Name</Label>
+                  <Input 
+                    value={hotelConfigForm.bankDetails?.bankName || ""} 
+                    onChange={(e) => setHotelConfigForm({ 
+                      ...hotelConfigForm, 
+                      bankDetails: { ...hotelConfigForm.bankDetails, bankName: e.target.value } 
+                    })} 
+                    placeholder="e.g., HDFC Bank, SBI"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>IFSC / SWIFT Code</Label>
+                    <Input 
+                      value={hotelConfigForm.bankDetails?.ifscCode || ""} 
+                      onChange={(e) => setHotelConfigForm({ 
+                        ...hotelConfigForm, 
+                        bankDetails: { ...hotelConfigForm.bankDetails, ifscCode: e.target.value.toUpperCase() } 
+                      })} 
+                      placeholder="IFSC Code"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Branch Name</Label>
+                    <Input 
+                      value={hotelConfigForm.bankDetails?.branchName || ""} 
+                      onChange={(e) => setHotelConfigForm({ 
+                        ...hotelConfigForm, 
+                        bankDetails: { ...hotelConfigForm.bankDetails, branchName: e.target.value } 
+                      })} 
+                      placeholder="Branch"
+                    />
+                  </div>
+                  
+                </div>
+                <div className="space-y-2">
+                  <Label>Payment QR Code</Label>
+                  <div className="flex items-center gap-3 rounded-md border border-input p-3">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+                      {paymentQrPreview ? (
+                        <img src={paymentQrPreview} alt="Payment QR preview" className="h-full w-full object-contain" />
+                      ) : (
+                        <ImageIcon className="h-7 w-7 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{paymentQrFile?.name || hotelConfigForm.paymentQrCode?.fileName || "No QR code selected"}</p>
+                      <p className="text-xs text-muted-foreground">Displayed on invoices for guest payments</p>
+                    </div>
+                    <Input id="payment-qr-upload" type="file" accept="image/*" className="hidden" onChange={handlePaymentQrChange} />
+                    <Button type="button" variant="outline" size="sm" asChild disabled={isPaymentQrUploading}>
+                      <Label htmlFor="payment-qr-upload" className="cursor-pointer">
+                        {isPaymentQrUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                        Upload
+                      </Label>
+                    </Button>
+                  </div>
+                </div>
+                <Button className="w-full" onClick={handleSaveHotelConfig}>Save Bank Details</Button>
               </CardContent>
             </Card>
             <Card>
@@ -1905,7 +2087,7 @@ export default function FOSetupPage() {
                 <Button className="w-full" onClick={handleSaveHotelConfig}>Save Settings</Button>
               </CardContent>
             </Card>
-            <Card className="xl:col-span-2">
+            <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Booking Number Settings</CardTitle>
                 <CardDescription>Configure the readable booking sequence used for new reservations and check-ins.</CardDescription>

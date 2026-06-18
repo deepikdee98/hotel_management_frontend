@@ -288,7 +288,7 @@ export default function ExpensesPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
+                <TableHead>Bill/Ref #</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Vendor</TableHead>
@@ -306,7 +306,7 @@ export default function ExpensesPage() {
               )}
               {!loading && filteredExpenses.map((expense) => (
                 <TableRow key={expense.id}>
-                  <TableCell className="font-medium">{expense.id}</TableCell>
+                  <TableCell className="font-medium">{expense.billNumber || expense.id.slice(-8)}</TableCell>
                   <TableCell>{expense.date}</TableCell>
                   <TableCell>
                     <div>{expense.category}</div>

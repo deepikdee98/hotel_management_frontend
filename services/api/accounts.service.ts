@@ -68,6 +68,9 @@ export interface CreateAccountsTransactionPayload {
 export interface AccountsPayment {
   id: string
   _id: string
+  receiptNumber?: string
+  invoiceId?: string
+  invoiceNumber?: string
   date: string
   payee: string
   payer: string
@@ -276,10 +279,24 @@ function mapTransaction(raw: JsonRecord, fallbackTransactionNumber?: string): Ac
 function mapPayment(raw: JsonRecord): AccountsPayment {
   const id = String(raw._id || raw.id || "")
   const reference = raw.utrNumber || raw.chequeNumber || raw.billNumber || raw.reference
+  
+  let invoiceId = ""
+  let invoiceNumber = ""
+  
+  if (raw.invoiceId && typeof raw.invoiceId === "object") {
+    const inv = raw.invoiceId as JsonRecord
+    invoiceId = String(inv._id || inv.id || "")
+    invoiceNumber = String(inv.invoiceNumber || "")
+  } else if (raw.invoiceId) {
+    invoiceId = String(raw.invoiceId)
+  }
 
   return {
     id,
     _id: id,
+    receiptNumber: raw.receiptNumber ? String(raw.receiptNumber) : undefined,
+    invoiceId: invoiceId || undefined,
+    invoiceNumber: invoiceNumber || undefined,
     date: String(raw.paymentDate || raw.createdAt || ""),
     payee: String(raw.vendorName || raw.payee || raw.customerName || raw.guestName || ""),
     payer: String(raw.customerName || raw.guestName || raw.vendorName || raw.payer || ""),

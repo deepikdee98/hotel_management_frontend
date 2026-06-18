@@ -69,10 +69,11 @@ export default function ReceiptsPage() {
 
   const sourceReceipts = receipts.map((receipt) => ({
     id: receipt.id,
+    receiptNumber: receipt.receiptNumber || receipt.id,
     date: receipt.date.slice(0, 10),
     time: receipt.date.includes("T") ? receipt.date.slice(11, 16) : "",
     guest: receipt.payer || receipt.payee,
-    invoiceId: receipt.reference || "-",
+    invoiceId: receipt.invoiceNumber || receipt.reference || "-",
     amount: receipt.amount,
     paymentMode: receipt.mode,
     reference: receipt.reference || "-",
@@ -83,6 +84,7 @@ export default function ReceiptsPage() {
   const filteredReceipts = sourceReceipts.filter((receipt) => {
     const matchesSearch = receipt.guest.toLowerCase().includes(searchQuery.toLowerCase()) ||
       receipt.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      receipt.receiptNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       receipt.invoiceId.toLowerCase().includes(searchQuery.toLowerCase())
     return matchesSearch
   })
@@ -191,7 +193,7 @@ export default function ReceiptsPage() {
               )}
               {!loading && filteredReceipts.map((receipt) => (
                 <TableRow key={receipt.id}>
-                  <TableCell className="font-medium">{receipt.id}</TableCell>
+                  <TableCell className="font-medium">{receipt.receiptNumber}</TableCell>
                   <TableCell>
                     <div>{receipt.date}</div>
                     <div className="text-xs text-muted-foreground">{receipt.time}</div>
