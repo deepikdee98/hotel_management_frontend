@@ -37,6 +37,7 @@ import {
   deleteSetupRatePlan,
   updateSetupHotelConfig,
   uploadHotelLogo,
+  uploadPaymentQrCode,
   getHotelLogoReadUrl,
   deleteSetupRoomConfig,
   updateSetupRoomConfig,
@@ -423,13 +424,13 @@ export default function FOSetupPage() {
     email: "",
     address: "",
     gstNumber: "",
-    type: "Company" as "Company" | "Travel Agent" | "OTA",
+    type: "Company" as "Company" | "Travel Agent",
     creditAllowed: false,
     creditLimit: 0,
     status: true
   })
 
-  const normalizeRegistration = (item: any, fallbackType: "Company" | "Travel Agent" | "OTA" = "Company", source: "company" | "travelAgent" = "company") => ({
+  const normalizeRegistration = (item: any, fallbackType: "Company" | "Travel Agent" = "Company", source: "company" | "travelAgent" = "company") => ({
     ...item,
     _id: String(item?._id || item?.id || ""),
     name: String(item?.name || ""),
@@ -841,7 +842,7 @@ export default function FOSetupPage() {
       setIsPaymentQrUploading(Boolean(paymentQrFile))
       const [uploadedLogo, uploadedQr] = await Promise.all([
         hotelLogoFile ? uploadHotelLogo(hotelLogoFile) : Promise.resolve(hotelConfigForm.logo),
-        paymentQrFile ? uploadHotelLogo(paymentQrFile) : Promise.resolve(hotelConfigForm.paymentQrCode)
+        paymentQrFile ? uploadPaymentQrCode(paymentQrFile) : Promise.resolve(hotelConfigForm.paymentQrCode)
       ])
 
       const result = await updateSetupHotelConfig({
@@ -1214,10 +1215,10 @@ export default function FOSetupPage() {
   }
 
   const handleCreateService = async () => {
-    if (!genericForm.name || !genericForm.code || genericForm.defaultPrice == null) {
+    if (!genericForm.name?.trim()) {
       toast({
         title: "Error",
-        description: "Name, Code and Price are required",
+        description: "Service name is required",
         variant: "destructive",
       });
       return;
@@ -1225,10 +1226,10 @@ export default function FOSetupPage() {
 
     try {
       await createSetupService({
-        name: genericForm.name,
-        code: genericForm.code,
+        name: genericForm.name.trim(),
+        code: genericForm.code?.trim(),
         category: genericForm.category || "Other",
-        defaultPrice: Number(genericForm.defaultPrice),
+        defaultPrice: Number(genericForm.defaultPrice || 0),
         chargeType: genericForm.chargeType || "PER_STAY",
         gstApplicable: !!genericForm.gstApplicable,
         gstPercentage: Number(genericForm.gstPercentage || 0),
@@ -1314,7 +1315,7 @@ export default function FOSetupPage() {
     setSelectedCompany(company)
     setCompanyForm({
       name: company.name,
-      code: company.code,
+      code: company.code || "",
       contactPerson: company.contactPerson || "",
       phone: company.phone || "",
       email: company.email || "",
@@ -1356,10 +1357,10 @@ export default function FOSetupPage() {
 
   const handleSaveCompany = async () => {
     try {
-      if (!companyForm.name.trim() || !companyForm.code.trim()) {
+      if (!companyForm.name.trim()) {
         toast({
           title: "Error",
-          description: "Name and code are required",
+          description: "Name is required",
           variant: "destructive",
         })
         return
@@ -1380,7 +1381,7 @@ export default function FOSetupPage() {
           : normalizeRegistration(await createCompany(companyForm), companyForm.type, "company")
         if (!savedRegistration._id) {
           savedRegistration = normalizeRegistration(
-            { ...companyForm, _id: `local-${companyForm.type}-${companyForm.code}` },
+            { ...companyForm, _id: `local-${companyForm.type}-${Date.now()}` },
             companyForm.type,
             companyForm.type === "Travel Agent" ? "travelAgent" : "company"
           )
@@ -1822,7 +1823,7 @@ export default function FOSetupPage() {
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
                 <CardTitle className="text-lg">Company Registration</CardTitle>
-                <CardDescription>Manage companies, travel agents, and OTAs for bookings</CardDescription>
+                <CardDescription>Manage companies and travel agents for bookings</CardDescription>
               </div>
               <Button size="sm" onClick={() => {
                 setSelectedCompany(null);
@@ -1870,7 +1871,9 @@ export default function FOSetupPage() {
                           {company.type}
                         </Badge>
                       </TableCell>
-                      <TableCell><Badge variant="secondary">{company.code}</Badge></TableCell>
+                      <TableCell>
+                        {company.code ? <Badge variant="secondary">{company.code}</Badge> : <span className="text-muted-foreground">-</span>}
+                      </TableCell>
                       <TableCell className="font-medium">{company.name}</TableCell>
                       <TableCell>
                         <div className="text-sm">
@@ -2040,7 +2043,7 @@ export default function FOSetupPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{paymentQrFile?.name || hotelConfigForm.paymentQrCode?.fileName || "No QR code selected"}</p>
-                      <p className="text-xs text-muted-foreground">Displayed on invoices for guest payments</p>
+                      <p className="text-xs text-muted-foreground">Saved under hotel QRCode folder in S3</p>
                     </div>
                     <Input id="payment-qr-upload" type="file" accept="image/*" className="hidden" onChange={handlePaymentQrChange} />
                     <Button type="button" variant="outline" size="sm" asChild disabled={isPaymentQrUploading}>
@@ -2747,7 +2750,6 @@ export default function FOSetupPage() {
                 <SelectContent>
                   <SelectItem value="Company">Company</SelectItem>
                   <SelectItem value="Travel Agent">Travel Agent</SelectItem>
-                  <SelectItem value="OTA">OTA</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -2761,12 +2763,12 @@ export default function FOSetupPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="company-code">Code *</Label>
+              <Label htmlFor="company-code">Code</Label>
               <Input
                 id="company-code"
                 value={companyForm.code}
                 onChange={(e) => setCompanyForm({ ...companyForm, code: e.target.value.toUpperCase() })}
-                placeholder="Enter company code"
+                placeholder="Enter code"
                 maxLength={10}
               />
             </div>

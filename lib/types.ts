@@ -149,13 +149,13 @@ export interface Company {
   _id: string
   hotelId: string
   name: string
-  code: string
+  code?: string
   contactPerson?: string
   phone?: string
   email?: string
   address?: string
   gstNumber?: string
-  type: "Company" | "Travel Agent" | "OTA"
+  type: "Company" | "Travel Agent"
   creditAllowed: boolean
   creditLimit: number
   status: boolean
@@ -168,7 +168,7 @@ export interface TravelAgent {
   _id: string
   hotelId: string
   name: string
-  code: string
+  code?: string
   contactPerson?: string
   phone?: string
   email?: string

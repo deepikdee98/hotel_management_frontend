@@ -184,7 +184,7 @@ export async function updateSetupHotelConfig(payload: JsonRecord) {
   })
 }
 
-export async function uploadHotelLogo(file: File) {
+async function uploadHotelImage(file: File, uploadType: "hotel-logo" | "payment-qr-code", fallbackFileName: string, errorLabel: string) {
   const contentType = file.type || "image/png"
   const presign = await apiRequest<{
     success: boolean
@@ -197,9 +197,9 @@ export async function uploadHotelLogo(file: File) {
   }>("/uploads/presign", {
     method: "POST",
     body: JSON.stringify({
-      fileName: file.name || "logo.png",
+      fileName: file.name || fallbackFileName,
       contentType,
-      uploadType: "hotel-logo",
+      uploadType,
       fileSize: file.size,
       storageScope: "hotel",
     }),
@@ -215,16 +215,24 @@ export async function uploadHotelLogo(file: File) {
 
   if (!upload.ok) {
     const text = await upload.text().catch(() => "")
-    throw new Error(text || "Failed to upload hotel logo to S3")
+    throw new Error(text || `Failed to upload ${errorLabel} to S3`)
   }
 
   return {
     url: presign.data.fileUrl,
     key: presign.data.key,
-    fileName: file.name || "logo.png",
+    fileName: file.name || fallbackFileName,
     contentType: presign.data.contentType || contentType,
     uploadedAt: new Date().toISOString(),
   }
+}
+
+export async function uploadHotelLogo(file: File) {
+  return uploadHotelImage(file, "hotel-logo", "logo.png", "hotel logo")
+}
+
+export async function uploadPaymentQrCode(file: File) {
+  return uploadHotelImage(file, "payment-qr-code", "QRCode.png", "payment QR code")
 }
 
 export async function getHotelLogoReadUrl(key: string) {

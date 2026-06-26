@@ -411,7 +411,7 @@ export function CheckInForm({
 
   useEffect(() => {
     const fetchReferralData = async () => {
-      if (["Travel Agent", "Company", "OTA"].includes(form.referredByType)) {
+      if (["Travel Agent", "Company"].includes(form.referredByType)) {
         try {
           const data = await getReferrals(form.referredByType);
           const cached = getCachedCompanyRegistrations(form.referredByType);
@@ -1960,14 +1960,14 @@ export function CheckInForm({
                           <Select value={form.referredByType} onValueChange={v => handleChange("referredByType", v)}>
                             <SelectTrigger className={errorClass("referredByType")}><SelectValue placeholder="Select Source" /></SelectTrigger>
                             <SelectContent>
-                              {["Walk-in", "Travel Agent", "Company", "OTA", "Member", "In-house", "Complimentary"].map(type => (
+                              {["Walk-in", "Travel Agent", "Company", "Member", "In-house", "Complimentary"].map(type => (
                                 <SelectItem key={type} value={type}>{type}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                         </FormField>
                         <FormField label="Referred By Name" required>
-                          {["Travel Agent", "Company", "OTA", "Member"].includes(form.referredByType) ? (
+                          {["Travel Agent", "Company", "Member"].includes(form.referredByType) ? (
                             <Select value={form.referredById} onValueChange={v => handleChange("referredById", v)}>
                               <SelectTrigger className={errorClass("referredById")}><SelectValue placeholder="Select Name" /></SelectTrigger>
                               <SelectContent>
