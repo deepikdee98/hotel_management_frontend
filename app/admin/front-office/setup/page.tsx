@@ -361,7 +361,7 @@ export default function FOSetupPage() {
     }
   }
 
-  const [activeTab, setActiveTab] = useState("room-config")
+  const [activeTab, setActiveTab] = useState("hotel-config")
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([])
   const [ratePlans, setRatePlans] = useState<any[]>([])
   const [services, setServices] = useState<any[]>([])
@@ -1442,12 +1442,12 @@ export default function FOSetupPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList>
-          <TabsTrigger value="room-config"><Layers className="h-4 w-4 mr-1.5" />Room Configuration</TabsTrigger>
+          <TabsTrigger value="hotel-config"><Building className="h-4 w-4 mr-1.5" />Hotel Config</TabsTrigger>
           <TabsTrigger value="room-types"><BedDouble className="h-4 w-4 mr-1.5" />Room Types</TabsTrigger>
+          <TabsTrigger value="room-config"><Layers className="h-4 w-4 mr-1.5" />Room Configuration</TabsTrigger>
           <TabsTrigger value="rate-plans"><CreditCard className="h-4 w-4 mr-1.5" />Rate Plans</TabsTrigger>
           <TabsTrigger value="service-codes"><Tags className="h-4 w-4 mr-1.5" />Services</TabsTrigger>
           <TabsTrigger value="companies"><Building className="h-4 w-4 mr-1.5" />Company Registration</TabsTrigger>
-          <TabsTrigger value="hotel-config"><Building className="h-4 w-4 mr-1.5" />Hotel Config</TabsTrigger>
           <TabsTrigger value="master-data"><Settings className="h-4 w-4 mr-1.5" />Master Data</TabsTrigger>
         </TabsList>
 
@@ -2269,19 +2269,21 @@ export default function FOSetupPage() {
           setNewRoomConfig({ roomTypeId: "", acType: "NON_AC", count: "", startNumber: "" })
         }
       }}>
-        <DialogContent>
+        <DialogContent className="overflow-hidden sm:max-w-[560px]">
           <DialogHeader>
             <DialogTitle>{isEditingRoomConfig ? "Edit Room Configuration" : `Add Rooms to ${selectedFloor?.name}`}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="min-w-0 space-y-4 py-2">
             <div className="space-y-2">
               <Label>Room Type</Label>
               <Select
                 value={newRoomConfig.roomTypeId}
                 onValueChange={(val) => setNewRoomConfig({ ...newRoomConfig, roomTypeId: val })}
               >
-                <SelectTrigger><SelectValue placeholder="Select room type" /></SelectTrigger>
-                <SelectContent>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select room type" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[calc(100vw-2rem)]">
                   {roomTypes.map(rt => (
                     <SelectItem key={rt._id} value={String(rt._id)}>
                       {rt.name} ({rt.code}) - Non AC {formatOptionalRate(rt.nonAcRate)} / AC {formatOptionalRate(rt.acRate)}
@@ -2303,7 +2305,7 @@ export default function FOSetupPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Number of Rooms</Label>
                 <Input
@@ -2360,7 +2362,7 @@ export default function FOSetupPage() {
                 }
               /></div>
               <div className="space-y-2"><Label>Code</Label><Input
-                placeholder="Code"
+                placeholder="Optional code"
                 value={genericForm.code || ""}
                 onChange={(e) =>
                   setGenericForm({ ...genericForm, code: e.target.value.toUpperCase() })
