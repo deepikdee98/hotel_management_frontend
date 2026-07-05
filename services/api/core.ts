@@ -1,6 +1,7 @@
 import type { Guest, Hotel, Reservation, Room, Staff, Company, TravelAgent, GRCardData, Folio, HousekeepingTask, InventoryItem, POSItem, POSOrder, Service } from "@/lib/types"
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3002"
+export const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://api-staging.zentrictechnology.com"
+// const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3002"
 const TOKEN_STORAGE_KEY = "hotel_manager_tokens"
 const AUTH_STORAGE_KEY = "hotel_manager_auth"
 const SUBSCRIPTION_STORAGE_KEY = "hotel_manager_subscription"

@@ -19,7 +19,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 const AUTH_STORAGE_KEY = "hotel_manager_auth"
 const AUTH_TOKEN_STORAGE_KEY = "hotel_manager_tokens"
 const SUBSCRIPTION_STORAGE_KEY = "hotel_manager_subscription"
-const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3002"
+// const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3002"
+const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://api-staging.zentrictechnology.com"
 
 function pickModules(...sources: unknown[]): ModuleType[] {
   for (const source of sources) {
