@@ -183,7 +183,11 @@ export const CreateReservationDialog = memo(function CreateReservationDialog({
                     <SelectItem value="auto">Auto-assign</SelectItem>
                     {availableRooms
                       .filter((room) => !formData.roomType || room.roomTypeId === formData.roomType)
-                      .map((room) => <SelectItem key={room.id} value={room.number}>{room.number} - {room.type}</SelectItem>)}
+                      .map((room) => (
+                        <SelectItem key={room.id} value={room.number}>
+                          {room.number} - {room.type} ({room.acType === "AC" ? "AC" : "Non AC"})
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

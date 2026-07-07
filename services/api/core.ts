@@ -107,12 +107,20 @@ async function getFreshAccessToken() {
 
 async function requestWithToken(path: string, init: RequestInit | undefined, token: string | null) {
   const url = `${API_BASE_URL}${path}`
+  const shouldSendPropertyHeader = !path.startsWith("/front-office/properties")
+  
+  let activePropId = null;
+  if (shouldSendPropertyHeader && typeof window !== "undefined") {
+    activePropId = window.localStorage.getItem("activePropertyId");
+  }
+
   try {
     return await fetch(url, {
       ...init,
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(activePropId ? { "X-Property-Id": activePropId, "x-hotel-id": activePropId } : {}),
         ...(init?.headers || {}),
       },
       cache: "no-store",
@@ -363,6 +371,7 @@ export function mapReservation(raw: JsonRecord): Reservation {
 
 export function mapHotel(raw: JsonRecord): Hotel {
   const status = String(raw.status || (raw.isActive ? "active" : "inactive"))
+  const company = raw.companyId && typeof raw.companyId === "object" ? raw.companyId as JsonRecord : null
   return {
     id: String(raw._id || raw.id || ""),
     name: String(raw.name || ""),
@@ -371,7 +380,14 @@ export function mapHotel(raw: JsonRecord): Hotel {
     country: String(raw.country || ""),
     phone: String(raw.phone || ""),
     email: String(raw.email || ""),
-    modules: Array.isArray(raw.modules) ? (raw.modules as Hotel["modules"]) : [],
+	    propertyCode: raw.propertyCode ? String(raw.propertyCode) : undefined,
+	    companyId: company ? String(company._id || company.id || "") : raw.companyId ? String(raw.companyId) : undefined,
+	    companyName: company ? String(company.name || "") : undefined,
+	    companyCode: company ? String(company.code || "") : undefined,
+	    companySubscriptionPlan: company ? String(company.subscriptionPlan || "") : undefined,
+	    companyMaxAllowedProperties: company?.maxAllowedProperties !== undefined ? Number(company.maxAllowedProperties) : undefined,
+	    isStandalone: raw.isStandalone !== undefined ? Boolean(raw.isStandalone) : !raw.companyId,
+	    modules: Array.isArray(raw.modules) ? (raw.modules as Hotel["modules"]) : [],
     status: status === "active" || status === "inactive" || status === "pending" || status === "suspended" ? status : "inactive",
     isActive: Boolean(raw.isActive ?? true),
     subscriptionStatus: raw.subscriptionStatus as Hotel["subscriptionStatus"],

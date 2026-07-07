@@ -148,7 +148,13 @@ export default function HousekeepingPage() {
     }
   }
 
-  const filteredTasks = tasks.filter((task) => {
+  const activeHousekeepingTasks = tasks.filter((task) => {
+    if (task.status === "cancelled") return false
+    if (task.taskType === "checkout" && task.room?.status === "occupied") return false
+    return true
+  })
+
+  const filteredTasks = activeHousekeepingTasks.filter((task) => {
     const matchesSearch =
       task.room.roomNumber.includes(searchQuery) ||
       (task.assignedToName || "").toLowerCase().includes(searchQuery.toLowerCase())
@@ -156,15 +162,15 @@ export default function HousekeepingPage() {
     return matchesSearch && matchesStatus
   })
 
-  const stats = {
-    total: tasks.length,
-    completed: tasks.filter(t => t.status === "completed").length,
-    inProgress: tasks.filter(t => t.status === "in-progress").length,
-    highPriority: tasks.filter(t => t.priority === "high" || t.priority === "urgent").length,
-    dirtyRooms: rooms.filter(room => room.hkStatus === "dirty").length,
-  }
-
   const dirtyRooms = rooms.filter((room) => room.hkStatus === "dirty")
+
+  const stats = {
+    total: activeHousekeepingTasks.length,
+    completed: activeHousekeepingTasks.filter(t => t.status === "completed").length,
+    inProgress: activeHousekeepingTasks.filter(t => t.status === "in-progress").length,
+    highPriority: activeHousekeepingTasks.filter(t => t.priority === "high" || t.priority === "urgent").length,
+    dirtyRooms: dirtyRooms.length,
+  }
 
   const handleAssignDirtyRoom = (room: Room) => {
     setNewTask({

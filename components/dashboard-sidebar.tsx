@@ -43,11 +43,12 @@ import {
   Mail,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
+import { cn } from "@/lib/utils"
 import type { UserRole, ModuleType } from "@/lib/types"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import Image from "next/image"
+import { PropertySwitcher } from "@/components/front-office/property-switcher"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3002"
 const AUTH_TOKEN_STORAGE_KEY = "hotel_manager_tokens"
@@ -88,7 +89,7 @@ const SUPER_ADMIN_NAV: NavItem[] = [
 
 const HOTEL_NAV: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
-  { label: "Staff", href: "/admin/staff", icon: Users, roles: ["admin"] },
+  { label: "Staff", href: "/admin/staff", icon: Users, roles: ["company-admin", "admin"] },
   {
     label: "Front Office",
     href: "/admin/front-office",
@@ -119,6 +120,7 @@ const HOTEL_NAV: NavItem[] = [
         ]
       },
       { label: "Reservation", href: "/admin/front-office/reservation", icon: CalendarCheck },
+      { label: "Stay View", href: "/admin/front-office/stay-view", icon: CalendarCheck },
       { label: "Room Dashboard", href: "/admin/front-office/room-dashboard", icon: BedDouble },
       { label: "Day End Process", href: "/admin/front-office/day-end", icon: Moon },
       { label: "Lookups", href: "/admin/front-office/lookups", icon: Search },
@@ -152,12 +154,15 @@ const HOTEL_NAV: NavItem[] = [
   },
   { label: "Inventory", href: "/admin/inventory", icon: Package, module: "inventory" },
   { label: "Reports", href: "/admin/reports", icon: BarChart, module: "reports" },
+  { label: "Company Settings", href: "/admin/company-management", icon: Building2, roles: ["company-admin", "super-admin"] },
+  { label: "Properties", href: "/admin/property-management", icon: Building, roles: ["company-admin", "super-admin"] },
 ]
 
 function getNavItems(role: UserRole): NavItem[] {
   switch (role) {
     case "super-admin":
       return SUPER_ADMIN_NAV
+    case "company-admin":
     case "admin":
     case "staff":
       return HOTEL_NAV
@@ -360,6 +365,9 @@ export function DashboardSidebar({
             </div>
           </div>
         )}
+
+        {/* Property Switcher */}
+        {!collapsed && <PropertySwitcher />}
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">

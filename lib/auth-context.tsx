@@ -424,6 +424,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const normalized = String(r || "").toLowerCase()
         if (normalized === "superadmin" || normalized === "super-admin")
           return "super-admin"
+        if (normalized === "companyadmin" || normalized === "company-admin")
+          return "company-admin"
         if (normalized === "hoteladmin" || normalized === "admin")
           return "admin"
         return "staff"
@@ -462,6 +464,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           modules: pickModules(userData.modules, hotelData?.modules),
           hotelId: userData.hotelId || hotelData?._id || hotelData?.id,
           hotelName: userData.hotelName || hotelData?.name,
+          companyId: userData.companyId || payload.companyId || null,
+          propertyIds: userData.propertyIds || payload.propertyIds || [],
+          defaultPropertyId: userData.defaultPropertyId || payload.defaultPropertyId || null,
+          permissions: userData.permissions || payload.permissions || [],
           expiryDate: payloadExpiryDate,
           needsSetup: payload.needsSetup || payload.data?.needsSetup || false,
         }
@@ -477,8 +483,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           modules: pickModules(data.modules, payload.data?.modules, payload.modules, hotelData?.modules),
           hotelId: data.hotelId || hotelData?._id || hotelData?.id,
           hotelName: data.hotelName || hotelData?.name,
+          companyId: data.companyId || payload.companyId || null,
+          propertyIds: data.propertyIds || payload.propertyIds || [],
+          defaultPropertyId: data.defaultPropertyId || payload.defaultPropertyId || null,
+          permissions: data.permissions || payload.permissions || [],
           expiryDate: payloadExpiryDate || pickExpiryDate(data, hotelData),
           needsSetup: payload.needsSetup || payload.data?.needsSetup || false,
+        }
+      }
+
+      // Initialize active property ID in localStorage
+      if (typeof window !== "undefined") {
+        const propIds = userProfile.propertyIds || []
+        if (userProfile.role === "company-admin" && propIds.length > 0) {
+          window.localStorage.setItem("activePropertyId", userProfile.defaultPropertyId || propIds[0])
+        } else {
+          window.localStorage.removeItem("activePropertyId")
         }
       }
 

@@ -87,3 +87,21 @@ export async function updateStaffReservationStatus(id: string, status: string) {
     body: JSON.stringify({ status }),
   });
 }
+
+export async function getStayViewData(startDate: string, endDate: string, roomType?: string, search?: string) {
+  const query = new URLSearchParams()
+  if (startDate) query.set("startDate", startDate)
+  if (endDate) query.set("endDate", endDate)
+  if (roomType && roomType !== "all") query.set("roomType", roomType)
+  if (search) query.set("search", search)
+  
+  return apiRequest<{
+    success: boolean
+    data: {
+      rooms: any[]
+      reservations: any[]
+      blocks: any[]
+      dailyStats: Record<string, any>
+    }
+  }>(`/front-office/stay-view/data?${query.toString()}`)
+}

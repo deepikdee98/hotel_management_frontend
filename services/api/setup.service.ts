@@ -227,8 +227,55 @@ async function uploadHotelImage(file: File, uploadType: "hotel-logo" | "payment-
   }
 }
 
+async function uploadChainImage(file: File, uploadType: "chain-logo", fallbackFileName: string, errorLabel: string) {
+  const contentType = file.type || "image/png"
+  const presign = await apiRequest<{
+    success: boolean
+    data: {
+      uploadUrl: string
+      fileUrl: string
+      key: string
+      contentType: string
+    }
+  }>("/uploads/presign", {
+    method: "POST",
+    body: JSON.stringify({
+      fileName: file.name || fallbackFileName,
+      contentType,
+      uploadType,
+      fileSize: file.size,
+      storageScope: "chain",
+    }),
+  })
+
+  const upload = await fetch(presign.data.uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": presign.data.contentType || contentType,
+    },
+    body: file,
+  })
+
+  if (!upload.ok) {
+    const text = await upload.text().catch(() => "")
+    throw new Error(text || `Failed to upload ${errorLabel} to S3`)
+  }
+
+  return {
+    url: presign.data.fileUrl,
+    key: presign.data.key,
+    fileName: file.name || fallbackFileName,
+    contentType: presign.data.contentType || contentType,
+    uploadedAt: new Date().toISOString(),
+  }
+}
+
 export async function uploadHotelLogo(file: File) {
   return uploadHotelImage(file, "hotel-logo", "logo.png", "hotel logo")
+}
+
+export async function uploadChainLogo(file: File) {
+  return uploadChainImage(file, "chain-logo", "logo.png", "company logo")
 }
 
 export async function uploadPaymentQrCode(file: File) {
@@ -249,12 +296,6 @@ export async function getHotelLogoReadUrl(key: string) {
   })
 
   return response.data.readUrl
-}
-
-export async function completeHotelSetup() {
-  return apiRequest<{ success: boolean; message: string }>("/admin/setup/hotel-config/complete-setup", {
-    method: "POST",
-  })
 }
 
 // Floors & Rooms

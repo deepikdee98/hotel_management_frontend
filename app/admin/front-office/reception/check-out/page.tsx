@@ -11,10 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
 import { DoorOpen, Printer, Pencil, Loader2, Star, CheckCircle2, X, AlertCircle, ArrowRight } from "lucide-react"
-import { getInHouseGuests, getFolioDetails, createCheckOut, getSetupRoomTypes, getSetupRatePlans, getSetupOptions, downloadCheckoutInvoice } from "@/lib/backend-api"
+import { getInHouseGuests, getFolioDetails, createCheckOut, getSetupRoomTypes, getSetupRatePlans, getSetupOptions, downloadCheckoutInvoice, undoCheckOut } from "@/lib/backend-api"
 import { toast } from "sonner"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { RotateCcw } from "lucide-react"
 
 export default function CheckOutPage() {
   const router = useRouter()
@@ -39,6 +41,8 @@ export default function CheckOutPage() {
   const [ratePlans, setRatePlans] = useState<any[]>([])
   const [checkoutResult, setCheckoutResult] = useState<any>(null)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [isUndoDialogOpen, setIsUndoDialogOpen] = useState(false)
+  const [undoing, setUndoing] = useState(false)
 
   const getGuestRoomNumber = (guest: any) => {
     return String(guest?.roomNumber ?? guest?.room?.roomNumber ?? guest?.room?.number ?? guest?.room?.roomNo ?? "").trim()
@@ -221,12 +225,15 @@ export default function CheckOutPage() {
     try {
       const response = await getInHouseGuests()
       if (response.success) {
-        setInHouseGuests(response.data.guests || [])
+        const guests = response.data.guests || []
+        setInHouseGuests(guests)
+        return guests
       }
     } catch (error) {
       console.error("Failed to fetch in-house guests:", error)
       toast.error("Failed to load in-house guests")
     }
+    return []
   }
 
   const handleRoomChange = async (roomNumber: string, selectedGuest?: any) => {
@@ -461,6 +468,60 @@ export default function CheckOutPage() {
     }
   }
 
+  const handleUndoCheckout = async () => {
+    if (!checkoutResult?.folioId) {
+      toast.error("No folio information found to undo checkout")
+      return
+    }
+
+    setUndoing(true)
+    try {
+      const roomToRestore = checkoutResult.roomNumber
+      const response = await undoCheckOut({
+        folioId: checkoutResult.folioId,
+        reason: "Manual reversal via HMS UI",
+      })
+      if (response.success) {
+        toast.success("Checkout undone successfully. Guest is now active.")
+        
+        // Hide success card and dialog
+        setShowSuccess(false)
+        setIsUndoDialogOpen(false)
+        
+        // Reset all checkout-related local states
+        setCheckoutResult(null)
+        setAmountPaidEdited(false)
+        setAmountPaid(0)
+        setDiscount(0)
+        setExtraManualCharges(0)
+        setDamageCharges(0)
+        setMinibarCharges(0)
+        setLateCheckoutHours(0)
+        setLateCheckoutCharges(0)
+        setComments("")
+        setRating(5)
+
+        // Refresh in-house guests and restore selection
+        const refreshedGuests = await fetchInHouseGuests()
+        
+        // Restore the room selection to show the active check-in screen
+        if (roomToRestore) {
+          const restoredGuest = refreshedGuests.find((guest) => getGuestRoomNumber(guest) === String(roomToRestore).trim())
+          if (restoredGuest) {
+            await handleRoomChange(roomToRestore, restoredGuest)
+          } else {
+            setSelectedRoom("")
+            setFolioData(null)
+          }
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to undo checkout")
+    } finally {
+      setUndoing(false)
+    }
+  }
+
   const selectedRoomGuests = useMemo(
     () => inHouseGuests.filter(g => getGuestRoomNumber(g) === String(selectedRoom).trim()),
     [inHouseGuests, selectedRoom]
@@ -587,6 +648,9 @@ export default function CheckOutPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 border-green-600 text-green-700 hover:bg-green-100" onClick={() => setIsUndoDialogOpen(true)}>
+                  <RotateCcw className="h-3.5 w-3.5" /> Undo Checkout
+                </Button>
                 <Button size="sm" className="h-8 text-xs gap-1.5 bg-green-600 hover:bg-green-700" onClick={handleDownloadGeneratedBills}>
                   <Printer className="h-3.5 w-3.5" /> Generate Bill
                 </Button>
@@ -597,6 +661,42 @@ export default function CheckOutPage() {
             </CardContent>
           </Card>
         )}
+
+        <Dialog open={isUndoDialogOpen} onOpenChange={setIsUndoDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Undo Checkout</DialogTitle>
+              <div className="space-y-3 pt-2 text-sm text-muted-foreground">
+                <p>This will:</p>
+                <ul className="space-y-1 font-medium text-foreground">
+                  <li className="flex items-center gap-2 text-green-600">
+                    <CheckCircle2 className="h-4 w-4" /> Restore the guest to Checked In
+                  </li>
+                  <li className="flex items-center gap-2 text-green-600">
+                    <CheckCircle2 className="h-4 w-4" /> Mark the room as Occupied
+                  </li>
+                  <li className="flex items-center gap-2 text-green-600">
+                    <CheckCircle2 className="h-4 w-4" /> Reopen the guest folio
+                  </li>
+                </ul>
+              </div>
+            </DialogHeader>
+            <DialogFooter className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setIsUndoDialogOpen(false)} disabled={undoing}>
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleUndoCheckout} 
+                disabled={undoing}
+                className="gap-2"
+              >
+                {undoing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                Undo Checkout
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {loading ? (
           <div className="flex h-64 items-center justify-center">

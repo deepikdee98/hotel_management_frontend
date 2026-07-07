@@ -41,7 +41,7 @@ export default function UnifiedDashboard() {
   const { user, hasAccess } = useAuth()
   const { toast } = useToast()
   const userRole = user?.role as string | undefined
-  const isAdmin = userRole === "admin" || userRole === "hoteladmin"
+  const isAdmin = userRole === "admin" || userRole === "hoteladmin" || userRole === "company-admin" || userRole === "companyadmin"
   const canAccessFrontOffice = hasAccess("front-office")
 
   const [rooms, setRooms] = useState<any[]>([])

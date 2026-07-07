@@ -192,6 +192,64 @@ export function CheckInForm({
 
   const hasRoomDraft = hasCurrentRoomDraft(form)
   const queuedRoomCount = pendingRooms.length + (hasRoomDraft ? 1 : 0)
+  const [checkoutTimeEdited, setCheckoutTimeEdited] = useState(false);
+
+  const titleOptions = useSetupOptions("title")
+  const genderOptions = useSetupOptions("gender")
+  const nationalityOptions = useSetupOptions("nationality")
+  const countryOptions = useSetupOptions("country")
+  const stayTypeOptions = useSetupOptions("stayType")
+  const occupancyTypeOptions = useSetupOptions("occupancyType")
+  const referralOptions = useSetupOptions("referral")
+  const purposeOfVisitOptions = useSetupOptions("purpose")
+  const businessSourceOptions = useSetupOptions("businessSource")
+  const marketSegmentOptions = useSetupOptions("marketSegment")
+  const checkoutPlanOptions = useSetupOptions("checkoutPlan")
+  const guestClassificationOptions = useSetupOptions("guestClassification")
+  const guestTypeOptions = useSetupOptions("guestType")
+  const paymentModeOptions = useSetupOptions("paymentMode")
+  const ledgerAccountOptions = useSetupOptions("ledgerAccount")
+  const idProofTypeOptions = useSetupOptions("idProof")
+  const vehicleTypeOptions = useSetupOptions("vehicleType")
+  const ledgerGroupOptions = useSetupOptions("ledgerGroup")
+  const bookingCategoryOptions = useSetupOptions("bookingCategory")
+  const requiredStayTypes = ["Walk-in", "In-house", "Complimentary"]
+  const stayTypeItems = (() => {
+    const setupItems = Array.isArray(stayTypeOptions.data) ? stayTypeOptions.data : []
+    const existingValues = new Set(
+      setupItems.map((item: any) => String(item?.value || "").trim().toLowerCase()).filter(Boolean)
+    )
+    const missingItems = requiredStayTypes
+      .filter((value) => !existingValues.has(value.toLowerCase()))
+      .map((value) => ({ _id: `required-${value}`, value, isActive: true }))
+    return [...setupItems, ...missingItems]
+  })()
+
+  useEffect(() => {
+    if (form.checkInDate && form.checkInTime && form.checkoutPlan) {
+      const selectedPlan = checkoutPlanOptions.data.find(opt => opt.value === form.checkoutPlan);
+
+      const metadata = getCheckoutPlanMetadata(
+        form.checkoutPlan,
+        (selectedPlan as any)?.metadata as CheckoutPlanMetadata | undefined
+      );
+
+      if (metadata) {
+        const result = calculateCheckoutDateTime(
+          form.checkInDate,
+          form.checkInTime,
+          metadata
+        );
+        if (result) {
+          setForm(prev => ({
+            ...prev,
+            checkOutDate: result.date,
+            checkOutTime: checkoutTimeEdited ? prev.checkOutTime : result.time
+          }));
+        }
+      }
+    }
+  }, [form.checkInDate, form.checkInTime, form.checkoutPlan, checkoutPlanOptions.data, checkoutTimeEdited]);
 
   useEffect(() => {
     if (isEditMode) return
@@ -257,63 +315,6 @@ export function CheckInForm({
       return hotelsIndex >= 0 ? url.slice(hotelsIndex).split("?")[0] : ""
     }
   }
-
-  const titleOptions = useSetupOptions("title")
-  const genderOptions = useSetupOptions("gender")
-  const nationalityOptions = useSetupOptions("nationality")
-  const countryOptions = useSetupOptions("country")
-  const stayTypeOptions = useSetupOptions("stayType")
-  const occupancyTypeOptions = useSetupOptions("occupancyType")
-  const referralOptions = useSetupOptions("referral")
-  const purposeOfVisitOptions = useSetupOptions("purpose")
-  const businessSourceOptions = useSetupOptions("businessSource")
-  const marketSegmentOptions = useSetupOptions("marketSegment")
-  const checkoutPlanOptions = useSetupOptions("checkoutPlan")
-  const guestClassificationOptions = useSetupOptions("guestClassification")
-  const guestTypeOptions = useSetupOptions("guestType")
-  const paymentModeOptions = useSetupOptions("paymentMode")
-  const ledgerAccountOptions = useSetupOptions("ledgerAccount")
-  const idProofTypeOptions = useSetupOptions("idProof")
-  const vehicleTypeOptions = useSetupOptions("vehicleType")
-  const ledgerGroupOptions = useSetupOptions("ledgerGroup")
-  const bookingCategoryOptions = useSetupOptions("bookingCategory")
-  const requiredStayTypes = ["Walk-in", "In-house", "Complimentary"]
-  const stayTypeItems = (() => {
-    const setupItems = Array.isArray(stayTypeOptions.data) ? stayTypeOptions.data : []
-    const existingValues = new Set(
-      setupItems.map((item: any) => String(item?.value || "").trim().toLowerCase()).filter(Boolean)
-    )
-    const missingItems = requiredStayTypes
-      .filter((value) => !existingValues.has(value.toLowerCase()))
-      .map((value) => ({ _id: `required-${value}`, value, isActive: true }))
-    return [...setupItems, ...missingItems]
-  })()
-
-  useEffect(() => {
-    if (form.checkInDate && form.checkInTime && form.checkoutPlan) {
-      const selectedPlan = checkoutPlanOptions.data.find(opt => opt.value === form.checkoutPlan);
-
-      const metadata = getCheckoutPlanMetadata(
-        form.checkoutPlan,
-        (selectedPlan as any)?.metadata as CheckoutPlanMetadata | undefined
-      );
-
-      if (metadata) {
-        const result = calculateCheckoutDateTime(
-          form.checkInDate,
-          form.checkInTime,
-          metadata
-        );
-        if (result) {
-          setForm(prev => ({
-            ...prev,
-            checkOutDate: result.date,
-            checkOutTime: result.time
-          }));
-        }
-      }
-    }
-  }, [form.checkInDate, form.checkInTime, form.checkoutPlan, checkoutPlanOptions.data]);
 
   useEffect(() => {
     // Auto-calculate PAX counts based on Main Guest and Companions
@@ -781,6 +782,14 @@ export function CheckInForm({
       lastCheckedMobile.current = ""
       setForm(prev => ({ ...prev, mobile: sanitized }))
       return
+    }
+
+    if (field === "checkOutTime") {
+      setCheckoutTimeEdited(true)
+    }
+
+    if (field === "checkoutPlan") {
+      setCheckoutTimeEdited(false)
     }
 
     setForm(prev => ({ ...prev, [field]: value }))
@@ -2156,7 +2165,13 @@ export function CheckInForm({
                   <FormField label="Check-Out Date (Auto/Editable)">
                     <Input className={errorClass("checkOutDate")} type="date" value={form.checkOutDate} onChange={e => handleChange("checkOutDate", e.target.value)} />
                   </FormField>
-                  <FormField label="Check-Out Time (Auto)"><Input value={form.checkOutTime} readOnly className="bg-muted" /></FormField>
+                  <FormField label="Check-Out Time (Auto/Editable)">
+                    <Input
+                      type="time"
+                      value={form.checkOutTime}
+                      onChange={e => handleChange("checkOutTime", e.target.value)}
+                    />
+                  </FormField>
                 </div>
 
                 <fieldset disabled={(isEditMode && isEditing && isStaff) || mode === "pax"} title={(isEditMode && isEditing && isStaff) || mode === "pax" ? "Read-only in PAX mode" : undefined} className="space-y-4">
