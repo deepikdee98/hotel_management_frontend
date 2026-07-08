@@ -19,11 +19,23 @@ export function SetupPopup() {
   const { user } = useAuth()
   const [open, setOpen] = useState(false)
 
+  const setupPromptKey = user
+    ? `setup-popup-shown:${user.hotelId || "hotel"}:${user.id || (user as any)._id || user.email || "user"}`
+    : ""
+
   useEffect(() => {
-    if ((user?.role === "admin" || user?.role === "company-admin") && user?.needsSetup) {
+    if (!user || !setupPromptKey) return
+
+    const canShowSetupPrompt =
+      (user.role === "admin" || user.role === "company-admin") &&
+      user.needsSetup &&
+      sessionStorage.getItem(setupPromptKey) !== "true"
+
+    if (canShowSetupPrompt) {
+      sessionStorage.setItem(setupPromptKey, "true")
       setOpen(true)
     }
-  }, [user])
+  }, [user, setupPromptKey])
 
   const handleConfirm = () => {
     setOpen(false)

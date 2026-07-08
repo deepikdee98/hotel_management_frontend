@@ -31,13 +31,15 @@ import {
   LogIn,
   LogOut,
   CalendarDays,
-  Settings
+  Settings,
+  Lock
 } from "lucide-react"
 import { 
   getStayViewData, 
   updateFrontOfficeReservation, 
   createFrontOfficeReservation, 
   updateFrontOfficeReservationStatus, 
+  blockRoom,
   getSetupRoomTypes, 
   getSetupRatePlans, 
   getGRCard,
@@ -87,6 +89,74 @@ const parseLocalDate = (dateStr: string): Date => {
   return parseSafeDate(dateStr)
 }
 
+const getRoomId = (item: any): string => String(item?.roomId || item?.room?._id || item?.room || "")
+
+const getTimelineStart = (resv: any): Date => {
+  return parseSafeDate(resv?.timeline?.startDate || resv?.checkIn || resv?.checkInDate)
+}
+
+const getTodayDate = (): Date => parseSafeDate(formatLocalDate(new Date()))
+
+const maxDate = (...dates: Date[]): Date => {
+  return dates.reduce((latest, date) => date > latest ? date : latest, dates[0])
+}
+
+const getTimelineEnd = (resv: any): Date => {
+  const rawEnd = parseSafeDate(resv?.timeline?.endDate || resv?.checkOut || resv?.checkOutDate)
+
+  if (resv?.status === "checked-in" && !resv?.actualCheckOutTime && !resv?.timeline?.actualCheckOutDate) {
+    const plannedEnd = parseSafeDate(resv?.timeline?.plannedCheckOutDate || resv?.scheduledCheckOutDate || resv?.checkOut || resv?.checkOutDate)
+    const todayThrough = addDays(getTodayDate(), 1)
+    return maxDate(rawEnd, plannedEnd, todayThrough)
+  }
+
+  return rawEnd
+}
+
+const getPlannedCheckOut = (resv: any): Date => {
+  return parseSafeDate(resv?.timeline?.plannedCheckOutDate || resv?.scheduledCheckOutDate || resv?.checkOut || resv?.checkOutDate)
+}
+
+const getActualCheckOut = (resv: any): Date => {
+  return parseSafeDate(resv?.timeline?.actualCheckOutDate || resv?.actualCheckOutTime || resv?.checkOut || resv?.checkOutDate)
+}
+
+const getTimelineStatus = (resv: any): string => {
+  if (resv?.status === "checked-in" && !resv?.actualCheckOutTime && !resv?.timeline?.actualCheckOutDate) {
+    return getTodayDate() > getPlannedCheckOut(resv) ? "overstay" : "in-house"
+  }
+
+  return String(resv?.timeline?.status || (resv?.isOverstay ? "overstay" : resv?.status || "reserved"))
+}
+
+const isTimelineActiveOnDate = (resv: any, date: Date): boolean => {
+  const day = parseSafeDate(formatLocalDate(date))
+  return day >= getTimelineStart(resv) && day < getTimelineEnd(resv)
+}
+
+const isActualOccupancy = (resv: any): boolean => {
+  if (typeof resv?.timeline?.isActualOccupancy === "boolean") return resv.timeline.isActualOccupancy
+  return resv?.status === "checked-in" || resv?.status === "checked-out"
+}
+
+const getOverstayNights = (resv: any): number => {
+  if (resv?.status !== "checked-in" || resv?.actualCheckOutTime || resv?.timeline?.actualCheckOutDate) {
+    return Number(resv?.overstayNights || resv?.timeline?.overstayNights || 0)
+  }
+
+  return Math.max(0, differenceInDays(getTodayDate(), getPlannedCheckOut(resv)))
+}
+
+const getTimelineNights = (resv: any): number => {
+  if (resv?.status === "checked-in" && !resv?.actualCheckOutTime && !resv?.timeline?.actualCheckOutDate) {
+    return differenceInDays(getTimelineEnd(resv), getTimelineStart(resv))
+  }
+
+  const timelineNights = Number(resv?.timeline?.nights)
+  if (Number.isFinite(timelineNights) && timelineNights > 0) return timelineNights
+  return differenceInDays(getTimelineEnd(resv), getTimelineStart(resv))
+}
+
 const formatDayHeader = (date: Date): { dayName: string; dayNum: string; isWeekend: boolean } => {
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
   return {
@@ -96,12 +166,20 @@ const formatDayHeader = (date: Date): { dayName: string; dayNum: string; isWeeke
   }
 }
 
+const getAcSectionKey = (room: any): "ac" | "non-ac" => {
+  const value = String(room?.acType || room?.ac || room?.airConditioning || room?.roomType?.acType || "").toLowerCase()
+  return value.includes("non") || value.includes("non-ac") || value.includes("non ac") ? "non-ac" : "ac"
+}
+
+const getAcSectionLabel = (key: string): string => key === "non-ac" ? "Non-AC" : "AC"
+
 export default function StayViewPage() {
   const router = useRouter()
   
   // Timeline dates state
   const [timelineStartStr, setTimelineStartStr] = useState<string>(() => formatLocalDate(new Date()))
-  const [visibleDays, setVisibleDays] = useState<number>(15)
+  const [visibleDays, setVisibleDays] = useState<number>(20)
+  const [currentDateStr, setCurrentDateStr] = useState<string>(() => formatLocalDate(new Date()))
   
   // Data state
   const [rooms, setRooms] = useState<any[]>([])
@@ -134,6 +212,7 @@ export default function StayViewPage() {
   const [isViewOpen, setIsViewOpen] = useState<boolean>(false)
   const [isEditOpen, setIsEditOpen] = useState<boolean>(false)
   const [isNewOpen, setIsNewOpen] = useState<boolean>(false)
+  const [isBlockOpen, setIsBlockOpen] = useState<boolean>(false)
   const [newResDetails, setNewResDetails] = useState<any>(null) // Stores { roomId, checkIn, checkOut } if slot clicked
 
   // Drag and drop states
@@ -166,6 +245,13 @@ export default function StayViewPage() {
     x: number
     y: number
     reservation: any
+  } | null>(null)
+
+  const [cellActionMenu, setCellActionMenu] = useState<{
+    x: number
+    y: number
+    room: any
+    date: Date
   } | null>(null)
 
   // Form inputs state
@@ -208,6 +294,15 @@ export default function StayViewPage() {
     advanceAmount: "0",
     paymentMode: "",
     totalAmount: "0"
+  })
+
+  const [blockFormData, setBlockFormData] = useState<any>({
+    roomId: "",
+    roomNumber: "",
+    roomType: "",
+    from: "",
+    to: "",
+    remark: "Maintenance"
   })
 
   // Size configurations
@@ -276,33 +371,52 @@ export default function StayViewPage() {
 
   useEffect(() => {
     fetchData()
-  }, [timelineStartStr, visibleDays, roomTypeFilter, searchQuery])
+  }, [timelineStartStr, visibleDays, roomTypeFilter, searchQuery, currentDateStr])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const nextDateStr = formatLocalDate(new Date())
+      setCurrentDateStr(prev => prev === nextDateStr ? prev : nextDateStr)
+    }, 60 * 1000)
+
+    return () => window.clearInterval(timer)
+  }, [])
 
   // Status pills live calculations
   const statusCounts = useMemo(() => {
-    const todayStr = formatLocalDate(new Date())
+    const today = parseSafeDate(formatLocalDate(new Date()))
 
     // Count how many rooms have active check-ins today
     const occupiedRoomIds = new Set(
       reservations
-        .filter(r => r.status === "checked-in")
-        .map(r => String(r.roomId || r.room?._id || r.room || ""))
+        .filter(r => isActualOccupancy(r) && r.status !== "checked-out" && isTimelineActiveOnDate(r, today))
+        .map(r => getRoomId(r))
         .filter(Boolean)
     )
 
     // Count how many rooms have confirmed/no-show reservations in the visible range
     const reservedRoomIds = new Set(
       reservations
-        .filter(r => r.status === "confirmed" || r.status === "no-show")
-        .map(r => String(r.roomId || r.room?._id || r.room || ""))
+        .filter(r => (r.status === "confirmed" || r.status === "no-show") && getTimelineEnd(r) > today)
+        .map(r => getRoomId(r))
+        .filter(Boolean)
+    )
+
+    const checkedOutRoomIds = new Set(
+      reservations
+        .filter(r => r.status === "checked-out")
+        .map(r => getRoomId(r))
         .filter(Boolean)
     )
 
     // Count blocked rooms in visible range
     const blockedRoomIds = new Set(
       blocks
-        .filter(b => b.isActive)
-        .map(b => String(b.room))
+        .filter(b => b.isActive && 
+          formatLocalDate(today) >= formatLocalDate(parseSafeDate(b.from)) && 
+          formatLocalDate(today) <= formatLocalDate(parseSafeDate(b.to))
+        )
+        .map(b => getRoomId(b))
         .filter(Boolean)
     )
 
@@ -316,15 +430,16 @@ export default function StayViewPage() {
       vacant: Math.max(0, rooms.length - occupiedRoomIds.size - blockedRoomIds.size),
       occupied: occupiedRoomIds.size,
       reserved: reservedRoomIds.size,
+      checkedOut: checkedOutRoomIds.size,
       blocked: blockedRoomIds.size,
-      dueOut: reservations.filter(r => r.status === "checked-in" && (r.checkOut || r.checkOutDate) === todayStr).length,
+      dueOut: reservations.filter(r => r.status === "checked-in" && getTimelineStatus(r) !== "overstay" && formatLocalDate(getPlannedCheckOut(r)) === formatLocalDate(today)).length,
       dirty: dirtyRoomsCount
     }
-  }, [rooms, reservations, blocks])
+  }, [rooms, reservations, blocks, currentDateStr])
 
   // Filtered rooms based on Room Type, Search AND Top Status Pill Selected
   const filteredRooms = useMemo(() => {
-    const todayStr = formatLocalDate(new Date())
+    const today = parseSafeDate(formatLocalDate(new Date()))
     
     return rooms.filter(room => {
       const matchesType = roomTypeFilter === "all" || String(room.roomType?._id || room.roomType || "") === roomTypeFilter
@@ -337,11 +452,13 @@ export default function StayViewPage() {
       // Status Pill Filter logic
       if (activeStatusFilter === "vacant") {
         const isOccupied = reservations.some(r => 
-          String(r.roomId || r.room?._id || r.room || "") === roomId && 
-          r.status === "checked-in"
+          getRoomId(r) === roomId &&
+          isActualOccupancy(r) &&
+          r.status !== "checked-out" &&
+          isTimelineActiveOnDate(r, today)
         )
         const isBlocked = blocks.some(b => 
-          String(b.room) === roomId && 
+          getRoomId(b) === roomId && 
           b.isActive
         )
         return !isOccupied && !isBlocked
@@ -349,21 +466,30 @@ export default function StayViewPage() {
       
       if (activeStatusFilter === "occupied") {
         return reservations.some(r => 
-          String(r.roomId || r.room?._id || r.room || "") === roomId && 
-          r.status === "checked-in"
+          getRoomId(r) === roomId &&
+          isActualOccupancy(r) &&
+          r.status !== "checked-out" &&
+          isTimelineActiveOnDate(r, today)
         )
       }
       
       if (activeStatusFilter === "reserved") {
         return reservations.some(r => 
-          String(r.roomId || r.room?._id || r.room || "") === roomId && 
+          getRoomId(r) === roomId &&
           (r.status === "confirmed" || r.status === "no-show")
+        )
+      }
+
+      if (activeStatusFilter === "checked-out") {
+        return reservations.some(r => 
+          getRoomId(r) === roomId &&
+          r.status === "checked-out"
         )
       }
       
       if (activeStatusFilter === "blocked") {
         return blocks.some(b => 
-          String(b.room) === roomId && 
+          getRoomId(b) === roomId && 
           b.isActive
         )
       }
@@ -374,30 +500,46 @@ export default function StayViewPage() {
       
       if (activeStatusFilter === "due-out") {
         return reservations.some(r => 
-          String(r.roomId || r.room?._id || r.room || "") === roomId && 
-          r.status === "checked-in" && 
-          (r.checkOut || r.checkOutDate) === todayStr
+          getRoomId(r) === roomId &&
+          r.status === "checked-in" &&
+          getTimelineStatus(r) !== "overstay" &&
+          formatLocalDate(getPlannedCheckOut(r)) === formatLocalDate(today)
         )
       }
 
       return true
     })
-  }, [rooms, reservations, blocks, roomTypeFilter, searchQuery, activeStatusFilter])
+  }, [rooms, reservations, blocks, roomTypeFilter, searchQuery, activeStatusFilter, currentDateStr])
 
-  // Group rooms by Room Type
+  // Group rooms by Room Type, then AC / Non-AC section
   const roomGroups = useMemo(() => {
-    const groups: Array<{ typeId: string; typeName: string; rooms: any[] }> = []
+    const groups: Array<{ typeId: string; typeName: string; sections: Array<{ sectionId: string; sectionName: string; rooms: any[] }> }> = []
     
     filteredRooms.forEach(room => {
       const typeId = String(room.roomType?._id || room.roomType || "other")
       const typeName = room.roomType?.name || room.type || "Other Rooms"
+      const sectionId = getAcSectionKey(room)
+      const sectionName = getAcSectionLabel(sectionId)
       
       let group = groups.find(g => g.typeId === typeId)
       if (!group) {
-        group = { typeId, typeName, rooms: [] }
+        group = { typeId, typeName, sections: [] }
         groups.push(group)
       }
-      group.rooms.push(room)
+
+      let section = group.sections.find(s => s.sectionId === sectionId)
+      if (!section) {
+        section = { sectionId, sectionName, rooms: [] }
+        group.sections.push(section)
+      }
+      section.rooms.push(room)
+    })
+
+    groups.forEach(group => {
+      group.sections.sort((a, b) => {
+        const order = { "ac": 0, "non-ac": 1 } as Record<string, number>
+        return (order[a.sectionId] ?? 99) - (order[b.sectionId] ?? 99)
+      })
     })
     
     return groups
@@ -408,13 +550,17 @@ export default function StayViewPage() {
     const list: any[] = []
     roomGroups.forEach(group => {
       if (!collapsedTypes[group.typeId]) {
-        list.push(...group.rooms)
+        group.sections.forEach(section => {
+          if (!collapsedTypes[`${group.typeId}:${section.sectionId}`]) {
+            list.push(...section.rooms)
+          }
+        })
       }
     })
     return list
   }, [roomGroups, collapsedTypes])
 
-  // Map room _id to vertical cumulative top pixel coordinates (group headers: 40px, room rows: 64px)
+  // Map room _id to vertical cumulative top pixel coordinates (group headers: 40px, AC section headers: 32px, room rows: 64px)
   const roomTopOffsets = useMemo(() => {
     const map = new Map<string, number>()
     let currentTop = 0
@@ -424,10 +570,16 @@ export default function StayViewPage() {
       currentTop += 40
       
       if (!collapsedTypes[group.typeId]) {
-        group.rooms.forEach(room => {
-          map.set(String(room._id), currentTop)
-          // Room row height: 64px
-          currentTop += 64
+        group.sections.forEach(section => {
+          currentTop += 32
+
+          if (!collapsedTypes[`${group.typeId}:${section.sectionId}`]) {
+            section.rooms.forEach(room => {
+              map.set(String(room._id), currentTop)
+              // Room row height: 64px
+              currentTop += 64
+            })
+          }
         })
       }
     })
@@ -520,27 +672,23 @@ export default function StayViewPage() {
     
     reservations.forEach(resv => {
       if (!resv.roomId && !resv.room?._id && !resv.room) return
-      const resRoomId = String(resv.roomId || resv.room?._id || resv.room || "")
+      const resRoomId = getRoomId(resv)
       if (!groupRoomIds.has(resRoomId)) return
 
-      const checkIn = parseSafeDate(resv.checkIn || resv.checkInDate)
-      const checkOut = parseSafeDate(resv.checkOut || resv.checkOutDate)
-      
-      const dTime = date.getTime()
-      if (dTime >= checkIn.getTime() && dTime < checkOut.getTime()) {
+      if (isTimelineActiveOnDate(resv, date)) {
         busyRooms.add(resRoomId)
       }
     })
 
     blocks.forEach(blk => {
-      const blkRoomId = String(blk.room)
+      const blkRoomId = getRoomId(blk)
       if (!groupRoomIds.has(blkRoomId) || !blk.isActive) return
 
       const bFrom = parseSafeDate(blk.from)
       const bTo = parseSafeDate(blk.to)
       
       const dTime = date.getTime()
-      if (dTime >= bFrom.getTime() && dTime < bTo.getTime()) {
+      if (dTime >= bFrom.getTime() && dTime <= bTo.getTime()) {
         busyRooms.add(blkRoomId)
       }
     })
@@ -551,8 +699,7 @@ export default function StayViewPage() {
     return { available, price }
   }
 
-  // Handle slot click (prefill creation dialog)
-  const handleCellClick = (room: any, date: Date) => {
+  const prepareReservationFormForSlot = (room: any, date: Date) => {
     const checkIn = formatLocalDate(date)
     const checkOut = formatLocalDate(addDays(date, 1))
     
@@ -581,7 +728,38 @@ export default function StayViewPage() {
       paymentMode: paymentModeOptions[0]?.value || "Cash",
       totalAmount: String(estimates.total)
     })
+  }
+
+  const openReservationForSlot = (room: any, date: Date) => {
+    prepareReservationFormForSlot(room, date)
     setIsNewOpen(true)
+  }
+
+  const openBlockForSlot = (room: any, date: Date) => {
+    const from = formatLocalDate(date)
+    const to = formatLocalDate(addDays(date, 1))
+
+    setBlockFormData({
+      roomId: room._id,
+      roomNumber: room.roomNumber,
+      roomType: room.roomType?.name || room.roomType?.code || room.type || "",
+      from,
+      to,
+      remark: "Maintenance"
+    })
+    setIsBlockOpen(true)
+  }
+
+  // Handle slot click (choose reservation or maintenance block)
+  const handleCellClick = (event: React.MouseEvent, room: any, date: Date) => {
+    event.stopPropagation()
+    setContextMenu(null)
+    setCellActionMenu({
+      x: event.clientX,
+      y: event.clientY,
+      room,
+      date
+    })
   }
 
   // Create reservation action
@@ -613,6 +791,69 @@ export default function StayViewPage() {
     } catch (err: any) {
       console.error(err)
       toast.error(err.message || "Failed to create reservation")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleCreateBlock = async () => {
+    if (!blockFormData.roomId || !blockFormData.from || !blockFormData.to || !blockFormData.remark.trim()) {
+      toast.error("Please fill in room, date range, and reason")
+      return
+    }
+
+    const fromDate = parseLocalDate(blockFormData.from)
+    const toDate = parseLocalDate(blockFormData.to)
+    if (fromDate >= toDate) {
+      toast.error("Block end date must be after start date")
+      return
+    }
+
+    const roomId = String(blockFormData.roomId)
+    const reservationOverlap = reservations.some((resv) => {
+      if (getRoomId(resv) !== roomId) return false
+      if (resv.status === "checked-out") return false
+      return getTimelineStart(resv) < toDate && getTimelineEnd(resv) > fromDate
+    })
+
+    if (reservationOverlap) {
+      toast.error("This room already has a reservation/stay during the selected dates")
+      return
+    }
+
+    const blockOverlap = blocks.some((block) => {
+      if (getRoomId(block) !== roomId || !block.isActive) return false
+      return parseSafeDate(block.from) <= toDate && parseSafeDate(block.to) >= fromDate
+    })
+
+    if (blockOverlap) {
+      toast.error("This room is already blocked during the selected dates")
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      await blockRoom({
+        roomId: blockFormData.roomId,
+        from: blockFormData.from,
+        to: blockFormData.to,
+        remark: blockFormData.remark
+      })
+
+      toast.success("Room blocked for maintenance")
+      setIsBlockOpen(false)
+      setBlockFormData({
+        roomId: "",
+        roomNumber: "",
+        roomType: "",
+        from: "",
+        to: "",
+        remark: "Maintenance"
+      })
+      fetchData()
+    } catch (err: any) {
+      console.error(err)
+      toast.error(err.message || "Failed to block room")
     } finally {
       setIsSaving(false)
     }
@@ -765,8 +1006,8 @@ export default function StayViewPage() {
 
     // 3. Validate blocks overlap
     const blockOverlap = blocks.some(b => {
-      if (String(b.room) !== roomId || !b.isActive) return false
-      return parseSafeDate(b.from) < checkOutDate && parseSafeDate(b.to) > checkInDate
+      if (getRoomId(b) !== roomId || !b.isActive) return false
+      return parseSafeDate(b.from) <= checkOutDate && parseSafeDate(b.to) >= checkInDate
     })
     if (blockOverlap) {
       return { valid: false, message: "Room is blocked for maintenance or special hold during these dates." }
@@ -780,7 +1021,7 @@ export default function StayViewPage() {
       const rRoomId = String(r.roomId || r.room?._id || r.room || '')
       if (rRoomId !== roomId) return false
       
-      return parseSafeDate(r.checkIn || r.checkInDate) < checkOutDate && parseSafeDate(r.checkOut || r.checkOutDate) > checkInDate
+      return getTimelineStart(r) < checkOutDate && getTimelineEnd(r) > checkInDate
     })
     if (resvOverlap) {
       return { valid: false, message: "This room is already reserved for the selected date range." }
@@ -1008,6 +1249,7 @@ export default function StayViewPage() {
   useEffect(() => {
     const handleOutsideClick = () => {
       setContextMenu(null)
+      setCellActionMenu(null)
     }
     window.addEventListener("click", handleOutsideClick)
     return () => window.removeEventListener("click", handleOutsideClick)
@@ -1025,10 +1267,26 @@ export default function StayViewPage() {
       case "checked-in":
         return "bg-green-600/80 border-green-700 text-white hover:bg-green-600" // Checked In
       case "checked-out":
-        return "bg-gray-400/80 border-gray-500 text-white hover:bg-gray-400"
+        return "bg-red-600/85 border-red-700 text-white hover:bg-red-600"
       default:
         return "bg-blue-500/80 border-blue-600 text-white hover:bg-blue-500"
     }
+  }
+
+  const getReservationColor = (resv: any) => {
+    const timelineStatus = getTimelineStatus(resv)
+    if (timelineStatus === "overstay") return "bg-orange-600/85 border-orange-700 text-white hover:bg-orange-600"
+    if (timelineStatus === "checked-out") return "bg-red-600/85 border-red-700 text-white hover:bg-red-600"
+    return getStatusColor(resv.status, formatLocalDate(getPlannedCheckOut(resv)))
+  }
+
+  const getReservationLabel = (resv: any) => {
+    const timelineStatus = getTimelineStatus(resv)
+    if (resv.isStatusOnly) return `Occupied • ${getTimelineNights(resv)} N`
+    if (timelineStatus === "overstay") return `Overstay +${getOverstayNights(resv)} N • ${getTimelineNights(resv)} N`
+    if (timelineStatus === "in-house") return `In-House • ${getTimelineNights(resv)} N`
+    if (timelineStatus === "checked-out") return `Checked Out ${formatLocalDate(getActualCheckOut(resv))} • ${getTimelineNights(resv)} N`
+    return `Reserved • ${getTimelineNights(resv)} N`
   }
 
   // Status indicators count pills lists
@@ -1037,6 +1295,7 @@ export default function StayViewPage() {
     { id: "vacant", label: "Vacant", count: statusCounts.vacant, color: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20" },
     { id: "occupied", label: "Occupied", count: statusCounts.occupied, color: "bg-green-600/10 text-green-700 border-green-600/30 hover:bg-green-600/20" },
     { id: "reserved", label: "Reserved", count: statusCounts.reserved, color: "bg-amber-500/10 text-amber-700 border-amber-500/30 hover:bg-amber-500/20" },
+    { id: "checked-out", label: "Checked Out", count: statusCounts.checkedOut, color: "bg-red-500/10 text-red-700 border-red-500/30 hover:bg-red-500/20" },
     { id: "blocked", label: "Blocked", count: statusCounts.blocked, color: "bg-rose-500/10 text-rose-700 border-rose-500/30 hover:bg-rose-500/20" },
     { id: "due-out", label: "Due Out", count: statusCounts.dueOut, color: "bg-purple-500/10 text-purple-700 border-purple-500/30 hover:bg-purple-500/20" },
     { id: "dirty", label: "Dirty", count: statusCounts.dirty, color: "bg-slate-500/10 text-slate-700 border-slate-500/30 hover:bg-slate-500/20" }
@@ -1214,36 +1473,51 @@ export default function StayViewPage() {
                           <span className="text-[10px]">{collapsedTypes[group.typeId] ? "Expand +" : "Collapse -"}</span>
                         </div>
 
-                        {/* Room Headers under group */}
-                        {!collapsedTypes[group.typeId] && group.rooms.map((room) => {
-                          const isDirty = String(room.hkStatus).toLowerCase() === "dirty" || String(room.hkStatus).toLowerCase() === "cleaning"
-                          return (
-                            <div 
-                              key={room._id} 
-                              className="h-[64px] border-b border-border flex flex-col justify-center px-4 bg-card/85 relative group"
+                        {/* AC / Non-AC sections under room type */}
+                        {!collapsedTypes[group.typeId] && group.sections.map((section) => (
+                          <div key={`${group.typeId}:${section.sectionId}`}>
+                            <div
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                toggleTypeCollapse(`${group.typeId}:${section.sectionId}`)
+                              }}
+                              className="h-8 bg-muted/35 border-b border-border flex items-center px-6 cursor-pointer font-bold text-[11px] hover:bg-muted/60 transition-colors text-muted-foreground uppercase tracking-wider justify-between"
                             >
-                              <div className="flex items-center justify-between">
-                                <span className="font-bold text-sm text-foreground flex items-center gap-1">
-                                  Room {room.roomNumber}
-                                  {isDirty && (
-                                    <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" title="Dirty" />
-                                  )}
-                                </span>
-                                <Badge 
-                                  variant="outline" 
-                                  className={`text-[9px] px-1 py-0 font-bold uppercase ${
-                                    room.status === "available" ? "border-green-500 text-green-600 bg-green-50/50" :
-                                    room.status === "occupied" ? "border-blue-500 text-blue-600 bg-blue-50/50" :
-                                    room.status === "blocked" ? "border-rose-500 text-rose-600 bg-rose-50/50" : "border-amber-500 text-amber-600"
-                                  }`}
-                                >
-                                  {room.status}
-                                </Badge>
-                              </div>
-                              <span className="text-[10px] text-muted-foreground">Floor {room.floor || 1} • {room.acType}</span>
+                              <span>{section.sectionName}</span>
+                              <span className="text-[9px]">{collapsedTypes[`${group.typeId}:${section.sectionId}`] ? "Expand +" : "Collapse -"}</span>
                             </div>
-                          )
-                        })}
+
+                            {!collapsedTypes[`${group.typeId}:${section.sectionId}`] && section.rooms.map((room) => {
+                              const isDirty = String(room.hkStatus).toLowerCase() === "dirty" || String(room.hkStatus).toLowerCase() === "cleaning"
+                              return (
+                                <div 
+                                  key={room._id} 
+                                  className="h-[64px] border-b border-border flex flex-col justify-center px-4 bg-card/85 relative group"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-sm text-foreground flex items-center gap-1">
+                                      Room {room.roomNumber}
+                                      {isDirty && (
+                                        <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" title="Dirty" />
+                                      )}
+                                    </span>
+                                    <Badge 
+                                      variant="outline" 
+                                      className={`text-[9px] px-1 py-0 font-bold uppercase ${
+                                        room.status === "available" ? "border-green-500 text-green-600 bg-green-50/50" :
+                                        room.status === "occupied" ? "border-blue-500 text-blue-600 bg-blue-50/50" :
+                                        room.status === "blocked" ? "border-rose-500 text-rose-600 bg-rose-50/50" : "border-amber-500 text-amber-600"
+                                      }`}
+                                    >
+                                      {room.status}
+                                    </Badge>
+                                  </div>
+                                  <span className="text-[10px] text-muted-foreground">Floor {room.floor || 1} • {section.sectionName}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>
@@ -1307,40 +1581,64 @@ export default function StayViewPage() {
                           })}
                         </div>
 
-                        {/* Room Grid Rows */}
-                        {!collapsedTypes[group.typeId] && group.rooms.map((room) => (
-                          <div key={room._id} className="flex h-[64px] border-b border-border/50 min-w-max bg-card/10 relative">
-                            {visibleDates.map((date, idx) => {
-                              const dateStr = formatLocalDate(date)
-                              const isWeekend = date.getDay() === 0 || date.getDay() === 6
-                              const isTodayCell = dateStr === formatLocalDate(new Date())
+                        {/* AC / Non-AC Section Grid Rows */}
+                        {!collapsedTypes[group.typeId] && group.sections.map((section) => (
+                          <div key={`${group.typeId}:${section.sectionId}`}>
+                            <div
+                              className="h-8 bg-muted/10 border-b border-border/50 min-w-max flex"
+                              style={{ width: `${visibleDays * colWidth}px` }}
+                            >
+                              {visibleDates.map((date, idx) => {
+                                const isCurrToday = formatLocalDate(date) === formatLocalDate(new Date())
 
-                              // Check if this cell overlaps a room block
-                              const isBlocked = blocks.some(b => 
-                                String(b.room) === String(room._id) && 
-                                b.isActive &&
-                                dateStr >= formatLocalDate(parseSafeDate(b.from)) && 
-                                dateStr < formatLocalDate(parseSafeDate(b.to))
-                              )
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={`w-[72px] flex-shrink-0 border-r border-border/30 flex items-center justify-center text-[9px] font-bold uppercase text-muted-foreground/70 bg-slate-50/30 ${
+                                      isCurrToday ? "bg-primary/5" : ""
+                                    }`}
+                                  >
+                                    {idx === 0 ? section.sectionName : ""}
+                                  </div>
+                                )
+                              })}
+                            </div>
 
-                              return (
-                                <div 
-                                  key={idx} 
-                                  onClick={() => {
-                                    if (!isBlocked) handleCellClick(room, date)
-                                  }}
-                                  className={`w-[72px] flex-shrink-0 border-r border-border/40 hover:bg-primary/5 transition-colors cursor-crosshair relative ${
-                                    isBlocked ? "bg-rose-50/40 cursor-not-allowed dark:bg-rose-950/20" : isTodayCell ? "bg-primary/5" : isWeekend ? "bg-muted/5" : ""
-                                  }`}
-                                >
-                                  {isBlocked && (
-                                    <div className="absolute inset-0 flex items-center justify-center text-rose-500/30 font-bold text-[8px] uppercase tracking-wider rotate-[-15deg] select-none">
-                                      Blocked
+                            {!collapsedTypes[`${group.typeId}:${section.sectionId}`] && section.rooms.map((room) => (
+                              <div key={room._id} className="flex h-[64px] border-b border-border/50 min-w-max bg-card/10 relative">
+                                {visibleDates.map((date, idx) => {
+                                  const dateStr = formatLocalDate(date)
+                                  const isWeekend = date.getDay() === 0 || date.getDay() === 6
+                                  const isTodayCell = dateStr === formatLocalDate(new Date())
+
+                                  // Check if this cell overlaps a room block
+                                  const isBlocked = blocks.some(b => 
+                                    getRoomId(b) === String(room._id) && 
+                                    b.isActive &&
+                                    dateStr >= formatLocalDate(parseSafeDate(b.from)) && 
+                                    dateStr <= formatLocalDate(parseSafeDate(b.to))
+                                  )
+
+                                  return (
+                                    <div 
+                                      key={idx} 
+                                      onClick={(event) => {
+                                        if (!isBlocked) handleCellClick(event, room, date)
+                                      }}
+                                      className={`w-[72px] flex-shrink-0 border-r border-border/40 hover:bg-primary/5 transition-colors cursor-crosshair relative ${
+                                        isBlocked ? "bg-rose-50/40 cursor-not-allowed dark:bg-rose-950/20" : isTodayCell ? "bg-primary/5" : isWeekend ? "bg-muted/5" : ""
+                                      }`}
+                                    >
+                                      {isBlocked && (
+                                        <div className="absolute inset-0 flex items-center justify-center text-rose-500/30 font-bold text-[8px] uppercase tracking-wider rotate-[-15deg] select-none">
+                                          Blocked
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
-                              )
-                            })}
+                                  )
+                                })}
+                              </div>
+                            ))}
                           </div>
                         ))}
                       </div>
@@ -1348,15 +1646,15 @@ export default function StayViewPage() {
 
                     {/* 3. Render Overlapping Room Blocks as Bars using exact topOffsets */}
                     {expandedRooms.map((room, roomIdx) => {
-                      const roomBlocks = blocks.filter(b => String(b.room) === String(room._id) && b.isActive)
+                      const roomBlocks = blocks.filter(b => getRoomId(b) === String(room._id) && b.isActive)
                       return roomBlocks.map((block) => {
                         const bFrom = parseSafeDate(block.from)
                         const bTo = parseSafeDate(block.to)
                         
-                        if (bTo <= timelineStartDate || bFrom >= timelineEndDate) return null
+                        if (bTo < timelineStartDate || bFrom > timelineEndDate) return null
 
                         const startOffset = differenceInDays(bFrom, timelineStartDate)
-                        const duration = differenceInDays(bTo, bFrom)
+                        const duration = differenceInDays(bTo, bFrom) + 1
 
                         const rStart = Math.max(0, startOffset)
                         const rEnd = Math.min(visibleDays, startOffset + duration)
@@ -1372,7 +1670,8 @@ export default function StayViewPage() {
                         return (
                           <div
                             key={block._id}
-                            className="absolute z-10 bg-rose-500/20 border border-rose-500/80 rounded-md flex items-center px-2 select-none overflow-hidden pointer-events-none"
+                            onDoubleClick={() => router.push("/admin/front-office/reception/block-room")}
+                            className="absolute z-10 bg-rose-500/20 border border-rose-500/80 rounded-md flex items-center px-2 select-none overflow-hidden cursor-pointer hover:bg-rose-500/30 transition-colors"
                             style={{
                               left: `${left}px`,
                               width: `${width}px`,
@@ -1390,10 +1689,10 @@ export default function StayViewPage() {
 
                     {/* 4. Render Active Reservation Bars using exact topOffsets */}
                     {expandedRooms.map((room, roomIdx) => {
-                      const roomResvs = reservations.filter(r => String(r.roomId || r.room?._id || r.room || '') === String(room._id))
+                      const roomResvs = reservations.filter(r => getRoomId(r) === String(room._id))
                       return roomResvs.map((resv) => {
-                        const checkIn = parseSafeDate(resv.checkIn || resv.checkInDate)
-                        const checkOut = parseSafeDate(resv.checkOut || resv.checkOutDate)
+                        const checkIn = getTimelineStart(resv)
+                        const checkOut = getTimelineEnd(resv)
                         
                         if (checkOut <= timelineStartDate || checkIn >= timelineEndDate) return null
 
@@ -1438,10 +1737,10 @@ export default function StayViewPage() {
                             onMouseLeave={handleMouseLeave}
                             onDoubleClick={(e) => {
                               e.stopPropagation()
-                              handleEditOpen(resv)
+                              if (resv.status !== "checked-out" && !resv.isStatusOnly) handleEditOpen(resv)
                             }}
                             className={`absolute z-10 border rounded-md shadow-sm transition-shadow flex items-center justify-between pl-3 pr-2 group cursor-grab active:cursor-grabbing hover:shadow-md select-none overflow-hidden ${
-                              getStatusColor(resv.status, resv.checkOut)
+                              getReservationColor(resv)
                             } ${
                               isCutLeft ? "rounded-l-none border-l-dashed" : ""
                             } ${
@@ -1468,13 +1767,14 @@ export default function StayViewPage() {
 
                             {/* Main Title Bar */}
                             <div 
-                              onMouseDown={(e) => handleDragStart(e, resv, "move")}
+                              onMouseDown={(e) => {
+                                if (resv.status !== "checked-out" && !resv.isStatusOnly) handleDragStart(e, resv, "move")
+                              }}
                               className="flex-grow truncate py-1 select-none flex flex-col justify-center h-full pr-1.5"
                             >
                               <span className="text-[11px] font-bold truncate block">{resv.guestName}</span>
                               <span className="text-[9px] opacity-75 truncate block">
-                                {resv.status === "checked-in" ? "In-House" : 
-                                 resv.status === "checked-out" ? "Checked Out" : "Reserved"} • {differenceInDays(parseSafeDate(resv.checkOut || resv.checkOutDate), parseSafeDate(resv.checkIn || resv.checkInDate))} N
+                                {getReservationLabel(resv)}
                               </span>
                             </div>
 
@@ -1496,7 +1796,7 @@ export default function StayViewPage() {
                             </Button>
 
                             {/* Drag Right Handle (Check-Out Resize / Extend stay / Early checkout) */}
-                            {!isCutRight && resv.status !== "checked-out" && (
+                            {!isCutRight && resv.status !== "checked-out" && !resv.isStatusOnly && (
                               <div
                                 onMouseDown={(e) => handleDragStart(e, resv, "right")}
                                 className="absolute right-0 top-0 w-1.5 h-full cursor-e-resize bg-black/10 hover:bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity rounded-r"
@@ -1586,12 +1886,14 @@ export default function StayViewPage() {
                           <Badge 
                             variant="secondary" 
                             className={`text-[9px] px-1.5 py-0 mt-1 font-bold w-fit uppercase ${
+                              getTimelineStatus(hoveredRes) === "overstay" ? "bg-orange-600/10 text-orange-700 border border-orange-600/20" :
                               hoveredRes.status === "checked-in" ? "bg-green-600/10 text-green-700 border border-green-600/20" :
-                              hoveredRes.status === "checked-out" ? "bg-gray-500/10 text-gray-700 border border-gray-500/20" :
+                              hoveredRes.status === "checked-out" ? "bg-red-500/10 text-red-700 border border-red-500/20" :
                               "bg-amber-500/10 text-amber-700 border border-amber-500/20"
                             }`}
                           >
-                            {hoveredRes.status === "checked-in" ? "Checked In" : 
+                            {getTimelineStatus(hoveredRes) === "overstay" ? "Overstay" :
+                             hoveredRes.status === "checked-in" ? "Checked In" : 
                              hoveredRes.status === "checked-out" ? "Checked Out" : "Reserved"}
                           </Badge>
                         </div>
@@ -1651,6 +1953,43 @@ export default function StayViewPage() {
         </div>
       </div>
 
+      {/* Empty-cell action menu */}
+      {cellActionMenu && (
+        <div
+          className="fixed z-50 min-w-[210px] bg-card border rounded-lg shadow-xl p-1 text-xs text-foreground divide-y divide-border/60 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+          style={{
+            left: `${cellActionMenu.x}px`,
+            top: `${cellActionMenu.y}px`
+          }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="py-2 px-3 bg-muted/20">
+            <p className="font-semibold text-[10px] uppercase text-muted-foreground">Room {cellActionMenu.room.roomNumber}</p>
+            <p className="font-bold text-foreground">{formatLocalDate(cellActionMenu.date)}</p>
+          </div>
+          <div className="py-1">
+            <button
+              onClick={() => {
+                openReservationForSlot(cellActionMenu.room, cellActionMenu.date)
+                setCellActionMenu(null)
+              }}
+              className="w-full text-left py-2 px-3 hover:bg-primary hover:text-primary-foreground rounded flex items-center gap-2"
+            >
+              <Plus className="h-3.5 w-3.5" /> Walk In / Reservation
+            </button>
+            <button
+              onClick={() => {
+                openBlockForSlot(cellActionMenu.room, cellActionMenu.date)
+                setCellActionMenu(null)
+              }}
+              className="w-full text-left py-2 px-3 hover:bg-rose-600 hover:text-white rounded flex items-center gap-2 font-semibold text-rose-600"
+            >
+              <Lock className="h-3.5 w-3.5" /> Maintenance Block
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Right-click custom context menu overlay */}
       {contextMenu && (
         <div 
@@ -1672,30 +2011,34 @@ export default function StayViewPage() {
             >
               <Info className="h-3.5 w-3.5" /> View Details
             </button>
-            <button 
-              onClick={() => handleAction("edit", contextMenu.reservation)}
-              className="w-full text-left py-1.5 px-3 hover:bg-primary hover:text-primary-foreground rounded flex items-center gap-2"
-            >
-              <Edit3 className="h-3.5 w-3.5" /> Edit Reservation
-            </button>
-          </div>
-
-          <div className="py-1">
-            {contextMenu.reservation.status === "confirmed" && (
+            {contextMenu.reservation.status !== "checked-out" && !contextMenu.reservation.isStatusOnly && (
               <button 
-                onClick={() => handleAction("extend", contextMenu.reservation)}
+                onClick={() => handleAction("edit", contextMenu.reservation)}
                 className="w-full text-left py-1.5 px-3 hover:bg-primary hover:text-primary-foreground rounded flex items-center gap-2"
               >
-                <Plus className="h-3.5 w-3.5" /> Extend Stay (+1 Day)
+                <Edit3 className="h-3.5 w-3.5" /> Edit Reservation
               </button>
             )}
-            <button 
-              onClick={() => handleAction("move", contextMenu.reservation)}
-              className="w-full text-left py-1.5 px-3 hover:bg-primary hover:text-primary-foreground rounded flex items-center gap-2"
-            >
-              <RefreshCw className="h-3.5 w-3.5" /> Change Room / Shift
-            </button>
           </div>
+
+          {contextMenu.reservation.status !== "checked-out" && !contextMenu.reservation.isStatusOnly && (
+            <div className="py-1">
+              {contextMenu.reservation.status === "confirmed" && (
+                <button 
+                  onClick={() => handleAction("extend", contextMenu.reservation)}
+                  className="w-full text-left py-1.5 px-3 hover:bg-primary hover:text-primary-foreground rounded flex items-center gap-2"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Extend Stay (+1 Day)
+                </button>
+              )}
+              <button 
+                onClick={() => handleAction("move", contextMenu.reservation)}
+                className="w-full text-left py-1.5 px-3 hover:bg-primary hover:text-primary-foreground rounded flex items-center gap-2"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Change Room / Shift
+              </button>
+            </div>
+          )}
 
           <div className="py-1">
             {contextMenu.reservation.status === "confirmed" && (
@@ -1706,7 +2049,7 @@ export default function StayViewPage() {
                 <LogIn className="h-3.5 w-3.5" /> Check In
               </button>
             )}
-            {contextMenu.reservation.status === "checked-in" && (
+            {contextMenu.reservation.status === "checked-in" && !contextMenu.reservation.isStatusOnly && (
               <button 
                 onClick={() => handleAction("checkout", contextMenu.reservation)}
                 className="w-full text-left py-1.5 px-3 hover:bg-blue-600 hover:text-white rounded flex items-center gap-2 font-semibold text-blue-600"
@@ -1725,7 +2068,7 @@ export default function StayViewPage() {
           </div>
 
           <div className="py-1">
-            {contextMenu.reservation.status !== "cancelled" && (
+            {contextMenu.reservation.status !== "cancelled" && contextMenu.reservation.status !== "checked-out" && !contextMenu.reservation.isStatusOnly && (
               <button 
                 onClick={() => handleAction("cancel", contextMenu.reservation)}
                 className="w-full text-left py-1.5 px-3 hover:bg-destructive hover:text-destructive-foreground rounded flex items-center gap-2 text-destructive font-semibold"
@@ -1764,39 +2107,79 @@ export default function StayViewPage() {
                  <span className="font-bold text-foreground">Room {selectedReservation.roomNumber} ({typeof selectedReservation.roomType === 'object' ? (selectedReservation.roomType?.name || selectedReservation.roomType?.code || "") : selectedReservation.roomType})</span>
               </div>
               <div className="flex justify-between border-b pb-1">
-                <span className="text-muted-foreground">Stay Dates</span>
-                <span className="font-semibold text-foreground">{(selectedReservation.checkIn || selectedReservation.checkInDate)} to {(selectedReservation.checkOut || selectedReservation.checkOutDate)}</span>
+                <span className="text-muted-foreground">Check-In Date</span>
+                <span className="font-semibold text-foreground">{formatLocalDate(getTimelineStart(selectedReservation))}</span>
               </div>
               <div className="flex justify-between border-b pb-1">
+                <span className="text-muted-foreground">Check-Out Date</span>
+                <span className="font-semibold text-foreground">{formatLocalDate(getActualCheckOut(selectedReservation))}</span>
+              </div>
+              {selectedReservation.status === "checked-in" && (selectedReservation.scheduledCheckOutDate || selectedReservation.timeline?.plannedCheckOutDate) && (
+                <div className="flex justify-between border-b pb-1">
+                  <span className="text-muted-foreground">Planned Check-Out</span>
+                  <span className={getTimelineStatus(selectedReservation) === "overstay" ? "font-semibold text-red-600" : "font-semibold text-foreground"}>
+                    {formatLocalDate(getPlannedCheckOut(selectedReservation))}
+                    {getTimelineStatus(selectedReservation) === "overstay" ? ` (+${getOverstayNights(selectedReservation)} overstay night${getOverstayNights(selectedReservation) === 1 ? "" : "s"})` : ""}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between border-b pb-1">
                 <span className="text-muted-foreground">Length of Stay</span>
-                <span className="text-foreground">{differenceInDays(parseSafeDate(selectedReservation.checkOut || selectedReservation.checkOutDate), parseSafeDate(selectedReservation.checkIn || selectedReservation.checkInDate))} Nights</span>
+                <span className="text-foreground">{getTimelineNights(selectedReservation)} Nights</span>
               </div>
               <div className="flex justify-between border-b pb-1">
                 <span className="text-muted-foreground">Booking Status</span>
                 <Badge className={
                   selectedReservation.status === "confirmed" ? "bg-amber-500 text-white" : 
-                  selectedReservation.status === "checked-in" ? "bg-green-600 text-white" : "bg-gray-400 text-white"
+                  getTimelineStatus(selectedReservation) === "overstay" ? "bg-orange-600 text-white" :
+                  selectedReservation.status === "checked-in" ? "bg-green-600 text-white" :
+                  selectedReservation.status === "checked-out" ? "bg-red-600 text-white" : "bg-gray-400 text-white"
                 }>
-                  {selectedReservation.status.toUpperCase()}
+                  {getTimelineStatus(selectedReservation) === "overstay" ? "OVERSTAY" : selectedReservation.status.toUpperCase()}
                 </Badge>
               </div>
+              {selectedReservation.isStatusOnly && (
+                <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                  Room is marked occupied. Check-in record details were not found in the timeline data.
+                </div>
+              )}
+              {selectedReservation.status === "checked-out" && (
+                <>
+                  <div className="flex justify-between border-b pb-1">
+                    <span className="text-muted-foreground">Checked-Out Date</span>
+                    <span className="font-semibold text-foreground">{formatLocalDate(getActualCheckOut(selectedReservation))}</span>
+                  </div>
+                  <div className="flex justify-between border-b pb-1">
+                    <span className="text-muted-foreground">Checked-Out By</span>
+                    <span className="font-medium text-foreground">{selectedReservation.checkedOutBy?.name || selectedReservation.checkedOutBy?.username || selectedReservation.checkedOutBy?.email || "-"}</span>
+                  </div>
+                  <div className="flex justify-between border-b pb-1">
+                    <span className="text-muted-foreground">Folio</span>
+                    <span className="font-mono text-xs">{selectedReservation.folioNumber || "-"}</span>
+                  </div>
+                  <div className="flex justify-between border-b pb-1">
+                    <span className="text-muted-foreground">Final Amount</span>
+                    <span className="font-bold text-primary">₹{Number(selectedReservation.finalAmount || selectedReservation.totalAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between border-b pb-1">
                 <span className="text-muted-foreground">Booking ID</span>
                 <span className="font-mono text-xs">{selectedReservation.id || selectedReservation._id}</span>
               </div>
               <div className="flex justify-between border-b pb-1">
                 <span className="text-muted-foreground">Billing Total</span>
-                <span className="font-bold text-primary">${selectedReservation.totalAmount?.toFixed(2)}</span>
+                <span className="font-bold text-primary">₹{Number(selectedReservation.totalAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
               <div className="flex justify-between border-b pb-1">
                 <span className="text-muted-foreground">Advance Paid</span>
-                <span className="font-bold text-green-600">${selectedReservation.paidAmount?.toFixed(2)}</span>
+                <span className="font-bold text-green-600">₹{Number(selectedReservation.paidAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
             </div>
           )}
 
           <DialogFooter className="flex gap-2">
-            {selectedReservation && selectedReservation.status !== "cancelled" && (
+            {selectedReservation && selectedReservation.status !== "cancelled" && selectedReservation.status !== "checked-out" && (
               <Button variant="destructive" size="sm" onClick={() => handleCancelReservation(selectedReservation.id || selectedReservation._id)} className="mr-auto">
                 Cancel Booking
               </Button>
@@ -1804,7 +2187,7 @@ export default function StayViewPage() {
             <Button variant="outline" size="sm" onClick={() => setIsViewOpen(false)}>
               Close
             </Button>
-            {selectedReservation && (
+            {selectedReservation && selectedReservation.status !== "checked-out" && (
               <Button size="sm" onClick={() => handleEditOpen(selectedReservation)}>
                 Edit Details
               </Button>
@@ -2022,6 +2405,81 @@ export default function StayViewPage() {
             <Button onClick={handleSaveEdit} disabled={isSaving}>
               {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* dialog: Maintenance Block Form */}
+      <Dialog open={isBlockOpen} onOpenChange={setIsBlockOpen}>
+        <DialogContent className="max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle>Maintenance Block</DialogTitle>
+            <DialogDescription>Mark this room unavailable for maintenance or hold</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Room Type</Label>
+                <Input className="h-9 text-xs bg-muted/50" value={blockFormData.roomType || "-"} readOnly />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Room</Label>
+                <Input className="h-9 text-xs bg-muted/50" value={blockFormData.roomNumber ? `Room ${blockFormData.roomNumber}` : "-"} readOnly />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">From <span className="text-destructive">*</span></Label>
+                <Input
+                  type="date"
+                  className="h-9 text-xs"
+                  value={blockFormData.from}
+                  onChange={(event) => {
+                    const from = event.target.value
+                    const currentTo = blockFormData.to
+                    const nextTo = !currentTo || parseLocalDate(currentTo) <= parseLocalDate(from)
+                      ? formatLocalDate(addDays(parseLocalDate(from), 1))
+                      : currentTo
+                    setBlockFormData((prev: any) => ({ ...prev, from, to: nextTo }))
+                  }}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">To <span className="text-destructive">*</span></Label>
+                <Input
+                  type="date"
+                  className="h-9 text-xs"
+                  value={blockFormData.to}
+                  onChange={(event) => setBlockFormData((prev: any) => ({ ...prev, to: event.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Reason <span className="text-destructive">*</span></Label>
+              <Select value={blockFormData.remark} onValueChange={(value) => setBlockFormData((prev: any) => ({ ...prev, remark: value }))}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Select Reason" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Maintenance">Maintenance</SelectItem>
+                  <SelectItem value="Deep Cleaning">Deep Cleaning</SelectItem>
+                  <SelectItem value="Repair">Repair</SelectItem>
+                  <SelectItem value="Out of Order">Out of Order</SelectItem>
+                  <SelectItem value="VIP Hold">VIP Hold</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsBlockOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateBlock} disabled={isSaving} className="gap-1.5">
+              {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+              Block Room
             </Button>
           </DialogFooter>
         </DialogContent>

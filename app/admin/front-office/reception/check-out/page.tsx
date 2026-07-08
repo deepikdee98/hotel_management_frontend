@@ -30,6 +30,23 @@ export default function CheckOutPage() {
   const money = (value: number) => `₹${toNum(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   const roundMoney = (value: number) => Math.round(toNum(value) * 100) / 100
   const moneyEquals = (a: number, b: number) => Math.round(toNum(a) * 100) === Math.round(toNum(b) * 100)
+  const MS_PER_DAY = 1000 * 60 * 60 * 24
+  const parseDate = (value: any) => {
+    if (!value) return null
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+  const toDateOnly = (value: any) => {
+    const date = parseDate(value)
+    if (!date) return null
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  }
+  const calculateStayedNights = (checkInValue: any, checkoutValue: any = new Date()) => {
+    const checkInDate = toDateOnly(checkInValue)
+    const checkoutDate = toDateOnly(checkoutValue)
+    if (!checkInDate || !checkoutDate) return 0
+    return Math.max(1, Math.ceil(Math.max(0, checkoutDate.getTime() - checkInDate.getTime()) / MS_PER_DAY))
+  }
   const [selectedRoom, setSelectedRoom] = useState("")
   const [billingType, setBillingType] = useState("full")
   const [inHouseGuests, setInHouseGuests] = useState<any[]>([])
@@ -554,6 +571,7 @@ export default function CheckOutPage() {
   // Calculate billing from folioData or fallback to room data
   const charges = Array.isArray(folioData?.charges) ? folioData.charges : []
   const payments = Array.isArray(folioData?.payments) ? folioData.payments : []
+  const checkoutSummary = folioData?.checkoutSummary || {}
 
   const roomTypeValue = room?.roomType?.$oid || room?.roomType?._id || room?.roomType || folioData?.room?.roomType || ""
   const roomTypeName = String(room?.roomType?.name || room?.type || folioData?.room?.roomType || "").toLowerCase()
@@ -569,29 +587,57 @@ export default function CheckOutPage() {
     setupRoomType?.rate ||
     0
   )
-  const roomCharges = charges
-    .filter((c: any) => String(c.category || c.type || "").toLowerCase() === "room-tariff")
-    .reduce((sum: number, c: any) => sum + Number(c.total ?? c.totalAmount ?? c.amount ?? 0), 0) || (fallbackNightlyRate * Math.max(1, Number(room?.nights || folioData?.stay?.nights || 1))) || 0
-  
-  const totalNights = charges
-    .filter((c: any) => String(c.category || c.type || "").toLowerCase() === "room-tariff")
-    .reduce((sum: number, c: any) => sum + Number(c.quantity || 0), 0) || Math.max(1, Number(room?.nights || folioData?.stay?.nights || 1))
+  const roomTariffCharges = charges.filter((c: any) => String(c.category || c.type || "").toLowerCase() === "room-tariff")
+  const postedRoomCharges = roomTariffCharges
+    .reduce((sum: number, c: any) => sum + Number(c.total ?? c.totalAmount ?? c.amount ?? 0), 0)
+  const postedNights = roomTariffCharges
+    .reduce((sum: number, c: any) => sum + Math.max(1, Number(c.quantity || 1)), 0)
+  const scheduledNights = Math.max(1, Number(room?.nights || folioData?.stay?.nights || 1))
+  const explicitStayedNights = Math.max(0, Number(room?.nightsStayed || folioData?.stay?.nightsStayed || folioData?.nightsStayed || 0))
+  const calculatedStayedNights = calculateStayedNights(
+    room?.checkInDate || room?.checkIn || folioData?.stay?.checkIn,
+    folioData?.actualCheckOutTime || new Date()
+  )
+  const billableStayedNights = calculatedStayedNights || explicitStayedNights || scheduledNights
+  const totalNights = postedNights > 0 && billableStayedNights < postedNights ? billableStayedNights : (postedNights || billableStayedNights)
+  const adjustedForEarlyCheckout = postedNights > 0 && billableStayedNights < postedNights
+  const calculatedRoomCharges = postedRoomCharges
+    ? roundMoney(adjustedForEarlyCheckout ? (postedRoomCharges / postedNights) * totalNights : postedRoomCharges)
+    : roundMoney((fallbackNightlyRate * totalNights) || 0)
+  const roomCharges = checkoutSummary.roomCharges != null
+    ? roundMoney(checkoutSummary.roomCharges)
+    : calculatedRoomCharges
 
-  const serviceCharges = charges
+  const calculatedServiceCharges = charges
     .filter((c: any) => String(c.category || c.type || "").toLowerCase() !== "room-tariff")
     .reduce((sum: number, c: any) => sum + Number(c.total ?? c.totalAmount ?? c.amount ?? 0), 0) || 0
+  const serviceCharges = checkoutSummary.serviceCharges != null
+    ? roundMoney(checkoutSummary.serviceCharges)
+    : calculatedServiceCharges
 
   const providedCgst = Number(folioData?.cgst || folioData?.summary?.cgst || 0)
   const providedSgst = Number(folioData?.sgst || folioData?.summary?.sgst || 0)
   const computedTax = ((roomCharges + serviceCharges) * GST_PERCENT) / 100
-  const totalTax = providedCgst + providedSgst || computedTax
-  const cgst = providedCgst || totalTax / 2
-  const sgst = providedSgst || totalTax / 2
-  const grossTotal = roomCharges + serviceCharges + totalTax
+  const totalTax = checkoutSummary.gstAmount != null
+    ? roundMoney(checkoutSummary.gstAmount)
+    : (adjustedForEarlyCheckout ? computedTax : (providedCgst + providedSgst || computedTax))
+  const cgst = checkoutSummary.cgst != null
+    ? roundMoney(checkoutSummary.cgst)
+    : (adjustedForEarlyCheckout ? totalTax / 2 : (providedCgst || totalTax / 2))
+  const sgst = checkoutSummary.sgst != null
+    ? roundMoney(checkoutSummary.sgst)
+    : (adjustedForEarlyCheckout ? totalTax / 2 : (providedSgst || totalTax / 2))
+  const grossTotal = checkoutSummary.grossTotal != null
+    ? roundMoney(checkoutSummary.grossTotal)
+    : roomCharges + serviceCharges + totalTax
   const rawAdvance = payments.reduce((sum: number, p: any) => sum + toNum(p.amount), 0) || Number(room?.advanceAmount || 0)
-  const advance = Math.abs(rawAdvance)
+  const advance = checkoutSummary.advancePaid != null
+    ? Math.abs(roundMoney(checkoutSummary.advancePaid))
+    : Math.abs(rawAdvance)
   const netPayable = grossTotal - advance
-  const folioNetPayable = roundMoney(netPayable)
+  const folioNetPayable = checkoutSummary.amountDue != null
+    ? roundMoney(checkoutSummary.amountDue)
+    : roundMoney(netPayable)
 
   const extraCharges =
     minibarCharges +
@@ -763,7 +809,7 @@ export default function CheckOutPage() {
                           "N/A"}
                       </span>
                     </div>
-                    <div className="flex justify-between text-xs"><span className="text-muted-foreground">Nights:</span><span className="text-foreground">{room.nights || 0}</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-muted-foreground">Nights:</span><span className="text-foreground">{totalNights || 0}</span></div>
                   </div>
                 )}
                 <div className="flex flex-col gap-2 pt-2">
