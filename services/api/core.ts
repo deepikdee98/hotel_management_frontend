@@ -412,6 +412,7 @@ export function mapStaff(raw: JsonRecord): Staff {
     role: roleValue === "hoteladmin" ? "admin" : "staff",
     hotelId: String(raw.hotelId || ""),
     modules: Array.isArray(raw.modules) ? (raw.modules as Staff["modules"]) : [],
+    permissions: Array.isArray(raw.permissions) ? (raw.permissions as string[]) : [],
     status: raw.isActive === false ? "inactive" : "active",
     createdAt: raw.createdAt ? new Date(String(raw.createdAt)).toISOString().slice(0, 10) : "",
     lastLogin: raw.lastLogin ? String(raw.lastLogin) : undefined,

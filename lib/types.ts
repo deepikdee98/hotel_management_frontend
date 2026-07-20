@@ -147,6 +147,7 @@ export interface Staff {
   avatar?: string
   hotelId: string
   modules: ModuleType[]
+  permissions?: string[]
   status: "active" | "inactive"
   createdAt: string
   lastLogin?: string

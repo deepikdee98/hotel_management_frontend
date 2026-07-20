@@ -62,7 +62,10 @@ export function PropertySwitcher() {
   const handleSwitch = (property: Property) => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("activePropertyId", property._id)
-      window.location.reload()
+      setActiveProperty(property)
+      window.dispatchEvent(new CustomEvent("hotel:property-changed", {
+        detail: { propertyId: property._id },
+      }))
     }
   }
 

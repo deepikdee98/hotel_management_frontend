@@ -95,6 +95,13 @@ export async function updateAdminStaffStatus(id: string, isActive: boolean) {
   })
 }
 
+export async function updateAdminStaff(id: string, payload: JsonRecord) {
+  return apiRequest<JsonRecord>(`/admin/staff/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function deleteAdminStaff(id: string) {
   return apiRequest<JsonRecord>(`/admin/staff/${id}`, { method: "DELETE" })
 }

@@ -12,6 +12,7 @@ import { normalizeSubscriptionStatus } from "@/lib/subscription"
 import { AlertTriangle, Loader2, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import type { RealtimeChange } from "@/services/socket.service"
 
 const DashboardLayoutContext = React.createContext(false)
 
@@ -29,6 +30,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
   const [isReady, setIsReady] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [contentRevision, setContentRevision] = useState(0)
 
   const routeModule: ModuleType | undefined =
     pathname.startsWith("/admin/front-office") ? "front-office" :
@@ -52,6 +54,44 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
   )
   const subscriptionStatus = normalizeSubscriptionStatus(subscriptionInfo?.status)
 
+  useEffect(() => {
+    const pageModules = new Set<string>([
+      pathname === "/admin" || pathname === "/super-admin" ? "dashboard" : "",
+      pathname.includes("reservation") ? "reservations" : "",
+      pathname.includes("check-in") ? "check-in" : "",
+      pathname.includes("check-out") ? "check-out" : "",
+      pathname.includes("stay-view") || pathname.includes("in-house") ? "stay-view" : "",
+      pathname.includes("housekeeping") ? "housekeeping" : "",
+      pathname.includes("/pos") ? "pos" : "",
+      pathname.includes("/accounts") ? "accounts" : "",
+      pathname.includes("room") ? "rooms" : "",
+      pathname.includes("setup") ? "system-configuration" : "",
+      pathname.includes("guest") ? "guests" : "",
+      pathname.includes("report") ? "reports" : "",
+      pathname.includes("staff") ? "user-management" : "",
+      pathname.includes("notification") ? "notifications" : "",
+      pathname.includes("module") ? "subscription" : "",
+      pathname.includes("settings") ? "hotel-settings" : "",
+      routeModule || "",
+    ].filter(Boolean))
+
+    const refreshCurrentModule = (event: Event) => {
+      const change = (event as CustomEvent<RealtimeChange>).detail
+      if (!change?.modules?.some((module) => pageModules.has(module))) return
+      const activeProperty = window.localStorage.getItem("activePropertyId") || user?.hotelId
+      if (change.propertyId && activeProperty && String(change.propertyId) !== String(activeProperty)) return
+      setContentRevision((revision) => revision + 1)
+    }
+
+    const refreshForPropertySwitch = () => setContentRevision((revision) => revision + 1)
+    window.addEventListener("hotel:realtime-change", refreshCurrentModule)
+    window.addEventListener("hotel:property-changed", refreshForPropertySwitch)
+    return () => {
+      window.removeEventListener("hotel:realtime-change", refreshCurrentModule)
+      window.removeEventListener("hotel:property-changed", refreshForPropertySwitch)
+    }
+  }, [pathname, routeModule, user?.hotelId])
+
   if (insideDashboardLayout) {
     return <>{children}</>
   }
@@ -67,7 +107,8 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
 
     // Check module access if required
     if (modulesToCheck.length > 0 && !modulesToCheck.some((module) => hasAccess(module))) {
-      router.replace("/")
+      setIsReady(false)
+      router.replace(user.role === "super-admin" ? "/super-admin" : "/admin")
       return
     }
 
@@ -142,7 +183,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
               </div>
             )}
 
-            {children}
+            <React.Fragment key={`${pathname}:${contentRevision}`}>{children}</React.Fragment>
           </main>
         </div>
       </DashboardLayoutContext.Provider>

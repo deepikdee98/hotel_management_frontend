@@ -25,6 +25,7 @@ import {
   getAdminStaff,
   getAdminStaffSummary,
   updateAdminStaffStatus,
+  updateAdminStaff,
 } from "@/lib/backend-api"
 import {
   DropdownMenu,
@@ -58,6 +59,7 @@ const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const normalizeText = (value: string) => value.trim().toLowerCase()
 const normalizePhone = (value: string) => value.replace(/[^\d+]/g, "")
+const PERMISSION_ACTIONS = ["view", "create", "edit", "delete"] as const
 
 export default function StaffManagementPage() {
   const { user } = useAuth()
@@ -73,7 +75,11 @@ export default function StaffManagementPage() {
   })
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [selectedModules, setSelectedModules] = useState<ModuleType[]>([])
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [editingStaff, setEditingStaff] = useState<Staff | null>(null)
+  const [editModules, setEditModules] = useState<ModuleType[]>([])
+  const [editPermissions, setEditPermissions] = useState<string[]>([])
   const [formData, setFormData] = useState({
     name: "",
     username: "",
@@ -141,9 +147,49 @@ export default function StaffManagementPage() {
   )
 
   const handleModuleToggle = (moduleId: ModuleType) => {
-    setSelectedModules((prev) =>
-      prev.includes(moduleId) ? prev.filter((m) => m !== moduleId) : [...prev, moduleId]
-    )
+    const isRemoving = selectedModules.includes(moduleId)
+    setSelectedModules((prev) => isRemoving ? prev.filter((m) => m !== moduleId) : [...prev, moduleId])
+    setSelectedPermissions((prev) => isRemoving
+      ? prev.filter((permission) => !permission.startsWith(`${moduleId}:`))
+      : [...new Set([...prev, ...PERMISSION_ACTIONS.map((action) => `${moduleId}:${action}`)])])
+  }
+
+  const handlePermissionToggle = (moduleId: ModuleType, action: typeof PERMISSION_ACTIONS[number]) => {
+    const permission = `${moduleId}:${action}`
+    setSelectedPermissions((prev) => prev.includes(permission)
+      ? prev.filter((item) => item !== permission)
+      : [...prev, permission])
+  }
+
+  const openPermissionEditor = (member: Staff) => {
+    setEditingStaff(member)
+    setEditModules(member.modules)
+    setEditPermissions(member.permissions?.length
+      ? member.permissions
+      : member.modules.flatMap((module) => PERMISSION_ACTIONS.map((action) => `${module}:${action}`)))
+  }
+
+  const toggleEditModule = (moduleId: ModuleType) => {
+    const removing = editModules.includes(moduleId)
+    setEditModules((current) => removing ? current.filter((item) => item !== moduleId) : [...current, moduleId])
+    setEditPermissions((current) => removing
+      ? current.filter((permission) => !permission.startsWith(`${moduleId}:`))
+      : [...new Set([...current, ...PERMISSION_ACTIONS.map((action) => `${moduleId}:${action}`)])])
+  }
+
+  const savePermissionChanges = async () => {
+    if (!editingStaff || isSubmitting) return
+    setIsSubmitting(true)
+    try {
+      await updateAdminStaff(editingStaff.id, { modules: editModules, permissions: editPermissions })
+      setStaff(await getAdminStaff(search, roleFilter))
+      setEditingStaff(null)
+      toast({ title: "Permissions updated", description: "The user receives these access changes immediately." })
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to update permissions.", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleAddStaff = async () => {
@@ -168,6 +214,7 @@ export default function StaffManagementPage() {
         password: formData.password,
         role: formData.role === "admin" ? "hoteladmin" : "staff",
         modules: selectedModules,
+        permissions: selectedPermissions,
       })
 
       const refreshed = await getAdminStaff(search, roleFilter)
@@ -183,6 +230,7 @@ export default function StaffManagementPage() {
       setIsAddDialogOpen(false)
       setFormData({ name: "", username: "", email: "", phone: "", role: "staff", password: "" })
       setSelectedModules([])
+      setSelectedPermissions([])
     } catch (error: any) {
       toast({
         title: "Error",
@@ -370,20 +418,34 @@ export default function StaffManagementPage() {
                     assignableModules.map((module) => (
                       <div
                         key={module.id}
-                        className={`flex items-start space-x-3 p-3 rounded-lg border cursor-pointer transition-all ${selectedModules.includes(module.id)
+                        className={`space-y-3 p-3 rounded-lg border transition-all ${selectedModules.includes(module.id)
                           ? "border-primary bg-primary/5"
                           : "border-border hover:border-primary/50"
                           }`}
-                        onClick={() => handleModuleToggle(module.id)}
                       >
-                        <Checkbox
-                          checked={selectedModules.includes(module.id)}
-                          onCheckedChange={() => handleModuleToggle(module.id)}
-                        />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-foreground">{module.name}</p>
-                          <p className="text-xs text-muted-foreground">{module.description}</p>
+                        <div className="flex items-start space-x-3">
+                          <Checkbox
+                            checked={selectedModules.includes(module.id)}
+                            onCheckedChange={() => handleModuleToggle(module.id)}
+                          />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-foreground">{module.name}</p>
+                            <p className="text-xs text-muted-foreground">{module.description}</p>
+                          </div>
                         </div>
+                        {selectedModules.includes(module.id) && (
+                          <div className="grid grid-cols-2 gap-2 border-t pt-3">
+                            {PERMISSION_ACTIONS.map((action) => (
+                              <label key={action} className="flex items-center gap-2 text-xs capitalize cursor-pointer">
+                                <Checkbox
+                                  checked={selectedPermissions.includes(`${module.id}:${action}`)}
+                                  onCheckedChange={() => handlePermissionToggle(module.id, action)}
+                                />
+                                {action}
+                              </label>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))
                   )}
@@ -589,7 +651,7 @@ export default function StaffManagementPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openPermissionEditor(member)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit Details
                           </DropdownMenuItem>
@@ -620,7 +682,51 @@ export default function StaffManagementPage() {
                 ))}
               </tbody>
             </table>
+      </div>
+
+      <Dialog open={Boolean(editingStaff)} onOpenChange={(open) => !open && setEditingStaff(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit access for {editingStaff?.name}</DialogTitle>
+            <DialogDescription>Changes to modules and actions take effect immediately for the logged-in user.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-4">
+            {assignableModules.map((module) => (
+              <div key={module.id} className="rounded-lg border p-3 space-y-3">
+                <label className="flex items-center gap-3 font-medium cursor-pointer">
+                  <Checkbox checked={editModules.includes(module.id)} onCheckedChange={() => toggleEditModule(module.id)} />
+                  {module.name}
+                </label>
+                {editModules.includes(module.id) && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t pt-3">
+                    {PERMISSION_ACTIONS.map((action) => {
+                      const permission = `${module.id}:${action}`
+                      return (
+                        <label key={action} className="flex items-center gap-2 text-sm capitalize cursor-pointer">
+                          <Checkbox
+                            checked={editPermissions.includes(permission)}
+                            onCheckedChange={() => setEditPermissions((current) => current.includes(permission)
+                              ? current.filter((item) => item !== permission)
+                              : [...current, permission])}
+                          />
+                          {action}
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setEditingStaff(null)}>Cancel</Button>
+            <Button onClick={savePermissionChanges} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Access
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
         </CardContent>
       </Card>
     </div>
