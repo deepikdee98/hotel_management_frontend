@@ -18,6 +18,22 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { RotateCcw } from "lucide-react"
 
+const CHECKOUT_SUCCESS_STORAGE_KEY = "front_office_checkout_success"
+const CHECKOUT_SUCCESS_EVENT = "front-office:checkout-success"
+
+const getStoredCheckoutResult = () => {
+  if (typeof window === "undefined") return null
+  const storedResult = window.sessionStorage.getItem(CHECKOUT_SUCCESS_STORAGE_KEY)
+  if (!storedResult) return null
+
+  try {
+    return JSON.parse(storedResult)
+  } catch {
+    window.sessionStorage.removeItem(CHECKOUT_SUCCESS_STORAGE_KEY)
+    return null
+  }
+}
+
 export default function CheckOutPage() {
   const router = useRouter()
   const GST_PERCENT = 12
@@ -58,6 +74,7 @@ export default function CheckOutPage() {
   const [ratePlans, setRatePlans] = useState<any[]>([])
   const [checkoutResult, setCheckoutResult] = useState<any>(null)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [downloadingBills, setDownloadingBills] = useState(false)
   const [isUndoDialogOpen, setIsUndoDialogOpen] = useState(false)
   const [undoing, setUndoing] = useState(false)
 
@@ -131,6 +148,19 @@ export default function CheckOutPage() {
 
   useEffect(() => {
     fetchInitialData()
+  }, [])
+
+  useEffect(() => {
+    const restoreCheckoutSuccess = () => {
+      const storedResult = getStoredCheckoutResult()
+      if (!storedResult) return
+      setCheckoutResult(storedResult)
+      setShowSuccess(true)
+    }
+
+    restoreCheckoutSuccess()
+    window.addEventListener(CHECKOUT_SUCCESS_EVENT, restoreCheckoutSuccess)
+    return () => window.removeEventListener(CHECKOUT_SUCCESS_EVENT, restoreCheckoutSuccess)
   }, [])
 
   useEffect(() => {
@@ -255,6 +285,8 @@ export default function CheckOutPage() {
 
   const handleRoomChange = async (roomNumber: string, selectedGuest?: any) => {
     setShowSuccess(false)
+    setCheckoutResult(null)
+    window.sessionStorage.removeItem(CHECKOUT_SUCCESS_STORAGE_KEY)
     setSelectedRoom(roomNumber)
     setFolioData(null)
     setAmountPaid(0)
@@ -262,7 +294,11 @@ export default function CheckOutPage() {
     setIsSettled(false)
     setRefundSettled(false)
     setSplitAllocations(buildSplitRowsForRoom(roomNumber))
-    const guest = selectedGuest || inHouseGuests.find(g => getGuestRoomNumber(g) === String(roomNumber).trim())
+    const normalizedRoomNumber = String(roomNumber).trim()
+    const roomGuests = inHouseGuests.filter(g => getGuestRoomNumber(g) === normalizedRoomNumber)
+    const guest = selectedGuest && !isPaxGuest(selectedGuest)
+      ? selectedGuest
+      : roomGuests.find(g => !isPaxGuest(g)) || selectedGuest || roomGuests[0]
     const folioId = getGuestFolioId(guest) || getGuestCheckinId(guest)
     if (guest && folioId) {
       setFetchingFolio(true)
@@ -392,8 +428,10 @@ export default function CheckOutPage() {
       const response = await createCheckOut(payload)
       if (response.success) {
         toast.success("Checkout processed successfully")
+        window.sessionStorage.setItem(CHECKOUT_SUCCESS_STORAGE_KEY, JSON.stringify(response.data))
         setCheckoutResult(response.data)
         setShowSuccess(true)
+        window.dispatchEvent(new Event(CHECKOUT_SUCCESS_EVENT))
 
         // Reset and refresh
         setSelectedRoom("")
@@ -466,22 +504,121 @@ export default function CheckOutPage() {
     }
   }
 
-  const handleDownloadGeneratedBills = async () => {
-    if (!checkoutResult?.invoiceId) {
-      window.print()
+  const handlePrintCheckoutReceipt = () => {
+    const totals = checkoutResult?.totals
+    const hasReceiptData = checkoutResult &&
+      totals &&
+      typeof totals === "object" &&
+      (totals.adjustedFinalAmount != null || totals.finalAmount != null)
+
+    if (!hasReceiptData) {
+      toast.error("A generated invoice is not available for this checkout")
       return
     }
 
+    const escapeHtml = (value: unknown) => String(value ?? "—")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;")
+    const receiptMoney = (value: unknown) => money(toNum(value))
+    const checkoutTime = parseDate(checkoutResult.checkOutTime)
+    const win = window.open("", "", "width=760,height=800")
+
+    if (!win) {
+      toast.error("Allow pop-ups to print the checkout bill")
+      return
+    }
+
+    win.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Checkout bill ${escapeHtml(checkoutResult.checkOutId || "")}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body { margin: 0; padding: 40px; color: #17201b; background: #fff; font: 14px/1.5 Arial, sans-serif; }
+            main { max-width: 680px; margin: 0 auto; }
+            header { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 20px; border-bottom: 2px solid #15803d; }
+            h1 { margin: 0; font-size: 24px; }
+            .status { margin-top: 4px; color: #15803d; font-weight: 700; }
+            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; padding: 24px 0; border-bottom: 1px solid #d1d5db; }
+            .label { display: block; color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+            table { width: 100%; margin-top: 24px; border-collapse: collapse; }
+            th, td { padding: 10px 0; border-bottom: 1px solid #e5e7eb; text-align: left; }
+            th:last-child, td:last-child { text-align: right; }
+            .total td { padding-top: 16px; border-bottom: 0; font-size: 17px; font-weight: 700; }
+            footer { margin-top: 36px; color: #6b7280; font-size: 12px; text-align: center; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <main>
+            <header>
+              <div><h1>Checkout Bill</h1><div class="status">Checkout Successful</div></div>
+              <div><span class="label">Reference</span>${escapeHtml(checkoutResult.checkOutId)}</div>
+            </header>
+            <section class="meta">
+              <div><span class="label">Booking</span>${escapeHtml(checkoutResult.bookingId)}</div>
+              <div><span class="label">Room</span>${escapeHtml(checkoutResult.roomNumber)}</div>
+              <div><span class="label">Billing type</span>${escapeHtml(checkoutResult.billingType)}</div>
+              <div><span class="label">Checkout time</span>${escapeHtml(checkoutTime ? checkoutTime.toLocaleString("en-IN") : "—")}</div>
+            </section>
+            <table aria-label="Checkout bill totals">
+              <thead><tr><th>Description</th><th>Amount</th></tr></thead>
+              <tbody>
+                <tr><td>Room charges</td><td>${escapeHtml(receiptMoney(totals?.roomCharges))}</td></tr>
+                <tr><td>Service charges</td><td>${escapeHtml(receiptMoney(totals?.serviceCharges))}</td></tr>
+                <tr><td>GST</td><td>${escapeHtml(receiptMoney(totals?.gst))}</td></tr>
+                <tr><td>Advance paid</td><td>− ${escapeHtml(receiptMoney(totals?.advancePaid))}</td></tr>
+                <tr class="total"><td>Final amount</td><td>${escapeHtml(receiptMoney(totals?.adjustedFinalAmount ?? totals?.finalAmount))}</td></tr>
+              </tbody>
+            </table>
+            <footer>Generated from the completed checkout record.</footer>
+          </main>
+        </body>
+      </html>
+    `)
+    win.document.close()
+    win.focus()
+    setTimeout(() => {
+      win.print()
+      win.close()
+    }, 300)
+  }
+
+  const handleDownloadGeneratedBills = async () => {
+    if (downloadingBills) return
+
+    const companionInvoices = Array.isArray(checkoutResult?.companionInvoices) ? checkoutResult.companionInvoices : []
+    const invoiceIds = Array.from(new Set([
+      checkoutResult?.invoiceId,
+      ...companionInvoices.map((invoice: any) => invoice?.invoiceId),
+    ].filter(Boolean).map(String)))
+
+    if (!invoiceIds.length) {
+      handlePrintCheckoutReceipt()
+      return
+    }
+
+    setDownloadingBills(true)
     try {
-      await downloadCheckoutInvoice(String(checkoutResult.invoiceId))
-      const companionInvoices = Array.isArray(checkoutResult.companionInvoices) ? checkoutResult.companionInvoices : []
-      for (const companionInvoice of companionInvoices) {
-        if (companionInvoice.invoiceId) {
-          await downloadCheckoutInvoice(String(companionInvoice.invoiceId))
-        }
+      const downloads = await Promise.allSettled(invoiceIds.map((invoiceId) => downloadCheckoutInvoice(invoiceId)))
+      const failedDownloads = downloads.filter((result) => result.status === "rejected")
+
+      if (failedDownloads.length) {
+        throw new Error(
+          failedDownloads.length === invoiceIds.length
+            ? "Failed to download generated bills"
+            : `${failedDownloads.length} of ${invoiceIds.length} generated bills could not be downloaded`
+        )
       }
     } catch (error: any) {
       toast.error(error.message || "Failed to download generated bills")
+    } finally {
+      setDownloadingBills(false)
     }
   }
 
@@ -503,6 +640,7 @@ export default function CheckOutPage() {
         
         // Hide success card and dialog
         setShowSuccess(false)
+        window.sessionStorage.removeItem(CHECKOUT_SUCCESS_STORAGE_KEY)
         setIsUndoDialogOpen(false)
         
         // Reset all checkout-related local states
@@ -682,26 +820,50 @@ export default function CheckOutPage() {
         </div>
 
         {showSuccess && checkoutResult && (
-          <Card className="bg-green-50/50 border-green-200 shadow-none">
-            <CardContent className="flex items-center justify-between py-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
-                  <CheckCircle2 className="h-6 w-6 text-green-600" />
+          <Card
+            role="status"
+            aria-live="polite"
+            className="border-emerald-200 bg-emerald-50/70 shadow-none"
+          >
+            <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100">
+                  <CheckCircle2 className="h-6 w-6 text-emerald-600" aria-hidden="true" />
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-green-900">Checkout Successful</p>
-                  <p className="text-xs text-green-700 font-medium">Ref: {checkoutResult.checkOutId} | Booking: {checkoutResult.bookingId}</p>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-emerald-900">Checkout Successful</p>
+                  <p className="mt-0.5 break-words text-xs font-medium text-emerald-700">
+                    Ref: {checkoutResult.checkOutId || "Not available"} <span aria-hidden="true">|</span>{" "}
+                    Booking: {checkoutResult.bookingId || "Not available"}
+                  </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 border-green-600 text-green-700 hover:bg-green-100" onClick={() => setIsUndoDialogOpen(true)}>
-                  <RotateCcw className="h-3.5 w-3.5" /> Undo Checkout
+              <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
+                <Button
+                  size="sm"
+                  className="h-8 gap-1.5 bg-emerald-600 text-xs text-white hover:bg-emerald-700 focus-visible:ring-emerald-600"
+                  onClick={handleDownloadGeneratedBills}
+                  disabled={downloadingBills}
+                >
+                  {downloadingBills ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
+                  {downloadingBills ? "Generating..." : "Generate Bill"}
                 </Button>
-                <Button size="sm" className="h-8 text-xs gap-1.5 bg-green-600 hover:bg-green-700" onClick={handleDownloadGeneratedBills}>
-                  <Printer className="h-3.5 w-3.5" /> Generate Bill
-                </Button>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-100" onClick={() => setShowSuccess(false)}>
-                  <X className="h-4 w-4" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-800"
+                  onClick={() => {
+                    setShowSuccess(false)
+                    setCheckoutResult(null)
+                    window.sessionStorage.removeItem(CHECKOUT_SUCCESS_STORAGE_KEY)
+                  }}
+                  aria-label="Dismiss checkout success message"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </div>
             </CardContent>

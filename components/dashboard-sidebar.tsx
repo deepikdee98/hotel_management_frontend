@@ -44,6 +44,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context"
+import { useBranding } from "@/lib/branding-context"
 import { cn } from "@/lib/utils"
 import type { UserRole, ModuleType } from "@/lib/types"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -189,6 +190,7 @@ export function DashboardSidebar({
   const pathname = usePathname()
   const router = useRouter()
   const { user, logout, hasAccess } = useAuth()
+  const { companyName, logoUrl } = useBranding()
   const [hotelLogoUrl, setHotelLogoUrl] = useState("")
 
   useEffect(() => {
@@ -281,40 +283,42 @@ export function DashboardSidebar({
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-dvh w-60 bg-sidebar border-r border-sidebar-border transition-all duration-300 lg:translate-x-0",
+        "fixed left-0 top-0 z-40 h-dvh w-60 overflow-hidden bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 border-r border-slate-100 dark:border-slate-800 shadow-lg transition-all duration-300 lg:translate-x-0",
         mobileOpen ? "translate-x-0" : "-translate-x-full",
         collapsed ? "lg:w-16" : "lg:w-60"
       )}
     >
-      <div className="flex h-full flex-col">
+      <div className="relative flex h-full flex-col bg-white dark:bg-slate-950">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-52 w-52 rounded-full border border-blue-500/5 dark:border-blue-400/5" />
         {/* Header */}
-        <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
+        <div className="relative flex h-20 items-center justify-between border-b border-slate-100 dark:border-slate-800 px-4">
           <Link
             href="/"
-            className={cn("flex items-center gap-2", collapsed && "lg:hidden")}
+            className={cn("flex items-center gap-2.5", collapsed && "lg:hidden")}
             onClick={closeMobileSidebar}
           >
-            <div className="rounded-lg overflow-hidden">
+            <div className="rounded-xl overflow-hidden shadow-xs border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-1">
               <Image
-                src="/logo.png"
-                alt="Zentric HMS"
-                width={32}
-                height={32}
+                src={logoUrl || "/logo.png"}
+                alt={companyName}
+                width={26}
+                height={26}
                 className="object-contain"
               />
             </div>
 
-            <span className="font-semibold text-sidebar-foreground">
-              Zentric HMS
+            <span>
+              <span className="block font-extrabold tracking-tight text-slate-800 dark:text-white text-sm">{companyName}</span>
+              <span className="block text-[9px] uppercase tracking-[0.18em] font-bold text-blue-600 dark:text-blue-400">Hotel operations</span>
             </span>
           </Link>
           {collapsed && (
-            <div className="hidden mx-auto lg:block">
+            <div className="hidden mx-auto lg:block rounded-xl overflow-hidden shadow-xs border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-1">
               <Image
-                src="/logo.png"
-                alt="Zentric HMS"
-                width={32}
-                height={32}
+                src={logoUrl || "/logo.png"}
+                alt={companyName}
+                width={26}
+                height={26}
                 className="object-contain"
               />
             </div>
@@ -322,7 +326,7 @@ export function DashboardSidebar({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent lg:hidden"
+            className="h-8 w-8 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden"
             onClick={closeMobileSidebar}
             aria-label="Close navigation"
           >
@@ -332,7 +336,7 @@ export function DashboardSidebar({
             variant="ghost"
             size="icon"
             className={cn(
-              "hidden h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent lg:flex",
+              "hidden h-8 w-8 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 lg:flex",
               collapsed && "lg:hidden"
             )}
             onClick={toggleCollapsed}
@@ -344,13 +348,13 @@ export function DashboardSidebar({
 
         {/* User Info */}
         {user && (
-          <div className={cn("border-b border-sidebar-border p-4", collapsed && "lg:hidden")}>
+          <div className={cn("border-b border-slate-100 dark:border-slate-800 p-4", collapsed && "lg:hidden")}>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 overflow-hidden rounded-full bg-sidebar-accent flex items-center justify-center">
+              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-blue-50 dark:bg-slate-800 shadow-inner border border-slate-100 dark:border-slate-850">
                 {hotelLogoUrl ? (
                   <img src={hotelLogoUrl} alt={user.hotelName || "Hotel logo"} className="h-full w-full object-contain" />
                 ) : (
-                  <span className="text-sm font-medium text-sidebar-accent-foreground">
+                  <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
                     {user.name
                       .split(" ")
                       .map((n) => n[0])
@@ -359,8 +363,8 @@ export function DashboardSidebar({
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>
-                <p className="text-xs text-sidebar-foreground/60 truncate">{user.email}</p>
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{user.name}</p>
+                <p className="text-xs text-slate-500 truncate">{user.email}</p>
               </div>
             </div>
           </div>
@@ -370,7 +374,7 @@ export function DashboardSidebar({
         {!collapsed && <PropertySwitcher />}
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
+        <nav className="relative flex-1 space-y-1.5 overflow-y-auto p-3 bg-white dark:bg-slate-950">
           {navItems.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href
@@ -385,11 +389,11 @@ export function DashboardSidebar({
                   <CollapsibleTrigger asChild>
                     <button
                       className={cn(
-                        "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+                        "flex min-h-10 w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all",
                         collapsed && "lg:justify-center lg:px-2",
                         isSubActive
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          ? "bg-blue-50/70 dark:bg-slate-800 text-blue-600 dark:text-blue-400"
+                          : "text-slate-600 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-blue-600 dark:hover:text-blue-400"
                       )}
                     >
                       <div className="flex items-center gap-2.5">
@@ -412,10 +416,10 @@ export function DashboardSidebar({
                             <CollapsibleTrigger asChild>
                               <button
                                 className={cn(
-                                  "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+                                  "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-sm font-semibold transition-all",
                                   isNestedActive
-                                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                                    : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                                    ? "bg-blue-50/50 dark:bg-slate-800 text-blue-600 dark:text-blue-400"
+                                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 hover:text-blue-600 dark:hover:text-blue-400"
                                 )}
                               >
                                 <div className="flex items-center gap-2.5">
@@ -435,10 +439,10 @@ export function DashboardSidebar({
                                     href={nestedItem.href}
                                     onClick={closeMobileSidebar}
                                     className={cn(
-                                      "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors",
+                                      "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all",
                                       isNestedItemActive
-                                        ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
-                                        : "text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                                        ? "bg-blue-600 text-white shadow-xs"
+                                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 hover:text-blue-600 dark:hover:text-blue-400"
                                     )}
                                   >
                                     <NestedIcon className="h-3 w-3 flex-shrink-0" />
@@ -457,10 +461,10 @@ export function DashboardSidebar({
                           href={subItem.href}
                           onClick={closeMobileSidebar}
                           className={cn(
-                            "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+                            "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm font-semibold transition-all",
                             isSubItemActive
-                              ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
-                              : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                              ? "bg-blue-600 text-white shadow-xs"
+                              : "text-slate-500 dark:text-slate-400 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 hover:text-blue-600 dark:hover:text-blue-400"
                           )}
                         >
                           <SubIcon className="h-3.5 w-3.5 flex-shrink-0" />
@@ -478,10 +482,10 @@ export function DashboardSidebar({
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+                  "flex min-h-10 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-all duration-200",
                   isActive
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/20"
+                    : "text-slate-600 dark:text-slate-350 hover:bg-slate-50/75 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-450",
                   collapsed && "lg:justify-center lg:px-2"
                 )}
                 title={collapsed ? item.label : undefined}
@@ -495,12 +499,12 @@ export function DashboardSidebar({
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-sidebar-border p-3">
+        <div className="relative border-t border-slate-100 dark:border-slate-800 p-3 bg-white dark:bg-slate-950">
           {collapsed && (
             <Button
               variant="ghost"
               size="icon"
-              className="mb-2 hidden h-10 w-full text-sidebar-foreground hover:bg-sidebar-accent lg:flex"
+              className="mb-2 hidden h-10 w-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 lg:flex"
               onClick={toggleCollapsed}
               aria-label="Expand navigation"
             >
@@ -510,13 +514,13 @@ export function DashboardSidebar({
           <Button
             variant="ghost"
             className={cn(
-              "w-full text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              collapsed ? "justify-center px-2" : "justify-start"
+              "w-full text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-950/20 hover:text-red-600 dark:hover:text-red-400 font-semibold rounded-xl",
+              collapsed ? "justify-center px-2" : "justify-start px-3"
             )}
             onClick={handleLogout}
           >
             <LogOut className="h-5 w-5" />
-            {!collapsed && <span className="ml-3">Logout</span>}
+            {!collapsed && <span className="ml-3.5">Logout</span>}
           </Button>
         </div>
       </div>

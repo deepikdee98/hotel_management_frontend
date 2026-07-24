@@ -535,6 +535,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           permissions: userData.permissions || payload.permissions || [],
           expiryDate: payloadExpiryDate,
           needsSetup: payload.needsSetup || payload.data?.needsSetup || false,
+          mustChangePassword: Boolean(userData.mustChangePassword ?? payload.mustChangePassword),
         }
       } catch {
         const data = payload.data?.user || payload.user || payload
@@ -554,6 +555,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           permissions: data.permissions || payload.permissions || [],
           expiryDate: payloadExpiryDate || pickExpiryDate(data, hotelData),
           needsSetup: payload.needsSetup || payload.data?.needsSetup || false,
+          mustChangePassword: Boolean(data.mustChangePassword ?? payload.mustChangePassword),
         }
       }
 
@@ -588,7 +590,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionStorage.removeItem(SUBSCRIPTION_STORAGE_KEY)
       }
 
-      return { accessToken, refreshToken, role: userProfile.role, needsSetup: userProfile.needsSetup }
+      return {
+        accessToken,
+        refreshToken,
+        role: userProfile.role,
+        needsSetup: userProfile.needsSetup,
+        mustChangePassword: userProfile.mustChangePassword,
+      }
     } catch (error) {
       throw error instanceof Error ? error : new Error("Login failed")
     }

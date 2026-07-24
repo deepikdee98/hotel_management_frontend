@@ -682,7 +682,7 @@ export default function ReservationPage() {
   return (
     <DashboardLayout requiredRole={["admin", "staff"]}>
       <TooltipProvider>
-        <div className="min-h-[calc(100vh-6rem)] bg-slate-50/80 -m-3 sm:-m-5 lg:-m-6">
+        <div className="min-h-[calc(100vh-6rem)] bg-muted/25 -m-3 sm:-m-5 lg:-m-6">
           <div className="border-b border-border bg-background px-4 py-3 sm:px-6">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="min-w-0">
@@ -851,7 +851,7 @@ export default function ReservationPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${groupMode ? "bg-blue-50 text-blue-600" : "bg-primary/10 text-primary"}`}>
+                              <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${groupMode ? "bg-blue-500/10 text-blue-600 dark:text-blue-300" : "bg-primary/10 text-primary"}`}>
                                 {groupMode ? <Building2 className="h-4 w-4" /> : <UserRound className="h-4 w-4" />}
                               </div>
                               <div className="min-w-0">
@@ -880,10 +880,10 @@ export default function ReservationPage() {
                           <TableCell>
                             <Badge variant="outline" className={
                               reservation.status === "checked-in"
-                                ? "border-green-200 bg-green-50 text-green-700"
+                                ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300"
                                 : reservation.status === "checked-out"
-                                  ? "border-slate-200 bg-slate-50 text-slate-700"
-                                  : "border-amber-200 bg-amber-50 text-amber-700"
+                                  ? "border-border bg-muted text-muted-foreground"
+                                  : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
                             }>
                               {reservation.status === "checked-in" ? "In-House" : reservation.status === "checked-out" ? "Checked Out" : "Reserved"}
                             </Badge>

@@ -164,6 +164,9 @@ export default function HotelsPage() {
 
   useEffect(() => {
     loadHotels()
+    if (new URLSearchParams(window.location.search).get("add") === "1") {
+      setIsAddDialogOpen(true)
+    }
   }, [])
 
   const loadHotels = async () => {

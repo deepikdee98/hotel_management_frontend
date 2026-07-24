@@ -1292,13 +1292,13 @@ export default function StayViewPage() {
   // Status indicators count pills lists
   const statusPills = [
     { id: "all", label: "All", count: statusCounts.total, color: "bg-muted text-muted-foreground border-muted-foreground/30 hover:bg-muted/80" },
-    { id: "vacant", label: "Vacant", count: statusCounts.vacant, color: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20" },
-    { id: "occupied", label: "Occupied", count: statusCounts.occupied, color: "bg-green-600/10 text-green-700 border-green-600/30 hover:bg-green-600/20" },
-    { id: "reserved", label: "Reserved", count: statusCounts.reserved, color: "bg-amber-500/10 text-amber-700 border-amber-500/30 hover:bg-amber-500/20" },
-    { id: "checked-out", label: "Checked Out", count: statusCounts.checkedOut, color: "bg-red-500/10 text-red-700 border-red-500/30 hover:bg-red-500/20" },
-    { id: "blocked", label: "Blocked", count: statusCounts.blocked, color: "bg-rose-500/10 text-rose-700 border-rose-500/30 hover:bg-rose-500/20" },
-    { id: "due-out", label: "Due Out", count: statusCounts.dueOut, color: "bg-purple-500/10 text-purple-700 border-purple-500/30 hover:bg-purple-500/20" },
-    { id: "dirty", label: "Dirty", count: statusCounts.dirty, color: "bg-slate-500/10 text-slate-700 border-slate-500/30 hover:bg-slate-500/20" }
+    { id: "vacant", label: "Vacant", count: statusCounts.vacant, color: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20" },
+    { id: "occupied", label: "Occupied", count: statusCounts.occupied, color: "bg-green-600/10 text-green-700 dark:text-green-300 border-green-600/30 hover:bg-green-600/20" },
+    { id: "reserved", label: "Reserved", count: statusCounts.reserved, color: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20" },
+    { id: "checked-out", label: "Checked Out", count: statusCounts.checkedOut, color: "bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30 hover:bg-red-500/20" },
+    { id: "blocked", label: "Blocked", count: statusCounts.blocked, color: "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30 hover:bg-rose-500/20" },
+    { id: "due-out", label: "Due Out", count: statusCounts.dueOut, color: "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30 hover:bg-purple-500/20" },
+    { id: "dirty", label: "Dirty", count: statusCounts.dirty, color: "bg-muted text-muted-foreground border-border hover:bg-muted/80" }
   ]
 
   return (
@@ -1504,9 +1504,9 @@ export default function StayViewPage() {
                                     <Badge 
                                       variant="outline" 
                                       className={`text-[9px] px-1 py-0 font-bold uppercase ${
-                                        room.status === "available" ? "border-green-500 text-green-600 bg-green-50/50" :
-                                        room.status === "occupied" ? "border-blue-500 text-blue-600 bg-blue-50/50" :
-                                        room.status === "blocked" ? "border-rose-500 text-rose-600 bg-rose-50/50" : "border-amber-500 text-amber-600"
+                                        room.status === "available" ? "border-green-500 text-green-600 dark:text-green-300 bg-green-500/10" :
+                                        room.status === "occupied" ? "border-blue-500 text-blue-600 dark:text-blue-300 bg-blue-500/10" :
+                                        room.status === "blocked" ? "border-rose-500 text-rose-600 dark:text-rose-300 bg-rose-500/10" : "border-amber-500 text-amber-600 dark:text-amber-300"
                                       }`}
                                     >
                                       {room.status}
@@ -1523,10 +1523,10 @@ export default function StayViewPage() {
                   </div>
 
                   {/* Sticky summaries side headers */}
-                  <div className="sticky bottom-11 z-30 h-11 bg-slate-50 border-t border-b border-border flex items-center px-4 font-bold text-xs text-muted-foreground">
+                  <div className="sticky bottom-11 z-30 h-11 bg-muted border-t border-b border-border flex items-center px-4 font-bold text-xs text-muted-foreground">
                     Available Inventory
                   </div>
-                  <div className="sticky bottom-0 z-30 h-11 bg-slate-50 border-b border-border flex items-center px-4 font-bold text-xs text-muted-foreground">
+                  <div className="sticky bottom-0 z-30 h-11 bg-muted border-b border-border flex items-center px-4 font-bold text-xs text-muted-foreground">
                     Occupancy (%)
                   </div>
                 </div>
@@ -1570,7 +1570,7 @@ export default function StayViewPage() {
                             return (
                               <div 
                                 key={idx}
-                                className={`w-[72px] flex-shrink-0 border-r border-border/40 flex flex-col items-center justify-center text-center py-1 bg-slate-50/60 ${
+                                className={`w-[72px] flex-shrink-0 border-r border-border/40 flex flex-col items-center justify-center text-center py-1 bg-muted/55 ${
                                   isCurrToday ? "bg-primary/5" : ""
                                 }`}
                               >
@@ -1594,7 +1594,7 @@ export default function StayViewPage() {
                                 return (
                                   <div
                                     key={idx}
-                                    className={`w-[72px] flex-shrink-0 border-r border-border/30 flex items-center justify-center text-[9px] font-bold uppercase text-muted-foreground/70 bg-slate-50/30 ${
+                                    className={`w-[72px] flex-shrink-0 border-r border-border/30 flex items-center justify-center text-[9px] font-bold uppercase text-muted-foreground/70 bg-muted/30 ${
                                       isCurrToday ? "bg-primary/5" : ""
                                     }`}
                                   >
@@ -1886,10 +1886,10 @@ export default function StayViewPage() {
                           <Badge 
                             variant="secondary" 
                             className={`text-[9px] px-1.5 py-0 mt-1 font-bold w-fit uppercase ${
-                              getTimelineStatus(hoveredRes) === "overstay" ? "bg-orange-600/10 text-orange-700 border border-orange-600/20" :
-                              hoveredRes.status === "checked-in" ? "bg-green-600/10 text-green-700 border border-green-600/20" :
-                              hoveredRes.status === "checked-out" ? "bg-red-500/10 text-red-700 border border-red-500/20" :
-                              "bg-amber-500/10 text-amber-700 border border-amber-500/20"
+                              getTimelineStatus(hoveredRes) === "overstay" ? "bg-orange-600/10 text-orange-700 dark:text-orange-300 border border-orange-600/20" :
+                              hoveredRes.status === "checked-in" ? "bg-green-600/10 text-green-700 dark:text-green-300 border border-green-600/20" :
+                              hoveredRes.status === "checked-out" ? "bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/20" :
+                              "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20"
                             }`}
                           >
                             {getTimelineStatus(hoveredRes) === "overstay" ? "Overstay" :
@@ -1907,14 +1907,14 @@ export default function StayViewPage() {
 
                   {/* Summary Rows at the bottom of dates grid */}
                   {/* Available Inventory Row */}
-                  <div className="sticky bottom-11 z-10 flex h-11 border-t border-b border-border bg-slate-50 min-w-max">
+                  <div className="sticky bottom-11 z-10 flex h-11 border-t border-b border-border bg-muted min-w-max">
                     {visibleDates.map((date, idx) => {
                       const dateStr = formatLocalDate(date)
                       const stat = dailyStats[dateStr] || { occupancyRate: 0, availableCount: rooms.length }
                       return (
                         <div 
                           key={idx} 
-                          className="w-[72px] flex-shrink-0 border-r border-border/40 flex items-center justify-center font-extrabold text-xs text-foreground bg-slate-100/40"
+                          className="w-[72px] flex-shrink-0 border-r border-border/40 flex items-center justify-center font-extrabold text-xs text-foreground bg-card/40"
                         >
                           {stat.availableCount}
                         </div>
@@ -1923,14 +1923,14 @@ export default function StayViewPage() {
                   </div>
 
                   {/* Occupancy (%) Row */}
-                  <div className="sticky bottom-0 z-10 flex h-11 border-b border-border bg-slate-50 min-w-max animate-in fade-in">
+                  <div className="sticky bottom-0 z-10 flex h-11 border-b border-border bg-muted min-w-max animate-in fade-in">
                     {visibleDates.map((date, idx) => {
                       const dateStr = formatLocalDate(date)
                       const stat = dailyStats[dateStr] || { occupancyRate: 0, availableCount: rooms.length }
                       return (
                         <div 
                           key={idx} 
-                          className="w-[72px] flex-shrink-0 border-r border-border/40 flex flex-col items-center justify-center text-[10px] px-1 bg-slate-100/40"
+                          className="w-[72px] flex-shrink-0 border-r border-border/40 flex flex-col items-center justify-center text-[10px] px-1 bg-card/40"
                         >
                           <span className="font-extrabold text-foreground">{stat.occupancyRate}%</span>
                           <div className="w-10 h-1 bg-muted rounded-full overflow-hidden mt-1">
@@ -2139,7 +2139,7 @@ export default function StayViewPage() {
                 </Badge>
               </div>
               {selectedReservation.isStatusOnly && (
-                <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                <div className="rounded border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-800 dark:text-amber-200">
                   Room is marked occupied. Check-in record details were not found in the timeline data.
                 </div>
               )}

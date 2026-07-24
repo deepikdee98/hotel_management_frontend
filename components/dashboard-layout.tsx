@@ -7,6 +7,7 @@ import { useEffect, useState } from "react"
 import { DashboardSidebar } from "./dashboard-sidebar"
 import { SetupPopup } from "./setup-popup"
 import { useAuth } from "@/lib/auth-context"
+import { useBranding } from "@/lib/branding-context"
 import type { UserRole, ModuleType } from "@/lib/types"
 import { normalizeSubscriptionStatus } from "@/lib/subscription"
 import { AlertTriangle, Loader2, Menu } from "lucide-react"
@@ -27,6 +28,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
   const router = useRouter()
   const pathname = usePathname()
   const { user, subscriptionInfo, isAuthenticated, isLoading, hasAccess } = useAuth()
+  const { companyName } = useBranding()
   const [isReady, setIsReady] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -105,6 +107,12 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
       return
     }
 
+    if (user.mustChangePassword) {
+      setIsReady(false)
+      router.replace("/change-password")
+      return
+    }
+
     // Check module access if required
     if (modulesToCheck.length > 0 && !modulesToCheck.some((module) => hasAccess(module))) {
       setIsReady(false)
@@ -133,7 +141,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="admin-shell min-h-screen bg-background text-foreground">
       <DashboardLayoutContext.Provider value={true}>
         <SetupPopup />
         {mobileSidebarOpen && (
@@ -156,7 +164,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
             sidebarCollapsed ? "lg:pl-16" : "lg:pl-60"
           )}
         >
-          <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur lg:hidden">
+          <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border/80 bg-card/95 px-4 shadow-sm backdrop-blur lg:hidden">
             <Button
               variant="ghost"
               size="icon"
@@ -166,18 +174,19 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <span className="text-sm font-semibold">HotelManager</span>
+            <span className="text-sm font-semibold tracking-tight">{companyName}</span>
           </header>
-          <main className="admin-content w-full min-w-0 overflow-x-hidden p-3 sm:p-5 lg:p-6">
+
+          <main className="admin-content w-full min-w-0 overflow-x-hidden p-6 lg:p-8 xl:p-10 space-y-6">
             {subscriptionStatus === "WARNING" && subscriptionInfo?.message && (
-              <div className="mb-4 flex items-start gap-3 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 shadow-sm">
+              <div className="mb-4 flex items-start gap-3 rounded-md border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-700 shadow-sm dark:text-red-200">
                 <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
                 <span>{subscriptionInfo.message}</span>
               </div>
             )}
 
             {subscriptionStatus === "GRACE" && subscriptionInfo?.message && (
-              <div className="mb-4 flex items-start gap-3 rounded-md border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm font-medium text-yellow-900 shadow-sm">
+              <div className="mb-4 flex items-start gap-3 rounded-md border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-800 shadow-sm dark:text-amber-200">
                 <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
                 <span>{subscriptionInfo.message}</span>
               </div>

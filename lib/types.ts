@@ -219,6 +219,7 @@ export interface User {
   modules?: ModuleType[]
   avatar?: string
   needsSetup?: boolean
+  mustChangePassword?: boolean
 }
 
 // Room types for front office

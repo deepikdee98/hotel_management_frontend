@@ -1,4 +1,11 @@
 import { apiRequest } from "./client"
+export async function changeAdminPassword(payload: { currentPassword: string; newPassword: string; confirmPassword: string }) {
+  return apiRequest<{ success: boolean; message: string }>("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function requestPasswordReset(identifier: string) {
   return apiRequest<{ success: boolean; message: string }>("/auth/forgot-password", {
     method: "POST",
