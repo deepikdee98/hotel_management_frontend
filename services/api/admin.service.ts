@@ -56,6 +56,13 @@ export async function toggleSuperAdminHotelActive(id: string) {
   })
 }
 
+export async function convertSuperAdminHotelToChain(id: string, payload: JsonRecord) {
+  return apiRequest<JsonRecord>(`/super-admin/hotels/${id}/convert-to-chain`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function getAdminStaff(search?: string, role?: string): Promise<Staff[]> {
   const params = new URLSearchParams()
   if (search) params.set("search", search)
@@ -85,6 +92,13 @@ export async function updateAdminStaffStatus(id: string, isActive: boolean) {
   return apiRequest<JsonRecord>(`/admin/staff/${id}/status`, {
     method: "PATCH",
     body: JSON.stringify({ isActive }),
+  })
+}
+
+export async function updateAdminStaff(id: string, payload: JsonRecord) {
+  return apiRequest<JsonRecord>(`/admin/staff/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
   })
 }
 

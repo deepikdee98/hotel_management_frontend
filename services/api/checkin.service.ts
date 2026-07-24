@@ -161,6 +161,13 @@ export async function createCheckOut(payload: any) {
   })
 }
 
+export async function undoCheckOut(payload: { folioId: string; reason: string }) {
+  return apiRequest<{ success: boolean; message: string; data: any }>("/front-office/check-out/undo", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function downloadCheckoutInvoice(invoiceId: string) {
   const token = getStoredAccessToken()
   const response = await fetch(`${API_BASE_URL}/front-office/check-out/invoices/${invoiceId}/download`, {

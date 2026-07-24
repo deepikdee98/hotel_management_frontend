@@ -66,26 +66,26 @@ export default function NotificationsPage() {
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'module-update':
-        return <CheckCircle className="h-5 w-5 text-blue-600" />
+        return <CheckCircle className="h-5 w-5 text-blue-600 dark:text-blue-300" />
       case 'alert':
-        return <AlertCircle className="h-5 w-5 text-red-600" />
+        return <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-300" />
       case 'promotion':
-        return <Info className="h-5 w-5 text-green-600" />
+        return <Info className="h-5 w-5 text-green-600 dark:text-green-300" />
       default:
-        return <Bell className="h-5 w-5 text-gray-600" />
+        return <Bell className="h-5 w-5 text-muted-foreground" />
     }
   }
 
   const getTypeColor = (type: string) => {
     switch (type) {
       case 'module-update':
-        return 'bg-blue-100 text-blue-800'
+        return 'bg-blue-500/12 text-blue-800 dark:text-blue-200'
       case 'alert':
-        return 'bg-red-100 text-red-800'
+        return 'bg-red-500/12 text-red-800 dark:text-red-200'
       case 'promotion':
-        return 'bg-green-100 text-green-800'
+        return 'bg-green-500/12 text-green-800 dark:text-green-200'
       default:
-        return 'bg-gray-100 text-gray-800'
+        return 'bg-muted text-foreground'
     }
   }
 
@@ -137,7 +137,7 @@ export default function NotificationsPage() {
               {notifications.map((notif) => (
                 <Card
                   key={notif.id}
-                  className={`${!notif.isRead ? 'border-blue-200 bg-blue-50' : ''} hover:shadow-md transition-shadow`}
+                  className={`${!notif.isRead ? 'border-primary/35 bg-primary/[0.07]' : ''} hover:shadow-md transition-shadow`}
                 >
                   <CardContent className="py-4">
                     <div className="flex items-start gap-4">
@@ -213,7 +213,7 @@ export default function NotificationsPage() {
               {notifications
                 .filter((n) => !n.isRead)
                 .map((notif) => (
-                  <Card key={notif.id} className="border-blue-200 bg-blue-50">
+                  <Card key={notif.id} className="border-primary/35 bg-primary/[0.07]">
                     <CardContent className="py-4">
                       <div className="flex items-start gap-4">
                         <div className="pt-1">{getNotificationIcon(notif.type)}</div>

@@ -1,10 +1,14 @@
-import { Suspense } from "react"
-import { ForgotPasswordForm } from "@/components/forgot-password-form"
+"use client"
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 
 export default function ForgotPasswordPage() {
-  return (
-    <Suspense fallback={null}>
-      <ForgotPasswordForm />
-    </Suspense>
-  )
+  const router = useRouter()
+  
+  useEffect(() => {
+    router.replace("/?forgot=true")
+  }, [router])
+
+  return null
 }

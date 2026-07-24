@@ -51,7 +51,7 @@ export interface POSOrder {
 }
 
 // User roles
-export type UserRole = "super-admin" | "admin" | "staff"
+export type UserRole = "super-admin" | "company-admin" | "admin" | "staff"
 
 // Available modules in the system
 export type ModuleType =
@@ -117,6 +117,13 @@ export interface Hotel {
   country: string
   phone: string
   email: string
+  propertyCode?: string
+  companyId?: string
+  companyName?: string
+  companyCode?: string
+  companySubscriptionPlan?: string
+  companyMaxAllowedProperties?: number
+  isStandalone?: boolean
   modules: ModuleType[]
   status: "active" | "inactive" | "pending" | "suspended"
   isActive: boolean
@@ -137,8 +144,10 @@ export interface Staff {
   email: string
   phone?: string
   role: "admin" | "staff"
+  avatar?: string
   hotelId: string
   modules: ModuleType[]
+  permissions?: string[]
   status: "active" | "inactive"
   createdAt: string
   lastLogin?: string
@@ -202,10 +211,15 @@ export interface User {
   role: UserRole
   hotelId?: string
   hotelName?: string
+  companyId?: string
+  propertyIds?: string[]
+  defaultPropertyId?: string
+  permissions?: string[]
   expiryDate?: string
   modules?: ModuleType[]
   avatar?: string
   needsSetup?: boolean
+  mustChangePassword?: boolean
 }
 
 // Room types for front office

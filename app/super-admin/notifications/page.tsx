@@ -107,22 +107,22 @@ export default function SuperAdminNotificationsPage() {
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'system-update':
-        return <CheckCircle className="h-5 w-5 text-blue-600" />
+        return <CheckCircle className="h-5 w-5 text-blue-600 dark:text-blue-300" />
       case 'alert':
-        return <AlertCircle className="h-5 w-5 text-red-600" />
+        return <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-300" />
       default:
-        return <Bell className="h-5 w-5 text-gray-600" />
+        return <Bell className="h-5 w-5 text-muted-foreground" />
     }
   }
 
   const getTypeColor = (type: string) => {
     switch (type) {
       case 'system-update':
-        return 'bg-blue-100 text-blue-800'
+        return 'bg-blue-500/12 text-blue-800 dark:text-blue-200'
       case 'alert':
-        return 'bg-red-100 text-red-800'
+        return 'bg-red-500/12 text-red-800 dark:text-red-200'
       default:
-        return 'bg-gray-100 text-gray-800'
+        return 'bg-muted text-foreground'
     }
   }
 

@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react"
 import type { User, UserRole, ModuleType } from "./types"
 import { getSubscriptionInfo, normalizeSubscriptionStatus, type SubscriptionInfo } from "./subscription"
+import { socketService, type RealtimeChange } from "@/services/socket.service"
 
 interface AuthContextType {
   user: User | null
@@ -12,6 +13,7 @@ interface AuthContextType {
   login: (identifier: string, password: string) => Promise<any>
   logout: (message?: string) => void
   hasAccess: (module: ModuleType) => boolean
+  hasPermission: (module: ModuleType | string, action: "view" | "create" | "edit" | "delete") => boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -277,10 +279,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [logout, user])
 
-  const refreshTokens = useCallback(async () => {
+  const refreshTokens = useCallback(async (force = false) => {
     // Prevent refreshing more than once every 10 seconds to avoid loops
     const now = Date.now()
-    if (now - lastRefreshRef.current < 10000) {
+    if (!force && now - lastRefreshRef.current < 10000) {
       return true
     }
     lastRefreshRef.current = now
@@ -310,6 +312,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           refreshToken: nextRefreshToken || refreshToken
         }))
         setAccessToken(nextAccessToken)
+        const refreshedUser = payload.user || payload.data?.user
+        setUser((currentUser) => {
+          if (!currentUser) return currentUser
+          let tokenUser: any = null
+          try {
+            const decoded = JSON.parse(atob(nextAccessToken.split(".")[1]))
+            tokenUser = decoded.user || decoded
+          } catch { }
+          const source = refreshedUser || tokenUser || {}
+          const nextUser = {
+            ...currentUser,
+            email: source.email || currentUser.email,
+            hotelId: source.hotelId ?? currentUser.hotelId,
+            companyId: source.companyId ?? currentUser.companyId,
+            propertyIds: source.propertyIds || currentUser.propertyIds || [],
+            defaultPropertyId: source.defaultPropertyId ?? currentUser.defaultPropertyId,
+            modules: pickModules(source.modules, payload.modules, currentUser.modules),
+            permissions: source.permissions || payload.permissions || [],
+          }
+          sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextUser))
+          return nextUser
+        })
         // Dispatch storage event to notify other tabs
         window.dispatchEvent(new Event("storage"))
         return true
@@ -319,6 +343,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     return false
   }, [])
+
+  useEffect(() => {
+    if (!accessToken || !user) {
+      socketService.disconnect()
+      return
+    }
+
+    const socket = socketService.connect(accessToken)
+
+    const handleDataChange = (change: RealtimeChange) => {
+      window.dispatchEvent(new CustomEvent("hotel:realtime-change", { detail: change }))
+    }
+
+    const handlePermissionChange = async (change: RealtimeChange) => {
+      if (change.targetUserId && String(change.targetUserId) !== String(user.id)) return
+      const refreshed = await refreshTokens(true)
+      if (!refreshed) {
+        logout("Your access has changed. Please sign in again.")
+        return
+      }
+      window.dispatchEvent(new CustomEvent("hotel:permissions-refreshed", { detail: change }))
+    }
+
+    const handlePropertyChange = (event: Event) => {
+      const propertyId = (event as CustomEvent<{ propertyId?: string }>).detail?.propertyId
+      if (propertyId) socketService.selectProperty(propertyId)
+    }
+
+    socket.on("data:changed", handleDataChange)
+    socket.on("permissions:changed", handlePermissionChange)
+    window.addEventListener("hotel:property-changed", handlePropertyChange)
+
+    const activePropertyId = window.localStorage.getItem("activePropertyId")
+    if (activePropertyId) socketService.selectProperty(activePropertyId)
+
+    return () => {
+      socket.off("data:changed", handleDataChange)
+      socket.off("permissions:changed", handlePermissionChange)
+      window.removeEventListener("hotel:property-changed", handlePropertyChange)
+    }
+  }, [accessToken, logout, refreshTokens, user?.id, user?.propertyIds?.join(",")])
 
   useEffect(() => {
     if (!accessToken) return
@@ -425,6 +490,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const normalized = String(r || "").toLowerCase()
         if (normalized === "superadmin" || normalized === "super-admin")
           return "super-admin"
+        if (normalized === "companyadmin" || normalized === "company-admin")
+          return "company-admin"
         if (normalized === "hoteladmin" || normalized === "admin")
           return "admin"
         return "staff"
@@ -463,8 +530,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           modules: pickModules(userData.modules, hotelData?.modules),
           hotelId: userData.hotelId || hotelData?._id || hotelData?.id,
           hotelName: userData.hotelName || hotelData?.name,
+          companyId: userData.companyId || payload.companyId || null,
+          propertyIds: userData.propertyIds || payload.propertyIds || [],
+          defaultPropertyId: userData.defaultPropertyId || payload.defaultPropertyId || null,
+          permissions: userData.permissions || payload.permissions || [],
           expiryDate: payloadExpiryDate,
           needsSetup: payload.needsSetup || payload.data?.needsSetup || false,
+          mustChangePassword: Boolean(userData.mustChangePassword ?? payload.mustChangePassword),
         }
       } catch {
         const data = payload.data?.user || payload.user || payload
@@ -478,8 +550,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           modules: pickModules(data.modules, payload.data?.modules, payload.modules, hotelData?.modules),
           hotelId: data.hotelId || hotelData?._id || hotelData?.id,
           hotelName: data.hotelName || hotelData?.name,
+          companyId: data.companyId || payload.companyId || null,
+          propertyIds: data.propertyIds || payload.propertyIds || [],
+          defaultPropertyId: data.defaultPropertyId || payload.defaultPropertyId || null,
+          permissions: data.permissions || payload.permissions || [],
           expiryDate: payloadExpiryDate || pickExpiryDate(data, hotelData),
           needsSetup: payload.needsSetup || payload.data?.needsSetup || false,
+          mustChangePassword: Boolean(data.mustChangePassword ?? payload.mustChangePassword),
+        }
+      }
+
+      // Initialize active property ID in localStorage
+      if (typeof window !== "undefined") {
+        const propIds = userProfile.propertyIds || []
+        if (userProfile.role === "company-admin" && propIds.length > 0) {
+          window.localStorage.setItem("activePropertyId", userProfile.defaultPropertyId || propIds[0])
+        } else {
+          window.localStorage.removeItem("activePropertyId")
         }
       }
 
@@ -504,7 +591,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionStorage.removeItem(SUBSCRIPTION_STORAGE_KEY)
       }
 
-      return { accessToken, refreshToken, role: userProfile.role, needsSetup: userProfile.needsSetup }
+      return {
+        accessToken,
+        refreshToken,
+        role: userProfile.role,
+        needsSetup: userProfile.needsSetup,
+        mustChangePassword: userProfile.mustChangePassword,
+      }
     } catch (error) {
       throw error instanceof Error ? error : new Error("Login failed")
     }
@@ -519,15 +612,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!user.modules || !Array.isArray(user.modules)) return false
 
-      return user.modules.some(m => {
+      const moduleAssigned = user.modules.some(m => {
         const normalizedM = String(m).toLowerCase().trim()
         const normalizedTarget = String(module).toLowerCase().trim()
         return normalizedM === normalizedTarget ||
           normalizedM.replace(/-/g, '') === normalizedTarget.replace(/-/g, '')
       })
+      if (!moduleAssigned || user.role !== "staff") return moduleAssigned
+
+      const permissions = user.permissions || []
+      const hasGranularPermissions = permissions.some((permission) => /[:._-](view|create|edit|delete)$/i.test(permission))
+      if (!hasGranularPermissions) return true
+      const normalized = permissions.map((permission) => permission.toLowerCase().replace(/[._\s/]+/g, ":"))
+      const target = String(module).toLowerCase()
+      return normalized.includes("*") || normalized.includes("*:*") ||
+        normalized.includes(`${target}:*`) || normalized.includes(`${target}:view`)
     },
     [user]
   )
+
+  const hasPermission = useCallback((module: ModuleType | string, action: "view" | "create" | "edit" | "delete") => {
+    if (!user) return false
+    if (user.role !== "staff") return true
+    if (!hasAccess(module as ModuleType)) return false
+    const permissions = user.permissions || []
+    const granular = permissions.some((permission) => /[:._-](view|create|edit|delete)$/i.test(permission))
+    if (!granular) return true
+    const normalized = permissions.map((permission) => permission.toLowerCase().replace(/[._\s/]+/g, ":"))
+    const target = String(module).toLowerCase()
+    return normalized.includes("*") || normalized.includes("*:*") ||
+      normalized.includes(`${target}:*`) || normalized.includes(`${target}:${action}`)
+  }, [hasAccess, user])
 
   return (
     <AuthContext.Provider
@@ -539,6 +654,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         hasAccess,
+        hasPermission,
       }}
     >
       {children}

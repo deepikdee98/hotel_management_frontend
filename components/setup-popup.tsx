@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import {
@@ -19,19 +19,27 @@ export function SetupPopup() {
   const { user } = useAuth()
   const [open, setOpen] = useState(false)
 
+  const setupPromptKey = user
+    ? `setup-popup-shown:${user.hotelId || "hotel"}:${user.id || (user as any)._id || user.email || "user"}`
+    : ""
+
   useEffect(() => {
-    if (user?.role === "admin" && user?.needsSetup) {
+    if (!user || !setupPromptKey) return
+
+    const canShowSetupPrompt =
+      (user.role === "admin" || user.role === "company-admin") &&
+      user.needsSetup &&
+      sessionStorage.getItem(setupPromptKey) !== "true"
+
+    if (canShowSetupPrompt) {
+      sessionStorage.setItem(setupPromptKey, "true")
       setOpen(true)
     }
-  }, [user])
+  }, [user, setupPromptKey])
 
   const handleConfirm = () => {
     setOpen(false)
     router.push("/admin/front-office/setup")
-  }
-
-  const handleCancel = () => {
-    setOpen(false)
   }
 
   return (
@@ -40,11 +48,11 @@ export function SetupPopup() {
         <AlertDialogHeader>
           <AlertDialogTitle>Complete Hotel Setup</AlertDialogTitle>
           <AlertDialogDescription>
-            Your hotel setup is incomplete. Would you like to complete it now?
+            Your hotel setup is incomplete. Would you like to configure it now?
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleCancel}>No</AlertDialogCancel>
+          <AlertDialogCancel onClick={() => setOpen(false)}>No</AlertDialogCancel>
           <AlertDialogAction onClick={handleConfirm}>Yes</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

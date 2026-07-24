@@ -16,7 +16,6 @@ import { Switch } from "@/components/ui/switch"
 import { Check, Settings, Plus, Pencil, Trash2, BedDouble, CreditCard, Tags, Building, Layers, ChevronDown, ChevronRight, Loader2, RotateCcw, X, User, ImageIcon, Upload } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import EditDetailsModal from "@/components/common/EditDetailsModal"
-import { useAuth } from "@/lib/auth-context"
 
 import {
   getSetupRoomTypes,
@@ -45,7 +44,6 @@ import {
   deactivateSetupOption,
   getSetupOptions,
   updateSetupOption,
-  completeHotelSetup,
   type SetupOption,
   getCompanies,
   createCompany,
@@ -323,43 +321,8 @@ function MasterDataPanel({ moduleKey = "all" }: { moduleKey?: MasterDataModule }
 export default function FOSetupPage() {
   const { toast } = useToast()
   const router = useRouter()
-  const { user } = useAuth()
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
-  const [isFinishing, setIsFinishing] = useState(false)
-
-  const handleFinishSetup = async () => {
-    setIsFinishing(true)
-    try {
-      await completeHotelSetup()
-      
-      // Update local user state if possible to clear needsSetup
-      if (user) {
-        user.needsSetup = false
-        const stored = sessionStorage.getItem("hotel_manager_auth")
-        if (stored) {
-          const userData = JSON.parse(stored)
-          userData.needsSetup = false
-          sessionStorage.setItem("hotel_manager_auth", JSON.stringify(userData))
-        }
-      }
-
-      toast({
-        title: "Setup Completed",
-        description: "Your hotel setup has been finalized successfully.",
-      })
-      
-      router.push("/admin")
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to complete setup",
-        variant: "destructive"
-      })
-    } finally {
-      setIsFinishing(false)
-    }
-  }
 
   const [activeTab, setActiveTab] = useState("hotel-config")
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([])
@@ -1424,20 +1387,6 @@ export default function FOSetupPage() {
           <h1 className="text-2xl font-bold text-foreground">Front Office Setup</h1>
           <p className="text-sm text-muted-foreground">Configure room types, floor-wise rooms, rate plans, and other settings</p>
         </div>
-        {user?.needsSetup && (
-          <Button 
-            onClick={handleFinishSetup} 
-            disabled={isFinishing}
-            className="bg-green-600 hover:bg-green-700 text-white"
-          >
-            {isFinishing ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Check className="h-4 w-4 mr-2" />
-            )}
-            Finish Setup
-          </Button>
-        )}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

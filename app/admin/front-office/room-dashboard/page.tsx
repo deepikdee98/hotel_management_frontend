@@ -155,72 +155,79 @@ const getCheckoutStayStatus = (checkOut?: string, fallbackRemainingDays?: number
 }
 
 const buildRoomGuestDetails = (room: Room, reservations: Reservation[]): Room => {
-  if (room.status !== "reserved" && room.status !== "occupied") return room
+  const roomId = room.id || (room as any)._id
+  const roomNumber = room.number || (room as any).roomNumber
 
-  // Check if room already has guest details from the direct room API response
-  const hasReservationDetails =
-    Boolean(room.guestDetails?.name || room.guestName) &&
-    Boolean(room.guestDetails?.checkIn || room.checkIn || (room as any).checkInDate) &&
-    Boolean(room.guestDetails?.checkOut || room.checkOut || (room as any).checkOutDate)
-
-  // Ensure guestDetails object exists if we have data at root
-  if (hasReservationDetails) {
-    if (!room.guestDetails) {
-      return {
-        ...room,
-        guestDetails: {
-          name: room.guestName,
-          phone: room.phone,
-          checkIn: room.checkIn || (room as any).checkInDate,
-          checkOut: room.checkOut || (room as any).checkOutDate,
-          adults: room.adults,
-          children: room.children,
-          bookingId: room.bookingId || (room as any).bookingNumber,
-          checkinId: room.checkinId,
-          folioId: room.folioId,
-        }
-      }
-    }
-    return room
-  }
-
-  const allowedStatuses = room.status === "occupied"
-    ? ["checked-in"]
-    : ["confirmed", "no-show"]
-
-  const reservation = reservations.find(
-    (item) =>
-      allowedStatuses.includes(item.status) &&
-      ((room.id && item.roomId === room.id) || (room.number && item.roomNumber === room.number))
+  // 1. Check if occupied (has checked-in reservation)
+  const activeCheckin = reservations.find(r => 
+    r.status === "checked-in" && 
+    ((roomId && String(r.roomId || (r as any).room?._id || "") === String(roomId)) || 
+     (roomNumber && String(r.roomNumber) === String(roomNumber)))
   )
 
-  if (!reservation) return room
-
-  const checkOut = room.checkOut || reservation.checkOut
-
-  return {
-    ...room,
-    guestName: room.guestName || reservation.guestName,
-    checkIn: room.checkIn || reservation.checkIn,
-    checkOut,
-    bookingId: room.bookingId || reservation.bookingNumber || reservation.reservationId,
-    phone: room.phone || reservation.guestPhone,
-    adults: room.adults ?? reservation.adults,
-    children: room.children ?? reservation.children,
-    remainingDays: room.remainingDays ?? (room.status === "occupied" ? calculateRemainingDays(checkOut) : undefined),
-    guestDetails: {
-      ...room.guestDetails,
-      name: room.guestDetails?.name || room.guestName || reservation.guestName,
-      phone: room.guestDetails?.phone || room.phone || reservation.guestPhone,
-      checkIn: room.guestDetails?.checkIn || room.checkIn || reservation.checkIn,
-      checkOut: room.guestDetails?.checkOut || checkOut,
-      adults: room.guestDetails?.adults ?? room.adults ?? reservation.adults,
-      children: room.guestDetails?.children ?? room.children ?? reservation.children,
-      bookingId: room.guestDetails?.bookingId || room.bookingId || reservation.bookingNumber || reservation.reservationId,
-      checkinId: room.guestDetails?.checkinId || room.checkinId,
-      folioId: room.guestDetails?.folioId || room.folioId,
-    },
+  if (activeCheckin) {
+    const checkOut = room.checkOut || activeCheckin.checkOut
+    return {
+      ...room,
+      status: "occupied",
+      guestName: room.guestName || activeCheckin.guestName,
+      checkIn: room.checkIn || activeCheckin.checkIn,
+      checkOut,
+      bookingId: room.bookingId || activeCheckin.bookingNumber || activeCheckin.reservationId,
+      phone: room.phone || activeCheckin.guestPhone,
+      adults: room.adults ?? activeCheckin.adults,
+      children: room.children ?? activeCheckin.children,
+      remainingDays: room.remainingDays ?? calculateRemainingDays(checkOut),
+      guestDetails: {
+        ...room.guestDetails,
+        name: room.guestDetails?.name || room.guestName || activeCheckin.guestName,
+        phone: room.guestDetails?.phone || room.phone || activeCheckin.guestPhone,
+        checkIn: room.guestDetails?.checkIn || room.checkIn || activeCheckin.checkIn,
+        checkOut: room.guestDetails?.checkOut || checkOut,
+        adults: room.guestDetails?.adults ?? room.adults ?? activeCheckin.adults,
+        children: room.guestDetails?.children ?? room.children ?? activeCheckin.children,
+        bookingId: room.guestDetails?.bookingId || room.bookingId || activeCheckin.bookingNumber || activeCheckin.reservationId,
+        checkinId: room.guestDetails?.checkinId || room.checkinId,
+        folioId: room.guestDetails?.folioId || room.folioId,
+      }
+    }
   }
+
+  // 2. Check if reserved (has confirmed/no-show reservation)
+  const activeReservation = reservations.find(r => 
+    (String(r.status) === "confirmed" || String(r.status) === "no-show") && 
+    ((roomId && String(r.roomId || (r as any).room?._id || "") === String(roomId)) || 
+     (roomNumber && String(r.roomNumber) === String(roomNumber)))
+  )
+
+  if (activeReservation) {
+    const checkOut = room.checkOut || activeReservation.checkOut
+    return {
+      ...room,
+      status: "reserved",
+      guestName: room.guestName || activeReservation.guestName,
+      checkIn: room.checkIn || activeReservation.checkIn,
+      checkOut,
+      bookingId: room.bookingId || activeReservation.bookingNumber || activeReservation.reservationId,
+      phone: room.phone || activeReservation.guestPhone,
+      adults: room.adults ?? activeReservation.adults,
+      children: room.children ?? activeReservation.children,
+      guestDetails: {
+        ...room.guestDetails,
+        name: room.guestDetails?.name || room.guestName || activeReservation.guestName,
+        phone: room.guestDetails?.phone || room.phone || activeReservation.guestPhone,
+        checkIn: room.guestDetails?.checkIn || room.checkIn || activeReservation.checkIn,
+        checkOut: room.guestDetails?.checkOut || checkOut,
+        adults: room.guestDetails?.adults ?? room.adults ?? activeReservation.adults,
+        children: room.guestDetails?.children ?? room.children ?? activeReservation.children,
+        bookingId: room.guestDetails?.bookingId || room.bookingId || activeReservation.bookingNumber || activeReservation.reservationId,
+        checkinId: room.guestDetails?.checkinId || room.checkinId,
+        folioId: room.guestDetails?.folioId || room.folioId,
+      }
+    }
+  }
+
+  return room
 }
 
 const getDisplayStatus = (room: Room): Room["status"] =>

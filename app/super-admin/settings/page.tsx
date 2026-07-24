@@ -12,7 +12,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
-import { updateSuperAdminPassword,getSuperAdminProfile,updateSuperAdminProfile} from "@/lib/backend-api"
+import { useBranding } from "@/lib/branding-context"
+import { 
+  updateSuperAdminPassword,
+  getSuperAdminProfile,
+  updateSuperAdminProfile,
+  getCompanyBranding,
+  updateCompanyBranding,
+  uploadHotelLogo
+} from "@/lib/backend-api"
 import {
   User,
   Bell,
@@ -22,6 +30,10 @@ import {
   Mail,
   Save,
   Key,
+  Building,
+  Upload,
+  Loader2,
+  ImageIcon,
 } from "lucide-react"
 
 export default function SettingsPage() {
@@ -29,10 +41,109 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const { toast } = useToast()
+  const { refreshBranding } = useBranding()
+  
+  const [brandingForm, setBrandingForm] = useState({
+    companyName: "",
+    logo: null as any,
+  })
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string>("")
+  const [logoName, setLogoName] = useState<string>("No file chosen")
+  const [isBrandingUploading, setIsBrandingUploading] = useState(false)
+  const [isSavingBranding, setIsSavingBranding] = useState(false)
   
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    const fetchBrandingData = async () => {
+      try {
+        const res = await getCompanyBranding()
+        if (res && res.success && res.data) {
+          setBrandingForm({
+            companyName: res.data.companyName || "",
+            logo: res.data.logo || null,
+          })
+          if (res.data.logo && res.data.logo.url) {
+            setLogoPreview(res.data.logo.url)
+            setLogoName(res.data.logo.fileName || "logo.png")
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load company branding details:", error)
+      }
+    }
+    fetchBrandingData()
+  }, [])
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setLogoFile(file)
+      setLogoName(file.name)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setLogoPreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleBrandingSave = async () => {
+    if (!brandingForm.companyName.trim()) {
+      toast({
+        title: "Error",
+        description: "Company name is required",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSavingBranding(true)
+    try {
+      let uploadedLogo = brandingForm.logo
+      if (logoFile) {
+        setIsBrandingUploading(true)
+        uploadedLogo = await uploadHotelLogo(logoFile)
+        setIsBrandingUploading(false)
+      }
+
+      const res = await updateCompanyBranding({
+        companyName: brandingForm.companyName,
+        logo: uploadedLogo,
+      })
+
+      if (res && res.success && res.data) {
+        setBrandingForm({
+          companyName: res.data.companyName || "",
+          logo: res.data.logo || null,
+        })
+        if (res.data.logo && res.data.logo.url) {
+          setLogoPreview(res.data.logo.url)
+          setLogoName(res.data.logo.fileName || "logo.png")
+        }
+        setLogoFile(null)
+      }
+
+      await refreshBranding()
+
+      toast({
+        title: "Success",
+        description: "Company branding updated successfully",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update company branding",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSavingBranding(false)
+      setIsBrandingUploading(false)
+    }
+  }
 
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
   const [passwordForm, setPasswordForm] = useState({
@@ -184,6 +295,10 @@ export default function SettingsPage() {
             <TabsTrigger value="appearance" className="gap-2">
               <Palette className="h-4 w-4" />
               Appearance
+            </TabsTrigger>
+            <TabsTrigger value="branding" className="gap-2">
+              <Building className="h-4 w-4" />
+              Branding
             </TabsTrigger>
           </TabsList>
 
@@ -568,6 +683,63 @@ onChange={(e) =>
                   >
                     <Save className="h-4 w-4" />
                     Save Preferences
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Branding Tab */}
+          <TabsContent value="branding">
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-card-foreground">Company Branding</CardTitle>
+                <CardDescription>Configure your platform's name and logo branding globally</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="companyName">Company Name</Label>
+                    <Input
+                      id="companyName"
+                      value={brandingForm.companyName}
+                      onChange={(e) =>
+                        setBrandingForm({ ...brandingForm, companyName: e.target.value })
+                      }
+                      placeholder="e.g. Zentric HMS"
+                      className="bg-input border-border"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Company Logo</Label>
+                  <div className="flex items-center gap-3 rounded-md border border-input p-3 max-w-xl bg-card border-border">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+                      {logoPreview ? (
+                        <img src={logoPreview} alt="Company logo preview" className="h-full w-full object-contain" />
+                      ) : (
+                        <ImageIcon className="h-7 w-7 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{logoName}</p>
+                      <p className="text-xs text-muted-foreground">This logo will be displayed globally across the application</p>
+                    </div>
+                    <Input id="company-logo-upload" type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
+                    <Button type="button" variant="outline" size="sm" asChild disabled={isSavingBranding || isBrandingUploading}>
+                      <Label htmlFor="company-logo-upload" className="cursor-pointer flex items-center gap-2">
+                        {isBrandingUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                        Upload
+                      </Label>
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button onClick={handleBrandingSave} disabled={isSavingBranding || isBrandingUploading} className="gap-2">
+                    {isSavingBranding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    Save Branding
                   </Button>
                 </div>
               </CardContent>

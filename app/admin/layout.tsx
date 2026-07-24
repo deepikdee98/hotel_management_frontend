@@ -9,6 +9,6 @@ export default function AdminLayout({
   children: React.ReactNode
 }) {
   return (
-    <DashboardLayout requiredRole={["admin", "staff"]}>{children}</DashboardLayout>
+    <DashboardLayout requiredRole={["admin", "staff", "company-admin"]}>{children}</DashboardLayout>
   )
 }
