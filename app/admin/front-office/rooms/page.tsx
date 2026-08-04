@@ -101,17 +101,17 @@ export default function AdminRoomsPage() {
 
   return (
     <DashboardLayout requiredRole={["admin", "staff"]}>
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Room Management</h1>
-            <p className="text-muted-foreground">Manage all hotel rooms and their status</p>
+            <h1 className="text-xl font-bold text-foreground sm:text-2xl">Room Management</h1>
+            <p className="mt-1 text-xs text-muted-foreground"><span className="font-medium text-primary">Rooms</span> / Manage all hotel rooms and their status</p>
           </div>
           <Dialog open={isAddRoomOpen} onOpenChange={setIsAddRoomOpen}>
             <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
+              <Button size="sm" className="h-9">
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
                 Add Room
               </Button>
             </DialogTrigger>
@@ -164,9 +164,9 @@ export default function AdminRoomsPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card className="bg-card border-border">
-            <CardContent className="p-4 flex items-center gap-4">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <Card className="rounded-lg bg-card border-border">
+            <CardContent className="p-3 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-chart-2/10">
                 <BedDouble className="h-5 w-5 text-chart-2" />
               </div>
@@ -176,8 +176,8 @@ export default function AdminRoomsPage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-card border-border">
-            <CardContent className="p-4 flex items-center gap-4">
+          <Card className="rounded-lg bg-card border-border">
+            <CardContent className="p-3 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10">
                 <CheckCircle2 className="h-5 w-5 text-primary" />
               </div>
@@ -187,8 +187,8 @@ export default function AdminRoomsPage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-card border-border">
-            <CardContent className="p-4 flex items-center gap-4">
+          <Card className="rounded-lg bg-card border-border">
+            <CardContent className="p-3 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-destructive/10">
                 <XCircle className="h-5 w-5 text-destructive" />
               </div>
@@ -198,8 +198,8 @@ export default function AdminRoomsPage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-card border-border">
-            <CardContent className="p-4 flex items-center gap-4">
+          <Card className="rounded-lg bg-card border-border">
+            <CardContent className="p-3 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-warning/10">
                 <Sparkles className="h-5 w-5 text-warning" />
               </div>
@@ -212,19 +212,19 @@ export default function AdminRoomsPage() {
         </div>
 
         {/* Filters */}
-        <Card className="bg-card border-border">
-          <CardHeader>
+        <Card className="rounded-lg bg-card border-border">
+          <CardHeader className="border-b border-border p-4">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="text-foreground">All Rooms</CardTitle>
-                <CardDescription>View and manage room inventory</CardDescription>
+                <CardTitle className="text-sm text-foreground">All Rooms</CardTitle>
+                <CardDescription className="text-xs">View and manage room inventory</CardDescription>
               </div>
               <div className="flex gap-2 flex-wrap">
                 <div className="relative w-full sm:w-48">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search rooms..."
-                    className="pl-8 bg-background"
+                    className="h-9 pl-8 bg-background text-xs"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -256,19 +256,19 @@ export default function AdminRoomsPage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <CardContent className="p-3">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filteredRooms.map((room) => (
-                <Card key={room.id} className="bg-secondary/30 border-border hover:border-primary/50 transition-colors">
-                  <CardContent className="p-4">
+                <Card key={room.id} className="rounded-md bg-card border-border hover:border-primary/50 transition-colors">
+                  <CardContent className="p-3">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
                         {getStatusIcon(room.status)}
-                        <span className="font-bold text-lg text-foreground">Room {room.id}</span>
+                        <span className="font-bold text-base text-foreground">{room.id}</span>
                       </div>
                       {getStatusBadge(room.status)}
                     </div>
-                    <div className="space-y-2 text-sm">
+                    <div className="space-y-1.5 text-xs">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Type</span>
                         <span className="text-foreground">{room.type}</span>

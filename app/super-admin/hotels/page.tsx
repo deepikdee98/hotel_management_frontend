@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   createSuperAdminHotel,
   deleteSuperAdminHotel,
@@ -64,6 +65,7 @@ export default function HotelsPage() {
   const [isViewOpen, setIsViewOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
   const [isConvertDialogOpen, setIsConvertDialogOpen] = useState(false)
@@ -181,8 +183,9 @@ export default function HotelsPage() {
 
   const filteredHotels = hotels.filter(
     (hotel) =>
+      (statusFilter === "all" || hotel.status === statusFilter) &&
       hotel.name.toLowerCase().includes(search.toLowerCase()) ||
-      hotel.city.toLowerCase().includes(search.toLowerCase())
+      ((statusFilter === "all" || hotel.status === statusFilter) && hotel.city.toLowerCase().includes(search.toLowerCase()))
   )
 
   const handleModuleToggle = (moduleId: ModuleType) => {
@@ -482,11 +485,11 @@ export default function HotelsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Hotels</h1>
-          <p className="text-muted-foreground">Manage registered hotels and their modules</p>
+          <h1 className="text-xl font-bold text-foreground sm:text-2xl">Hotels</h1>
+          <p className="mt-1 text-xs text-muted-foreground">Manage all your hotel properties</p>
         </div>
         <Dialog
           open={isAddDialogOpen}
@@ -496,8 +499,8 @@ export default function HotelsPage() {
 	          }}
 	        >
           <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
+            <Button size="sm" className="h-9">
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
               Add Hotel
             </Button>
           </DialogTrigger>
@@ -870,45 +873,51 @@ export default function HotelsPage() {
       </div>
 
       {/* Search & Filter */}
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-md">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search hotels..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="h-9 pl-9 text-xs"
           />
         </div>
-        <Button variant="outline" size="icon">
-          <Filter className="h-4 w-4" />
-        </Button>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-9 w-full text-xs sm:w-36"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Hotels Table */}
-      <Card className="bg-card">
-        <CardHeader>
-          <CardTitle>All Hotels</CardTitle>
-          <CardDescription>{filteredHotels.length} hotels registered</CardDescription>
+      <Card className="overflow-hidden rounded-lg border-border bg-card">
+        <CardHeader className="border-b border-border px-4 py-3">
+          <CardTitle className="text-sm">Hotel Directory</CardTitle>
+          <CardDescription className="text-xs">{filteredHotels.length} hotels registered</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Property</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Location</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Rooms</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Modules</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Expiry Date</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Actions</th>
+                  <th className="text-left py-2.5 px-4 text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Property</th>
+                  <th className="text-left py-2.5 px-4 text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Location</th>
+                  <th className="text-left py-2.5 px-4 text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Rooms</th>
+                  <th className="text-left py-2.5 px-4 text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Modules</th>
+                  <th className="text-left py-2.5 px-4 text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Expiry Date</th>
+                  <th className="text-left py-2.5 px-4 text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Status</th>
+                  <th className="text-right py-2.5 px-4 text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredHotels.map((hotel) => (
                   <tr key={hotel.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                    <td className="py-4 px-4">
+                    <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-primary/10 rounded-lg">
                           <Building className="h-4 w-4 text-primary" />

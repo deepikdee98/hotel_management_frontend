@@ -84,16 +84,16 @@ export default function ChangePasswordPage() {
 
   if (isLoading || !user || !isAdmin) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_30%_20%,#ffffff_0%,#f3f8ff_40%,#e7f1ff_75%,#dbe9ff_100%)] dark:bg-[radial-gradient(circle_at_30%_20%,#11203b_0%,#09162c_55%,#050e1f_100%)]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" aria-label="Loading" />
+      <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_30%_20%,#ffffff_0%,#f7faf9_40%,#eef5f4_75%,#e5efed_100%)] dark:bg-[radial-gradient(circle_at_30%_20%,#11203b_0%,#09162c_55%,#050e1f_100%)]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#1f7c7c]" aria-label="Loading" />
       </main>
     )
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col overflow-x-hidden bg-[radial-gradient(circle_at_30%_20%,#ffffff_0%,#f3f8ff_40%,#e7f1ff_75%,#dbe9ff_100%)] px-6 py-6 text-[#0b172c] sm:px-10 lg:px-16 lg:py-8 dark:bg-[radial-gradient(circle_at_30%_20%,#11203b_0%,#09162c_55%,#050e1f_100%)] dark:text-white">
+    <main className="relative flex min-h-screen flex-col overflow-x-hidden bg-[radial-gradient(circle_at_30%_20%,#ffffff_0%,#f7faf9_40%,#eef5f4_75%,#e5efed_100%)] px-6 py-6 text-[#14202b] sm:px-10 lg:px-16 lg:py-8 dark:bg-[radial-gradient(circle_at_30%_20%,#11203b_0%,#09162c_55%,#050e1f_100%)] dark:text-white">
       <svg
-        className="pointer-events-none absolute left-[28%] -top-[12%] h-[620px] w-[620px] text-[#2563eb]/10 dark:text-blue-400/10"
+        className="pointer-events-none absolute left-[28%] -top-[12%] h-[620px] w-[620px] text-[#1f7c7c]/10 dark:text-blue-400/10"
         viewBox="0 0 560 560"
         fill="none"
         aria-hidden="true"
@@ -104,7 +104,7 @@ export default function ChangePasswordPage() {
       </svg>
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute right-8 top-8 hidden h-64 w-64 opacity-35 [background-image:radial-gradient(#3b82f6_1.5px,transparent_1.5px)] [background-size:18px_18px] md:block dark:opacity-20"
+        className="pointer-events-none absolute right-8 top-8 hidden h-64 w-64 opacity-35 [background-image:radial-gradient(#247f80_1.5px,transparent_1.5px)] [background-size:18px_18px] md:block dark:opacity-20"
       />
 
       <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col">
@@ -115,38 +115,38 @@ export default function ChangePasswordPage() {
             width={48}
             height={54}
             priority
-            className="h-10 w-auto object-contain drop-shadow-[0_4px_12px_rgba(37,99,235,0.2)] lg:h-12"
+            className="h-10 w-auto object-contain drop-shadow-[0_4px_12px_rgba(31,124,124,0.2)] lg:h-12"
           />
           <div>
-            <h1 className="text-xl font-extrabold tracking-tight text-[#0f172a] sm:text-2xl dark:text-white">
+            <h1 className="text-xl font-extrabold tracking-tight text-[#14202b] sm:text-2xl dark:text-white">
               {companyName}
             </h1>
-            <p className="text-[9px] font-bold uppercase tracking-[0.28em] text-[#3b82f6] sm:text-[10px] dark:text-blue-300">
+            <p className="text-[9px] font-bold uppercase tracking-[0.28em] text-[#247f80] sm:text-[10px] dark:text-blue-300">
               Precision Hospitality Platform
             </p>
           </div>
         </header>
 
         <section className="flex flex-1 items-center justify-center py-8 sm:py-10" aria-labelledby="change-password-title">
-          <div className="w-full max-w-[460px] rounded-[28px] border border-white/80 bg-white/92 p-7 shadow-[0_25px_60px_-15px_rgba(37,99,235,0.2),0_10px_25px_rgba(0,0,0,0.03)] backdrop-blur-xl sm:p-8 dark:border-white/10 dark:bg-[#0f1d36]/92 dark:shadow-[0_25px_65px_-20px_rgba(0,0,0,0.7)]">
+          <div className="w-full max-w-[460px] rounded-[28px] border border-white/80 bg-white/92 p-7 shadow-[0_25px_60px_-15px_rgba(31,124,124,0.2),0_10px_25px_rgba(0,0,0,0.03)] backdrop-blur-xl sm:p-8 dark:border-white/10 dark:bg-[#0f1d36]/92 dark:shadow-[0_25px_65px_-20px_rgba(0,0,0,0.7)]">
             <div className="text-center">
-              <div className="mx-auto flex h-13 w-13 items-center justify-center rounded-full bg-[#eff6ff] text-[#2563eb] shadow-inner dark:bg-blue-500/15 dark:text-blue-300">
+              <div className="mx-auto flex h-13 w-13 items-center justify-center rounded-full bg-[#eaf3f2] text-[#1f7c7c] shadow-inner dark:bg-blue-500/15 dark:text-blue-300">
                 {succeeded ? <ShieldCheck className="h-6 w-6 text-emerald-600" /> : <KeyRound className="h-6 w-6 stroke-[1.75]" />}
               </div>
-              <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.22em] text-[#2563eb] dark:text-blue-300">
+              <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.22em] text-[#1f7c7c] dark:text-blue-300">
                 Secure First Login
               </p>
-              <h2 id="change-password-title" className="mt-1 text-2xl font-bold text-[#0f172a] sm:text-[26px] dark:text-white">
+              <h2 id="change-password-title" className="mt-1 text-2xl font-bold text-[#14202b] sm:text-[26px] dark:text-white">
                 {succeeded ? "Password updated" : `Welcome, ${adminName} 👋`}
               </h2>
               {succeeded ? (
-                <p className="mt-1.5 text-xs leading-relaxed text-[#64748b] dark:text-blue-100/65">
+                <p className="mt-1.5 text-xs leading-relaxed text-[#667382] dark:text-blue-100/65">
                   Your new password is ready. Redirecting you to sign in securely…
                 </p>
               ) : (
-                <div className="mt-1.5 text-xs leading-relaxed text-[#64748b] dark:text-blue-100/65">
+                <div className="mt-1.5 text-xs leading-relaxed text-[#667382] dark:text-blue-100/65">
                   <p>You&apos;re setting up your account for</p>
-                  <p className="mt-0.5 text-sm font-bold text-[#2563eb] dark:text-blue-300">{hotelName}</p>
+                  <p className="mt-0.5 text-sm font-bold text-[#1f7c7c] dark:text-blue-300">{hotelName}</p>
                   <p className="mt-2">Create your new password to continue.</p>
                   <p className="mt-1">
                     For security reasons, this is required only once before accessing your dashboard.
@@ -178,7 +178,7 @@ export default function ChangePasswordPage() {
                     autoComplete="current-password"
                     value={currentPassword}
                     onChange={(event) => setCurrentPassword(event.target.value)}
-                    className="h-11 rounded-xl border-[#cbd5e1] bg-white pl-10 text-sm text-[#0f172a] shadow-xs focus-visible:border-[#2563eb] focus-visible:ring-[#2563eb] dark:border-white/15 dark:bg-white/[0.06] dark:text-white"
+                    className="h-11 rounded-xl border-[#cbd5e1] bg-white pl-10 text-sm text-[#14202b] shadow-xs focus-visible:border-[#1f7c7c] focus-visible:ring-[#1f7c7c] dark:border-white/15 dark:bg-white/[0.06] dark:text-white"
                     required
                     disabled={submitting}
                   />
@@ -196,7 +196,7 @@ export default function ChangePasswordPage() {
                       autoComplete="new-password"
                       value={newPassword}
                       onChange={(event) => setNewPassword(event.target.value)}
-                      className="h-11 rounded-xl border-[#cbd5e1] bg-white px-10 text-sm text-[#0f172a] shadow-xs focus-visible:border-[#2563eb] focus-visible:ring-[#2563eb] dark:border-white/15 dark:bg-white/[0.06] dark:text-white"
+                      className="h-11 rounded-xl border-[#cbd5e1] bg-white px-10 text-sm text-[#14202b] shadow-xs focus-visible:border-[#1f7c7c] focus-visible:ring-[#1f7c7c] dark:border-white/15 dark:bg-white/[0.06] dark:text-white"
                       aria-describedby="password-strength password-requirements password-reuse"
                       required
                       disabled={submitting}
@@ -204,7 +204,7 @@ export default function ChangePasswordPage() {
                     <button
                       type="button"
                       onClick={() => setShowNewPassword((visible) => !visible)}
-                      className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-[#94a3b8] transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] dark:hover:bg-white/10 dark:hover:text-white"
+                      className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-[#94a3b8] transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1f7c7c] dark:hover:bg-white/10 dark:hover:text-white"
                       aria-label={showNewPassword ? "Hide new password" : "Show new password"}
                       aria-pressed={showNewPassword}
                     >
@@ -215,7 +215,7 @@ export default function ChangePasswordPage() {
 
                 <div id="password-strength" className="space-y-1.5" aria-live="polite">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-[#64748b] dark:text-blue-100/65">Password strength</span>
+                    <span className="text-[#667382] dark:text-blue-100/65">Password strength</span>
                     <span className={strength === "Strong" ? "font-medium text-emerald-600" : strength === "Medium" ? "font-medium text-amber-600" : strength === "Weak" ? "font-medium text-destructive" : "text-muted-foreground"}>
                       {strength ?? "Not entered"}
                     </span>
@@ -232,7 +232,7 @@ export default function ChangePasswordPage() {
 
                 <ul id="password-requirements" className="grid gap-1.5 text-xs sm:grid-cols-2" aria-label="Password requirements">
                   {requirements.map((requirement) => (
-                    <li key={requirement.label} className={`flex items-center gap-1.5 transition-colors ${requirement.met ? "text-emerald-600 dark:text-emerald-400" : "text-[#64748b] dark:text-blue-100/65"}`}>
+                    <li key={requirement.label} className={`flex items-center gap-1.5 transition-colors ${requirement.met ? "text-emerald-600 dark:text-emerald-400" : "text-[#667382] dark:text-blue-100/65"}`}>
                       {requirement.met ? <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <Circle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
                       <span>{requirement.label}</span>
                       <span className="sr-only">{requirement.met ? "met" : "not met"}</span>
@@ -256,7 +256,7 @@ export default function ChangePasswordPage() {
                     autoComplete="new-password"
                     value={confirmPassword}
                     onChange={(event) => setConfirmPassword(event.target.value)}
-                    className="h-11 rounded-xl border-[#cbd5e1] bg-white px-10 text-sm text-[#0f172a] shadow-xs focus-visible:border-[#2563eb] focus-visible:ring-[#2563eb] dark:border-white/15 dark:bg-white/[0.06] dark:text-white"
+                    className="h-11 rounded-xl border-[#cbd5e1] bg-white px-10 text-sm text-[#14202b] shadow-xs focus-visible:border-[#1f7c7c] focus-visible:ring-[#1f7c7c] dark:border-white/15 dark:bg-white/[0.06] dark:text-white"
                     aria-describedby="password-match"
                     aria-invalid={confirmPassword.length > 0 && !passwordsMatch}
                     required
@@ -265,7 +265,7 @@ export default function ChangePasswordPage() {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword((visible) => !visible)}
-                    className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-[#94a3b8] transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] dark:hover:bg-white/10 dark:hover:text-white"
+                    className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-[#94a3b8] transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1f7c7c] dark:hover:bg-white/10 dark:hover:text-white"
                     aria-label={showConfirmPassword ? "Hide confirmed password" : "Show confirmed password"}
                     aria-pressed={showConfirmPassword}
                   >
@@ -278,7 +278,7 @@ export default function ChangePasswordPage() {
                 </p>
               </div>
 
-              <Button className="h-11 w-full rounded-xl bg-[#2563eb] text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition-all hover:bg-[#1d4ed8] focus-visible:ring-[#2563eb]" type="submit" disabled={!canSubmit}>
+              <Button className="h-11 w-full rounded-xl bg-[#1f7c7c] text-sm font-semibold text-white shadow-md shadow-teal-700/20 transition-all hover:bg-[#176869] focus-visible:ring-[#1f7c7c]" type="submit" disabled={!canSubmit}>
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                 {submitting ? "Updating password…" : "Update password"}
               </Button>
