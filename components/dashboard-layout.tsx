@@ -161,7 +161,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
         <div
           className={cn(
             "min-h-screen transition-[padding] duration-300",
-            sidebarCollapsed ? "lg:pl-16" : "lg:pl-60"
+            sidebarCollapsed ? "lg:pl-16" : "lg:pl-56"
           )}
         >
           <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border/80 bg-card/95 px-4 shadow-sm backdrop-blur lg:hidden">
@@ -177,7 +177,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
             <span className="text-sm font-semibold tracking-tight">{companyName}</span>
           </header>
 
-          <main className="admin-content w-full min-w-0 overflow-x-hidden p-6 lg:p-8 xl:p-10 space-y-6">
+          <main className="admin-content w-full min-w-0 overflow-x-hidden p-4 lg:p-6 xl:p-7 space-y-5">
             {subscriptionStatus === "WARNING" && subscriptionInfo?.message && (
               <div className="mb-4 flex items-start gap-3 rounded-md border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-700 shadow-sm dark:text-red-200">
                 <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />

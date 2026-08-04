@@ -40,8 +40,10 @@ import {
   DoorOpen,
   Search,
   Moon,
+  Sun,
   Mail,
 } from "lucide-react"
+import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context"
 import { useBranding } from "@/lib/branding-context"
@@ -192,6 +194,10 @@ export function DashboardSidebar({
   const { user, logout, hasAccess } = useAuth()
   const { companyName, logoUrl } = useBranding()
   const [hotelLogoUrl, setHotelLogoUrl] = useState("")
+  const { resolvedTheme, setTheme } = useTheme()
+  const [themeMounted, setThemeMounted] = useState(false)
+
+  useEffect(() => setThemeMounted(true), [])
 
   useEffect(() => {
     if (!user || user.role === "super-admin") {
@@ -283,15 +289,15 @@ export function DashboardSidebar({
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-dvh w-60 overflow-hidden bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 border-r border-slate-100 dark:border-slate-800 shadow-lg transition-all duration-300 lg:translate-x-0",
+        "fixed left-0 top-0 z-40 h-dvh w-56 overflow-hidden bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-all duration-300 lg:translate-x-0",
         mobileOpen ? "translate-x-0" : "-translate-x-full",
-        collapsed ? "lg:w-16" : "lg:w-60"
+        collapsed ? "lg:w-16" : "lg:w-56"
       )}
     >
-      <div className="relative flex h-full flex-col bg-white dark:bg-slate-950">
-        <div className="pointer-events-none absolute -right-20 -top-20 h-52 w-52 rounded-full border border-blue-500/5 dark:border-blue-400/5" />
+      <div className="relative flex h-full flex-col bg-sidebar">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-52 w-52 rounded-full border border-primary/10" />
         {/* Header */}
-        <div className="relative flex h-20 items-center justify-between border-b border-slate-100 dark:border-slate-800 px-4">
+        <div className="relative flex h-[72px] items-center justify-between border-b border-sidebar-border px-4">
           <Link
             href="/"
             className={cn("flex items-center gap-2.5", collapsed && "lg:hidden")}
@@ -309,7 +315,7 @@ export function DashboardSidebar({
 
             <span>
               <span className="block font-extrabold tracking-tight text-slate-800 dark:text-white text-sm">{companyName}</span>
-              <span className="block text-[9px] uppercase tracking-[0.18em] font-bold text-blue-600 dark:text-blue-400">Hotel operations</span>
+              <span className="block text-[9px] uppercase tracking-[0.18em] font-bold text-primary">Hotel operations</span>
             </span>
           </Link>
           {collapsed && (
@@ -348,13 +354,13 @@ export function DashboardSidebar({
 
         {/* User Info */}
         {user && (
-          <div className={cn("border-b border-slate-100 dark:border-slate-800 p-4", collapsed && "lg:hidden")}>
+          <div className={cn("border-b border-sidebar-border p-3.5", collapsed && "lg:hidden")}>
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-blue-50 dark:bg-slate-800 shadow-inner border border-slate-100 dark:border-slate-850">
+              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-sidebar-border bg-sidebar-accent shadow-inner">
                 {hotelLogoUrl ? (
                   <img src={hotelLogoUrl} alt={user.hotelName || "Hotel logo"} className="h-full w-full object-contain" />
                 ) : (
-                  <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                  <span className="text-sm font-semibold text-sidebar-accent-foreground">
                     {user.name
                       .split(" ")
                       .map((n) => n[0])
@@ -374,7 +380,7 @@ export function DashboardSidebar({
         {!collapsed && <PropertySwitcher />}
 
         {/* Navigation */}
-        <nav className="relative flex-1 space-y-1.5 overflow-y-auto p-3 bg-white dark:bg-slate-950">
+        <nav className="relative flex-1 space-y-1 overflow-y-auto p-2.5 bg-sidebar">
           {navItems.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href
@@ -392,8 +398,8 @@ export function DashboardSidebar({
                         "flex min-h-10 w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all",
                         collapsed && "lg:justify-center lg:px-2",
                         isSubActive
-                          ? "bg-blue-50/70 dark:bg-slate-800 text-blue-600 dark:text-blue-400"
-                          : "text-slate-600 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-blue-600 dark:hover:text-blue-400"
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                       )}
                     >
                       <div className="flex items-center gap-2.5">
@@ -418,8 +424,8 @@ export function DashboardSidebar({
                                 className={cn(
                                   "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-sm font-semibold transition-all",
                                   isNestedActive
-                                    ? "bg-blue-50/50 dark:bg-slate-800 text-blue-600 dark:text-blue-400"
-                                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 hover:text-blue-600 dark:hover:text-blue-400"
+                                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                                 )}
                               >
                                 <div className="flex items-center gap-2.5">
@@ -441,8 +447,8 @@ export function DashboardSidebar({
                                     className={cn(
                                       "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all",
                                       isNestedItemActive
-                                        ? "bg-blue-600 text-white shadow-xs"
-                                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 hover:text-blue-600 dark:hover:text-blue-400"
+                                        ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-xs"
+                                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                                     )}
                                   >
                                     <NestedIcon className="h-3 w-3 flex-shrink-0" />
@@ -463,8 +469,8 @@ export function DashboardSidebar({
                           className={cn(
                             "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm font-semibold transition-all",
                             isSubItemActive
-                              ? "bg-blue-600 text-white shadow-xs"
-                              : "text-slate-500 dark:text-slate-400 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 hover:text-blue-600 dark:hover:text-blue-400"
+                              ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-xs"
+                              : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                           )}
                         >
                           <SubIcon className="h-3.5 w-3.5 flex-shrink-0" />
@@ -484,8 +490,8 @@ export function DashboardSidebar({
                 className={cn(
                   "flex min-h-10 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition-all duration-200",
                   isActive
-                    ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/20"
-                    : "text-slate-600 dark:text-slate-350 hover:bg-slate-50/75 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-450",
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-sidebar-foreground/75 hover:bg-sidebar-accent/65 hover:text-sidebar-accent-foreground",
                   collapsed && "lg:justify-center lg:px-2"
                 )}
                 title={collapsed ? item.label : undefined}
@@ -499,7 +505,18 @@ export function DashboardSidebar({
         </nav>
 
         {/* Footer */}
-        <div className="relative border-t border-slate-100 dark:border-slate-800 p-3 bg-white dark:bg-slate-950">
+        <div className="relative border-t border-sidebar-border p-2.5 bg-sidebar">
+          {themeMounted && (
+            <Button
+              variant="ghost"
+              className={cn("mb-1 w-full rounded-lg text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground", collapsed ? "justify-center px-2" : "justify-start px-3")}
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              aria-label={`Switch to ${resolvedTheme === "dark" ? "light" : "dark"} theme`}
+            >
+              {resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {!collapsed && <span className="ml-3">{resolvedTheme === "dark" ? "Light theme" : "Dark theme"}</span>}
+            </Button>
+          )}
           {collapsed && (
             <Button
               variant="ghost"

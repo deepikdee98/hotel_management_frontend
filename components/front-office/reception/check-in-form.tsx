@@ -2696,7 +2696,7 @@ export function CheckInForm({
             {isEditing ? (
               <>
                 <Button variant="outline" onClick={handleCancelEdit}><X className="h-4 w-4 mr-2" /> Cancel</Button>
-                <Button onClick={handleUpdate} disabled={isLoading} className="bg-blue-600 hover:bg-blue-700 text-white"><Save className="h-4 w-4 mr-2" /> Update Details</Button>
+                <Button onClick={handleUpdate} disabled={isLoading} className="bg-primary text-primary-foreground hover:bg-primary/90"><Save className="h-4 w-4 mr-2" /> Update Details</Button>
               </>
             ) : (
               <>
