@@ -70,7 +70,7 @@ export function DashboardLayout({ children, requiredRole, requiredModule }: Dash
       pathname.includes("setup") ? "system-configuration" : "",
       pathname.includes("guest") ? "guests" : "",
       pathname.includes("report") ? "reports" : "",
-      pathname.includes("staff") ? "user-management" : "",
+      pathname.includes("staff-activity") ? "staff-activity" : pathname.includes("staff") ? "user-management" : "",
       pathname.includes("notification") ? "notifications" : "",
       pathname.includes("module") ? "subscription" : "",
       pathname.includes("settings") ? "hotel-settings" : "",

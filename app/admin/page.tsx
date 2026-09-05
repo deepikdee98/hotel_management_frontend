@@ -13,7 +13,6 @@ import {
   TrendingUp,
   UserCircle,
   ArrowRight,
-  Bell,
   Users,
   ChevronDown,
   LockKeyhole
@@ -222,18 +221,6 @@ export default function UnifiedDashboard() {
         
         {/* Right side widgets */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Notification bell card */}
-          <Button 
-            variant="outline" 
-            size="icon" 
-            className="relative h-11 w-11 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-xs text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
-          >
-            <Bell className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            <span className="absolute -top-1.5 -right-1.5 h-5 w-5 bg-red-500 border-2 border-white dark:border-slate-900 rounded-full text-[9px] font-bold text-white flex items-center justify-center shadow-xs animate-pulse">
-              3
-            </span>
-          </Button>
-
           {/* Date Widget Card */}
           <div className="flex items-center gap-2.5 text-sm text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 px-4 py-2.5 rounded-2xl shadow-xs font-semibold">
             <CalendarCheck className="h-4.5 w-4.5 text-blue-600 dark:text-blue-400" />

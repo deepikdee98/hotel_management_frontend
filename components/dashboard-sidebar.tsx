@@ -42,6 +42,7 @@ import {
   Moon,
   Sun,
   Mail,
+  Bell,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
@@ -93,6 +94,8 @@ const SUPER_ADMIN_NAV: NavItem[] = [
 ]
 
 const HOTEL_NAV: NavItem[] = [
+  { label: "Notifications", href: "/admin/notifications", icon: Bell, roles: ["company-admin", "admin"] },
+  { label: "Staff Activity", href: "/admin/staff-activity", icon: ClipboardList, roles: ["company-admin", "admin"] },
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { label: "Staff", href: "/admin/staff", icon: Users, roles: ["company-admin", "admin"] },
   {
