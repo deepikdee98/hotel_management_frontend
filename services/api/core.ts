@@ -175,7 +175,11 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     throw new Error(errorMessage || `Request failed: ${response.status}`)
   }
 
-  return (await response.json()) as T
+  const result = await response.json()
+  if (result?.activityRecorded === false && typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("hotel:activity-warning", { detail: result.activityWarning }))
+  }
+  return result as T
 }
 
 function toRoomStatus(status?: string): Room["status"] {

@@ -2143,6 +2143,12 @@ export default function StayViewPage() {
                   Room is marked occupied. Check-in record details were not found in the timeline data.
                 </div>
               )}
+              {selectedReservation.checkedInBy && (
+                <div className="flex justify-between border-b pb-1">
+                  <span className="text-muted-foreground">Checked-In By</span>
+                  <span className="font-medium text-foreground">{selectedReservation.checkedInBy?.name || selectedReservation.checkedInBy?.username || selectedReservation.checkedInBy?.email || "Unknown staff"}</span>
+                </div>
+              )}
               {selectedReservation.status === "checked-out" && (
                 <>
                   <div className="flex justify-between border-b pb-1">
