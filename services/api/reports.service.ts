@@ -1,4 +1,34 @@
-import { apiRequest, type JsonRecord } from "./client"
+import { apiRequest, apiBlobRequest, type JsonRecord } from "./core"
+
+export interface ReportColumn { key: string; label: string; type?: "money" | "number" | "date" }
+export interface ReportDefinition { id: string; title: string; category: string; module: string; status: "available" | "blocked"; reason?: string; filters: string[]; columns: ReportColumn[]; snapshot?: boolean }
+export interface ReportProperty { id: string; name: string; currency: string; timezone: string }
+export interface ReportCatalog { reports: ReportDefinition[]; properties: ReportProperty[]; canMultiProperty: boolean; canExport: boolean }
+export type ReportRow = Record<string, string | number | null>
+export interface ReportResult { report: ReportDefinition; rows: ReportRow[]; total: number; page: number; limit: number; kpis?: { label: string; value: number | null; type?: "money" | "number" | "percent"; note?: string }[]; charts?: { title: string; key: string; labelKey: string; series: { key: string; label: string }[]; data: ReportRow[] }[]; meta: { properties: ReportProperty[]; startDate: string; endDate: string; generatedAt: string; generatedBy: string; currency: string | null; timezone: string; notes: string[] } }
+export interface ReportQuery { preset: string; startDate?: string; endDate?: string; propertyIds: string[]; page: number; limit: number; search: string; sort?: string; order?: "asc" | "desc"; filters: Record<string, string> }
+export interface ReportFilterOption { value: string; label: string }
+export interface ReportFilterOptions { options: ReportFilterOption[]; hasMore: boolean }
+export function reportQuery(query: ReportQuery, supported: string[], exporting = false) {
+  const params = new URLSearchParams({ preset: query.preset })
+  if (query.preset === "custom") { if (query.startDate) params.set("startDate", query.startDate); if (query.endDate) params.set("endDate", query.endDate) }
+  if (query.propertyIds.length) params.set("propertyIds", query.propertyIds.join(","))
+  if (!exporting) { params.set("page", String(query.page)); params.set("limit", String(query.limit)) }
+  if (query.search.trim()) params.set("search", query.search.trim())
+  if (query.sort) { params.set("sort", query.sort); params.set("order", query.order || "asc") }
+  for (const key of supported) if (query.filters[key]?.trim()) params.set(key, query.filters[key].trim())
+  return params
+}
+export async function getReportsCatalog() { return (await apiRequest<{ data: ReportCatalog }>("/reports/catalog")).data }
+export async function runReport(report: ReportDefinition, query: ReportQuery) { return (await apiRequest<{ data: ReportResult }>(`/reports/run/${encodeURIComponent(report.id)}?${reportQuery(query, report.filters)}`)).data }
+export async function getReportFilterOptions(report: ReportDefinition, filter: string, propertyIds: string[], search = "") {
+  const params = new URLSearchParams({ filter })
+  if (propertyIds.length) params.set("propertyIds", propertyIds.join(","))
+  if (search.trim()) params.set("search", search.trim())
+  return (await apiRequest<{ data: ReportFilterOptions }>(`/reports/options/${encodeURIComponent(report.id)}?${params}`)).data
+}
+export function exportReport(report: ReportDefinition, query: ReportQuery, format: "csv" | "xlsx" | "pdf") { const params = reportQuery(query, report.filters, true); params.set("format", format); return apiBlobRequest(`/reports/export/${encodeURIComponent(report.id)}?${params}`) }
+
 export async function getStaffDashboard() {
   return apiRequest<JsonRecord>("/staff/dashboard")
 }

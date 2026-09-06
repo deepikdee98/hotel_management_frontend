@@ -131,7 +131,7 @@ async function requestWithToken(path: string, init: RequestInit | undefined, tok
   }
 }
 
-export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+async function authenticatedResponse(path: string, init?: RequestInit): Promise<Response> {
   const token = getStoredAccessToken()
   let response = await requestWithToken(path, init, token)
 
@@ -175,6 +175,15 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     throw new Error(errorMessage || `Request failed: ${response.status}`)
   }
 
+  return response
+}
+
+export async function apiBlobRequest(path: string, init?: RequestInit): Promise<Blob> {
+  return (await authenticatedResponse(path, init)).blob()
+}
+
+export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await authenticatedResponse(path, init)
   const result = await response.json()
   if (result?.activityRecorded === false && typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("hotel:activity-warning", { detail: result.activityWarning }))
